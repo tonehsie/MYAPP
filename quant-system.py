@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V26.1 終極全息量化系統", layout="wide")
+st.set_page_config(page_title="V26.2 終極全息量化系統", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -29,8 +29,8 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V26.1 全息量化除水系統")
-st.caption("修復集保欄位遺失問題，並正式實裝「平日戰情追蹤矩陣」。")
+st.title("🤖 交易員實戰手冊：V26.2 全息量化除水系統")
+st.caption("修復：完整恢復「Goodinfo + 富邦」雙引擎死籌碼抓取邏輯。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -39,7 +39,7 @@ with col1:
 with col2:
     dead_chip_input = st.text_input("死籌碼 %", placeholder="留空自動計算")
 
-run_btn = st.button("🚀 啟動 V26.1 引擎：執行全息除水與平日追蹤", use_container_width=True)
+run_btn = st.button("🚀 啟動 V26.2 引擎：執行全息除水與平日追蹤", use_container_width=True)
 
 st.divider()
 
@@ -60,10 +60,15 @@ def safe_get_fubon(url):
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         if hasattr(ssl, 'OP_LEGACY_SERVER_CONNECT'): ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
             return response.read().decode('big5', errors='ignore')
-    except: return ""
+    except Exception:
+        try:
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10, verify=False)
+            res.encoding = 'big5'
+            return res.text
+        except: return ""
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_fm(dataset, start_date, target_id=None, end_date=None):
@@ -154,12 +159,18 @@ def scrape_block_trades(target_id, actual_dates):
     if not parsed: return pd.DataFrame(), ["資料解析失敗"]
     return pd.DataFrame(parsed).sort_values("日期", ascending=False), list(set(debug_log))
 
+# 【修復重點】：完整還原雙引擎死籌碼爬蟲 (Goodinfo + 富邦)
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_director_holding(target_id):
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    debug_log, dynamic_dict, static_val, chip_engine = [], {}, 0.0, "失敗"
+    
+    # 1. 嘗試 Goodinfo
     try:
         url_good = f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={target_id}"
-        h = headers.copy(); h["Referer"] = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={target_id}"; h["Cookie"] = "CLIENT_KEY=20260413;" 
+        h = headers.copy()
+        h["Referer"] = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={target_id}"
+        h["Cookie"] = "CLIENT_KEY=20260413;" 
         res = requests.get(url_good, headers=h, timeout=8)
         if res.status_code == 200:
             res.encoding = 'utf-8'
@@ -168,17 +179,50 @@ def scrape_director_holding(target_id):
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = ['_'.join(str(c) for c in col if 'Unnamed' not in str(c)).strip('_') for col in df.columns.values]
                 else: df.columns = df.columns.astype(str)
-                target_col = next((c for c in df.columns if '全體董監持股' in str(c) and '持股(%)' in str(c)), None)
+                target_col = next((c for c in df.columns if '全體董監持股' in str(c) and '持股(%)' in str(c).replace(' ', '')), None)
                 month_col = next((c for c in df.columns if '月別' in str(c)), None)
                 if target_col and month_col:
-                    d_dict = {}
+                    latest_val = 0.0
                     for _, row in df.iterrows():
-                        m, v = str(row[month_col]).strip(), str(row[target_col]).strip()
-                        if re.match(r'^\d{4}-\d{2}$', m) and v not in ['-', '', 'nan']:
-                            d_dict[m] = float(v)
-                    if d_dict: return d_dict, list(d_dict.values())[0], "Goodinfo", []
-    except: pass
-    return {}, 0.0, "失敗", []
+                        m_str = str(row[month_col]).replace('/', '-').strip()
+                        v_str = str(row[target_col]).replace(',', '').strip()
+                        if re.match(r'^\d{4}-\d{2}$', m_str) and v_str not in ['-', '', 'nan']:
+                            try:
+                                val = float(v_str)
+                                if 0 < val < 100.0:
+                                    dynamic_dict[m_str] = val
+                                    if latest_val == 0.0: latest_val = val
+                            except: pass
+                    if dynamic_dict: return dynamic_dict, latest_val, "Goodinfo", debug_log
+    except Exception as e: debug_log.append(f"Goodinfo錯誤: {e}")
+
+    # 2. 嘗試 富邦備援引擎
+    try:
+        url_fubon = f"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zck/zck_{target_id}.djhtm"
+        html = safe_get_fubon(url_fubon)
+        if html:
+            table_match = re.search(r'姓名/法人名稱(.*?)</table>', html, re.IGNORECASE | re.DOTALL)
+            if table_match:
+                table_html = table_match.group(1)
+                trs = re.findall(r'<tr[^>]*>(.*?)</tr>', table_html, re.IGNORECASE | re.DOTALL)
+                entity_dict = {}
+                for tr in trs:
+                    tds = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.IGNORECASE | re.DOTALL)
+                    if len(tds) >= 4:
+                        title = re.sub(r'<[^>]+>', '', tds[0]).strip()
+                        name = re.sub(r'<[^>]+>', '', tds[1]).strip()
+                        ratio_str = re.sub(r'<[^>]+>', '', tds[3]).replace('%', '').strip()
+                        if ('董' in title or '監' in title) and '辭' not in title and '職稱' not in title:
+                            try:
+                                ratio = float(ratio_str)
+                                entity_name = name.split('-')[0].strip() 
+                                entity_dict[entity_name] = max(entity_dict.get(entity_name, 0), ratio)
+                            except: pass
+                total_ratio = sum(entity_dict.values())
+                if 0 < total_ratio < 100.0: return {}, round(total_ratio, 2), "富邦精算", debug_log
+    except Exception as e: debug_log.append(f"富邦錯誤: {e}")
+
+    return {}, 0.0, "失敗", debug_log
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input and str(dead_chip_input).strip() != "":
@@ -190,7 +234,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 模組一：V26.1 指紋識別與除水雷達
+# 📌 模組一：V26.2 指紋識別與除水雷達
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}, pd.DataFrame()
@@ -290,8 +334,8 @@ def process_v25_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out_diag.append({"真實變動": pure_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(advice) if advice else "🔵 盤整"})
 
     diag_df = pd.DataFrame(out_diag)
-    df['真實大戶變動(%)'], df['隔日沖雜訊(%)'], df['V25.2_專家診斷'] = diag_df['真實變動'], diag_df['雜訊'], diag_df['診斷']
-    return df[['日期', '收盤價(元)', '總人數變動率(%)', '1000張變動(%)', '真實大戶變動(%)', '隔日沖雜訊(%)', 'V25.2_專家診斷']].sort_values('日期', ascending=False), pd.DataFrame(debug_math), pd.DataFrame(debug_friday)
+    df['真實大戶變動(%)'], df['隔日沖雜訊(%)'], df['V26_專家診斷'] = diag_df['真實變動'], diag_df['雜訊'], diag_df['診斷']
+    return df[['日期', '收盤價(元)', '總人數變動率(%)', '1000張變動(%)', '真實大戶變動(%)', '隔日沖雜訊(%)', 'V26_專家診斷']].sort_values('日期', ascending=False), pd.DataFrame(debug_math), pd.DataFrame(debug_friday)
 
 # ==========================================
 # 📌 模組二：V26.0 平日戰情追蹤矩陣
@@ -332,7 +376,7 @@ def process_v26_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     return pd.DataFrame(out)
 
 # ==========================================
-# 📌 資料處理 (完全修復集保欄位遺失問題)
+# 📌 資料處理 
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
@@ -368,7 +412,6 @@ def clean_level_by_math(x):
     else: return "1000張以上"
 
 def process_tdcc(df):
-    """【修復】確保 index 確實轉為欄位，不漏掉任何一個級距"""
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')]
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
@@ -676,7 +719,7 @@ def format_to_csv_string(df, title):
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V26.1 全息除水引擎與平日矩陣追蹤..."):
+    with st.spinner(f"正在執行 V26.2 全息除水引擎與平日矩陣追蹤..."):
         name = get_stock_name(user_stock_id)
         df_p_raw = fetch_fm("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: st.error("查無股價"); st.stop()
@@ -691,12 +734,10 @@ if run_btn:
         df_b_diff = process_branch_diff(df_b_raw, dates)
         
         df_s_raw = fetch_fm("TaiwanStockHoldingSharesPer", d_60, user_stock_id)
-        # 【修正點】：使用完整的 process_tdcc 確保欄位齊全
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, dead_chip_input, dynamic_dict, s_val, chip_eng)
-        df_v25_radar, df_debug_math, df_debug_friday = process_v25_ultimate_radar(df_s_wide, dead_chip_input, dynamic_dict, s_val, df_price, df_b_raw, tags)
+        df_v26_radar, df_debug_math, df_debug_friday = process_v25_ultimate_radar(df_s_wide, dead_chip_input, dynamic_dict, s_val, df_price, df_b_raw, tags)
 
-        # 【確保執行】：平日戰情追蹤矩陣
         df_daily_tracker = process_v26_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates)
 
         df_twse, _ = scrape_block_trades(user_stock_id, dates)
@@ -733,13 +774,12 @@ if run_btn:
         df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)]) if not df_cbas_raw.empty else pd.DataFrame()
 
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V26.1 全息戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V26.2 全息戰報")
         
         show_table("⚡ 0. 平日戰情追蹤矩陣 (週一至週四核心代理指標)", df_daily_tracker, "daily-tracker")
-        st.caption("※ 註：此矩陣專門追蹤每日的「聰明錢淨流」與「買賣家數差」，用以在週末集保公佈前，提前預判大戶動向。")
         
         show_table("1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)", df_s_dyn)
-        show_table("1-2. V25.2 專家診斷雷達 (週末除水版) (近8週)", df_v25_radar, "radar-table")
+        show_table("1-2. V26.2 專家診斷雷達 (週末除水版) (近8週)", df_v26_radar, "radar-table")
         show_table("2-1. 集保分級 - 張數表 (近8週)", df_s_unit)
         show_table("2-2. 集保分級 - 人數表 (近8週)", df_s_ppl)
         if df_twse.empty: st.markdown("#### 3. 鉅額交易明細 (近3日)"); st.warning("無鉅額交易")
@@ -772,7 +812,7 @@ if run_btn:
         st.divider()
 
         # 稽核中心
-        with st.expander("🛠️ 【開發者專用】V26.1 演算法稽核中心", expanded=False):
+        with st.expander("🛠️ 【開發者專用】V26.2 演算法稽核中心", expanded=False):
             st.markdown("<h5 class='debug-header'>1. 分點指紋圖鑑</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_tags)
             st.markdown("<h5 class='debug-header'>2. 除水驗算公式</h5>", unsafe_allow_html=True)
@@ -780,11 +820,11 @@ if run_btn:
 
         # AI 戰報生成 (CSV 格式)
         st.divider()
-        with st.expander("📋 【點擊展開：給 Gemini 的 V26.1 量化分析與稽核資料包 (CSV格式)】", expanded=True):
-            p = f"請分析標的: {user_stock_id} {name} (V26.1 量化籌碼)\n\n"
+        with st.expander("📋 【點擊展開：給 Gemini 的 V26.2 量化分析與稽核資料包 (CSV格式)】", expanded=True):
+            p = f"請分析標的: {user_stock_id} {name} (V26.2 量化籌碼)\n\n"
             p += format_to_csv_string(df_daily_tracker, "0. 平日戰情追蹤矩陣 (近5日)")
             p += format_to_csv_string(df_s_dyn.head(8), "1-1. 雙軸活大戶鎖碼判定表 (C-Value)")
-            p += format_to_csv_string(df_v25_radar.head(8), "1-2. V25.2 專家診斷雷達 (週末除水版)")
+            p += format_to_csv_string(df_v26_radar.head(8), "1-2. V26.2 專家診斷雷達 (週末除水版)")
             p += format_to_csv_string(df_twse, "3. 鉅額交易明細 (近3日)")
             p += format_to_csv_string(df_margin, "4. 散戶資券餘額 (近10天)")
             p += format_to_csv_string(df_inst, "6. 法人買賣超 (近10天)")
