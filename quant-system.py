@@ -1,15 +1,25 @@
 import streamlit as st
-import requests, re, ssl, urllib3, datetime
+import requests
 import pandas as pd
 import numpy as np
+import datetime
 from io import StringIO
+import re
 import concurrent.futures
 import urllib.request
+import ssl
+import urllib3
 
+# 關閉憑證警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-st.set_page_config(page_title="V26.4 終極全息量化系統", layout="wide")
+
+# 設定網頁標題與佈局
+st.set_page_config(page_title="V26.5 終極全息量化系統", layout="wide")
+
+# 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
+# 注入全局 CSS
 st.markdown("""
 <style>
 table.dataframe th, table.dataframe td { white-space: nowrap !important; text-align: center !important; }
@@ -20,13 +30,14 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V26.4 全息量化除水系統")
-st.caption("核心升級：導入動態市值精算引擎、地緣地址強制抓取、完整除水雷達。")
+st.title("🤖 交易員實戰手冊：V26.5 全息量化除水系統")
+st.caption("修復：鉅額交易模組回傳值解包錯誤 (ValueError)，確保系統穩定執行。")
 
+# UI 輸入區
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="留空自動計算")
-run_btn = st.button("🚀 啟動 V26.4 引擎：擷取地緣情報與全息雷達", use_container_width=True)
+run_btn = st.button("🚀 啟動 V26.5 引擎：擷取地緣情報與全息雷達", use_container_width=True)
 st.divider()
 
 # ==========================================
@@ -96,9 +107,9 @@ def fetch_fm_branch_fast_parallel(dates_list, target_id):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_block_trades(target_id, actual_dates):
-    if not actual_dates: return pd.DataFrame()
+    if not actual_dates: return pd.DataFrame(), []  # 修正：確保回傳兩個值，避免 unpacking error
     target_dates = actual_dates[:3] 
-    block_data = []
+    block_data, debug_log = [], []
     def fetch_date(d):
         d_twse, d_tpex = d.replace("-", ""), f"{int(d.split('-')[0])-1911}/{d.split('-')[1]}/{d.split('-')[2]}"
         res_list, headers = [], {"User-Agent": "Mozilla/5.0"}
@@ -118,7 +129,7 @@ def scrape_block_trades(target_id, actual_dates):
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for data in executor.map(fetch_date, target_dates):
             if data: block_data.extend(data)
-    if not block_data: return pd.DataFrame()
+    if not block_data: return pd.DataFrame(), list(set(debug_log))
     parsed = []
     for item in block_data:
         date, src, row = item
@@ -130,7 +141,7 @@ def scrape_block_trades(target_id, actual_dates):
             price = nums[2]
             t_type = next((re.sub(r'<[^>]+>', '', str(c)).strip() for c in row if any(x in str(c) for x in ["配對", "交易", "單一", "組合", "逐筆"])), "鉅額")
             parsed.append({"日期": date, "交易別": t_type, "成交量(張)": int(vol), "成交價(元)": round(price, 2), "成交金額(萬元)": int(amt)})
-    return pd.DataFrame(parsed).sort_values("日期", ascending=False)
+    return pd.DataFrame(parsed).sort_values("日期", ascending=False), list(set(debug_log))
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_director_holding(target_id):
@@ -185,7 +196,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 模組一：V26.4 指紋識別與除水雷達
+# 📌 模組一：V26.5 指紋識別與除水雷達
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}, pd.DataFrame()
@@ -266,8 +277,8 @@ def process_v25_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"真實變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    df['真實大戶變動(%)'], df['隔日沖雜訊(%)'], df['V26.4_專家診斷'] = ddf['真實變動'], ddf['雜訊'], ddf['診斷']
-    return df[['日期', '收盤價(元)', '總人數變動率(%)', '1000張變動(%)', '真實大戶變動(%)', '隔日沖雜訊(%)', 'V26.4_專家診斷']].sort_values('日期', ascending=False), pd.DataFrame(d_math), pd.DataFrame(d_fri)
+    df['真實大戶變動(%)'], df['隔日沖雜訊(%)'], df['V26.5_專家診斷'] = ddf['真實變動'], ddf['雜訊'], ddf['診斷']
+    return df[['日期', '收盤價(元)', '總人數變動率(%)', '1000張變動(%)', '真實大戶變動(%)', '隔日沖雜訊(%)', 'V26.5_專家診斷']].sort_values('日期', ascending=False), pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
 # ==========================================
 # 📌 模組二：V26.0 平日戰情追蹤矩陣
@@ -592,7 +603,7 @@ def format_to_csv_string(df, title):
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V26.4 全息除水引擎與地址強制抓取..."):
+    with st.spinner(f"正在執行 V26.5 全息除水引擎與地址強制抓取..."):
         name = get_stock_name(user_stock_id)
         df_p_raw = fetch_fm("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: st.error("查無股價"); st.stop()
@@ -652,11 +663,11 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址 (地緣核對)】** {address}"
 
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V26.4 全息戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V26.5 全息戰報")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         show_table("⚡ 0. 平日戰情追蹤矩陣 (週一至週四核心代理指標)", df_daily_tracker, "daily-tracker")
         show_table("1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)", df_s_dyn)
-        show_table("1-2. V26.4 專家診斷雷達 (週末除水版) (近8週)", df_v26_radar, "radar-table")
+        show_table("1-2. V26.5 專家診斷雷達 (週末除水版) (近8週)", df_v26_radar, "radar-table")
         show_table("2-1. 集保分級 - 張數表 (近8週)", df_s_unit)
         show_table("2-2. 集保分級 - 人數表 (近8週)", df_s_ppl)
         if df_twse.empty: st.markdown("#### 3. 鉅額交易明細 (近3日)"); st.warning("無鉅額交易")
@@ -687,19 +698,19 @@ if run_btn:
         show_table("17. CBAS 可轉債數據", df_cbas)
 
         st.divider()
-        with st.expander("🛠️ 【開發者專用】V26.4 演算法稽核中心", expanded=False):
+        with st.expander("🛠️ 【開發者專用】V26.5 演算法稽核中心", expanded=False):
             st.markdown("<h5 class='debug-header'>1. 分點指紋圖鑑</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_tags)
             st.markdown("<h5 class='debug-header'>2. 除水驗算公式</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_math)
 
         st.divider()
-        with st.expander("📋 【點擊展開：給 Gemini 的 V26.4 量化分析與稽核資料包 (CSV格式)】", expanded=True):
-            p = f"請分析標的: {user_stock_id} {name} (V26.4 量化籌碼)\n"
+        with st.expander("📋 【點擊展開：給 Gemini 的 V26.5 量化分析與稽核資料包 (CSV格式)】", expanded=True):
+            p = f"請分析標的: {user_stock_id} {name} (V26.5 量化籌碼)\n"
             p += f"{company_info_text}\n\n"
             p += format_to_csv_string(df_daily_tracker, "0. 平日戰情追蹤矩陣 (近5日)")
             p += format_to_csv_string(df_s_dyn.head(8), "1-1. 雙軸活大戶鎖碼判定表 (C-Value)")
-            p += format_to_csv_string(df_v26_radar.head(8), "1-2. V26.4 專家診斷雷達 (週末除水版)")
+            p += format_to_csv_string(df_v26_radar.head(8), "1-2. V26.5 專家診斷雷達 (週末除水版)")
             p += format_to_csv_string(df_twse, "3. 鉅額交易明細 (近3日)")
             p += format_to_csv_string(df_margin, "4. 散戶資券餘額 (近10天)")
             p += format_to_csv_string(df_inst, "6. 法人買賣超 (近10天)")
