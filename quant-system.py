@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V25.0 終極全息量化系統", layout="wide")
+st.set_page_config(page_title="V25.1 終極全息量化系統", layout="wide")
 
 # 內建最新 Sponsor Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -28,7 +28,8 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V25.0 全息量化除水系統")
+st.title("🤖 交易員實戰手冊：V25.1 全息量化除水系統")
+st.caption("核心升級：嚴格區分「當沖客」與「隔日沖」，精準還原真實籌碼。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -37,7 +38,7 @@ with col1:
 with col2:
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取，或可自行輸入比例")
 
-run_btn = st.button("🚀 啟動 V25.0 引擎：擷取全息資料並執行除水", use_container_width=True)
+run_btn = st.button("🚀 啟動 V25.1 引擎：擷取全息資料並執行除水", use_container_width=True)
 
 st.divider()
 
@@ -155,7 +156,8 @@ def scrape_director_holding(target_id):
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input and str(dead_chip_input).strip() != "":
-        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
+        try:
+            return float(str(dead_chip_input).replace('%', '').strip()), "手動"
         except: pass
     month_key = str(date_str)[:7].replace('/', '-')
     if dynamic_dict and month_key in dynamic_dict: return dynamic_dict[month_key], "Goodinfo當月"
@@ -230,10 +232,10 @@ def scrape_block_trades(target_id, actual_dates):
     return pd.DataFrame(parsed).sort_values("日期", ascending=False), list(set(debug_log))
 
 # ==========================================
-# 📌 V25.0 模組一：分點指紋識別引擎 (增加回傳驗證資料)
+# 📌 V25.1 模組一：嚴格版分點指紋識別引擎
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
-    """回傳 (標籤字典, 驗證用DataFrame)"""
+    """回傳 (標籤字典, 驗證用DataFrame)，嚴格區分當沖與隔日沖"""
     if df_raw.empty: return {}, pd.DataFrame()
     df = df_raw.copy()
     df['date'] = pd.to_datetime(df['date'])
@@ -249,30 +251,47 @@ def get_v25_broker_intelligence(df_raw):
         t_buy = group['b_vol'].sum()
         t_sell = group['s_vol'].sum()
         net_buy = t_buy - t_sell
-        trade_days = group['date'].nunique()
+        days = group['date'].nunique()
         
-        # 隔日沖機率計算
-        group['next_2d_sell'] = group['s_vol'].shift(-1).fillna(0) + group['s_vol'].shift(-2).fillna(0)
-        flipper_ratio = group[group['b_vol'] > 50]['next_2d_sell'].sum() / t_buy if t_buy > 0 else 0
+        # 1. 當沖傾向 (買賣極度接近)
+        total_vol = t_buy + t_sell
+        day_trade_ratio = (min(t_buy, t_sell) * 2) / total_vol if total_vol > 0 else 0
+        
+        # 2. 真實隔日沖 (找出留倉後再倒貨的軌跡)
+        group['net_day'] = group['b_vol'] - group['s_vol']
+        buy_days = group[group['net_day'] > 50]
+        flipper_dump_total = 0
+        overnight_hold_total = buy_days['net_day'].sum()
+        
+        for idx, row in buy_days.iterrows():
+            future_sells = group[(group['date'] > row['date']) & 
+                                 (group['date'] <= row['date'] + pd.Timedelta(days=3)) & 
+                                 (group['net_day'] < 0)]
+            if not future_sells.empty:
+                flipper_dump_total += abs(future_sells['net_day'].sum())
+                
+        true_flip_rate = flipper_dump_total / overnight_hold_total if overnight_hold_total > 0 else 0
         loyalty = net_buy / t_buy if t_buy > 0 else 0
         
         tag = "🔵 一般"
         if any(g in trader for g in gov_list): tag = "🏦 [官股]"
-        elif flipper_ratio > 0.75 and t_buy > 300: tag = "⚡ [隔日沖]"
-        elif trade_days >= 15 and loyalty > 0.7: tag = "📈 [波段主]"
+        elif day_trade_ratio > 0.85 and total_vol > 1000: tag = "🌪️ [當沖客]"
+        elif true_flip_rate > 0.70 and overnight_hold_total > 200: tag = "⚡ [隔日沖]"
+        elif days >= 12 and loyalty > 0.7: tag = "📈 [波段主]"
         elif t_buy > 1000 and loyalty > 0.85: tag = "🧱 [真鎖碼]"
         
         broker_tags[trader] = tag
         
         # 儲存驗證資料
-        if t_buy > 100 or t_sell > 100: # 只記錄有一定交易量的
+        if t_buy > 100 or t_sell > 100:
             debug_rows.append({
                 "分點名稱": trader, "最終標籤": tag, "總買進(張)": t_buy, "總賣出(張)": t_sell, 
-                "淨買超(張)": net_buy, "交易天數": trade_days, 
-                "隔日賣出率(%)": round(flipper_ratio*100, 1), "忠誠度(%)": round(loyalty*100, 1)
+                "淨買超(張)": net_buy, "留倉張數": overnight_hold_total,
+                "當沖傾向(%)": round(day_trade_ratio*100, 1),
+                "隔日賣出率(%)": round(true_flip_rate*100, 1), "忠誠度(%)": round(loyalty*100, 1)
             })
             
-    df_debug = pd.DataFrame(debug_rows).sort_values('總買進(張)', ascending=False)
+    df_debug = pd.DataFrame(debug_rows).sort_values('總買進(張)', ascending=False) if debug_rows else pd.DataFrame()
     return broker_tags, df_debug
 
 # ==========================================
@@ -739,7 +758,7 @@ def process_cbas(df):
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在擷取 {user_stock_id} 數據，並啟動 V25.0 全息雷達..."):
+    with st.spinner(f"正在擷取 {user_stock_id} 數據，並啟動 V25.1 嚴格除水雷達..."):
         
         stock_name = get_stock_name(user_stock_id)
         
@@ -759,7 +778,7 @@ if run_btn:
 
         df_branch_raw = fetch_fm_branch_fast_parallel(actual_dates[:60], user_stock_id)
         
-        # [V25.0 大腦] 產生分點指紋標籤 與 驗證資料
+        # [V25.1 大腦] 產生分點指紋標籤 與 驗證資料
         intel_tags, df_debug_tags = get_v25_broker_intelligence(df_branch_raw)
         
         df_branch_diff = process_branch_diff(df_branch_raw, actual_dates)
@@ -769,7 +788,7 @@ if run_btn:
         
         df_share_dynamic = process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine)
         
-        # [V25.0 雷達] 專家診斷雷達 (除水版) 與 驗證資料
+        # [V25.1 雷達] 專家診斷雷達 (除水版) 與 驗證資料
         df_v25_radar, df_debug_math, df_debug_friday = process_v25_ultimate_radar(
             df_share_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags
         )
@@ -868,7 +887,7 @@ if run_btn:
                 st.markdown(html, unsafe_allow_html=True)
             
         show("▼▼▼ 1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週) ▼▼▼", df_share_dynamic.head(8))
-        show("▼▼▼ 1-2. V25.0 專家診斷雷達 (除水版) (近8週) ▼▼▼", df_v25_radar.head(8), custom_class="radar-table")
+        show("▼▼▼ 1-2. V25.1 專家診斷雷達 (除水版) (近8週) ▼▼▼", df_v25_radar.head(8), custom_class="radar-table")
         show("▼▼▼ 2-1. 集保分級 - 張數表 (近8週) ▼▼▼", df_share_unit.head(8))
         show("▼▼▼ 2-2. 集保分級 - 人數表 (近8週) ▼▼▼", df_share_people.head(8))
         
@@ -910,15 +929,15 @@ if run_btn:
         st.divider()
 
         # ==========================================
-        # 🛠️ 開發者專用：V25.0 演算法驗證中心
+        # 🛠️ 開發者專用：V25.1 演算法驗證中心
         # ==========================================
-        with st.expander("🛠️ 【開發者專用】V25.0 演算法驗證中心 (點擊展開查看詳細運算過程)", expanded=True):
+        with st.expander("🛠️ 【開發者專用】V25.1 演算法驗證中心 (點擊展開查看詳細運算過程)", expanded=True):
             st.markdown("<h4 class='debug-header'>1. 60天分點指紋圖鑑 (為什麼給這個標籤？)</h4>", unsafe_allow_html=True)
-            st.write("這是系統掃描 60 天紀錄後，幫每個分點計算出的特徵。隔日賣出率 > 75% 會被標記為 ⚡ [隔日沖]。")
+            st.write("嚴格過濾當沖：當沖傾向 > 85% 標記為 🌪️ [當沖客]；留倉後隔日賣出 > 70% 標記為 ⚡ [隔日沖]。")
             st.dataframe(df_debug_tags, use_container_width=True)
 
             st.markdown("<h4 class='debug-header'>2. 本週除水攔截名單 (週五抓到了誰？)</h4>", unsafe_allow_html=True)
-            st.write("這是系統在集保公佈當天的週五，成功攔截到的「隔日沖」買單。這些張數會被強制從 1000 張大戶中扣除。")
+            st.write("這是系統在集保公佈當天的週五，成功攔截到的「隔日沖」買單。這些張數會被強制從大戶佔比中扣除。")
             if df_debug_friday.empty:
                 st.info("本週五無隔日沖雜訊干擾。")
             else:
@@ -938,7 +957,7 @@ if run_btn:
             p = f"請依下面最新的盤後資料幫我分析 {user_stock_id}{name_str} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             
             p += format_to_gas(df_share_dynamic.head(8), "1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)")
-            p += format_to_gas(df_v25_radar.head(8), "1-2. V25.0 專家診斷雷達 (除水版) (近8週)")
+            p += format_to_gas(df_v25_radar.head(8), "1-2. V25.1 專家診斷雷達 (除水版) (近8週)")
             p += format_to_gas(df_share_unit.head(8), "2-1. 集保分級 - 張數表 (近8週)")
             p += format_to_gas(df_share_people.head(8), "2-2. 集保分級 - 人數表 (近8週)")
             p += format_to_gas(df_twse, "3. 鉅額交易明細 (近3日)")
