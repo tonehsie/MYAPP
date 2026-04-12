@@ -10,16 +10,14 @@ import urllib.request
 import ssl
 import urllib3
 
-# 關閉所有憑證警告
+# 1. 系統環境初始化
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# 設定網頁標題與佈局
 st.set_page_config(page_title="V25.0 終極全息量化系統", layout="wide")
 
-# 內建最新 Sponsor Token
+# 內建最新 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-# 注入全局 CSS
+# 注入 CSS 確保排版
 st.markdown("""
 <style>
 table.dataframe th, table.dataframe td { white-space: nowrap !important; text-align: center !important; }
@@ -27,22 +25,22 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 V25.0 終極全息量化戰情室")
-st.caption("核心大腦：指紋識別引擎 + 數據除水過濾 + 技術位階融合")
+st.title("🤖 V25.0 終極全息量化系統")
+st.caption("核心功能：分點指紋辨識、數據除水還原、AI 戰報包生成")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
 with col1:
     user_stock_id = st.text_input("個股代號", value="8027")
 with col2:
-    dead_chip_input = st.text_input("死籌碼 %", placeholder="留空則自動抓取，或手動輸入比例。")
+    dead_chip_input = st.text_input("死籌碼 %", placeholder="留空則自動抓取，或手動輸入（如：15.5）")
 
 run_btn = st.button("🚀 啟動 V25.0 引擎：執行全息除水校正", use_container_width=True)
 
 st.divider()
 
 # ==========================================
-# 📌 工具函式庫 (包含您的所有爬蟲引擎)
+# 📌 工具函式庫 (修正縮進錯誤)
 # ==========================================
 
 @st.cache_data(ttl=3600)
@@ -51,7 +49,8 @@ def get_stock_name(target_id):
         res = requests.get(f"https://tw.stock.yahoo.com/quote/{target_id}.TW", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         match = re.search(r'<title>(.*?)\s*\(', res.text)
         return match.group(1).strip() if match else ""
-    except: return ""
+    except:
+        return ""
 
 def safe_get_fubon(url):
     try:
@@ -63,7 +62,8 @@ def safe_get_fubon(url):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
             return response.read().decode('big5', errors='ignore')
-    except: return ""
+    except:
+        return ""
 
 @st.cache_data(ttl=3600)
 def fetch_fm(dataset, start_date, target_id=None, end_date=None):
@@ -75,14 +75,15 @@ def fetch_fm(dataset, start_date, target_id=None, end_date=None):
     try:
         res = requests.get(url, params=params, headers=headers, timeout=15).json()
         return pd.DataFrame(res.get("data", []))
-    except: return pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def scrape_director_holding(target_id):
     dynamic_dict, static_val, chip_engine, debug_log = {}, 0.0, "失敗", []
     try:
         url_good = f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={target_id}"
-        h = {"User-Agent": "Mozilla/5.0", "Cookie": "CLIENT_KEY=20260411;", "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={target_id}"}
+        h = {"User-Agent": "Mozilla/5.0", "Cookie": "CLIENT_KEY=20260412;", "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={target_id}"}
         res = requests.get(url_good, headers=h, timeout=8)
         if res.status_code == 200:
             res.encoding = 'utf-8'
@@ -97,21 +98,32 @@ def scrape_director_holding(target_id):
                         m, v = str(row[month_col]).strip(), str(row[target_col]).strip()
                         if re.match(r'^\d{4}-\d{2}$', m) and v not in ['-', '', 'nan']:
                             dynamic_dict[m] = float(v)
-                    if dynamic_dict: return dynamic_dict, list(dynamic_dict.values())[0], "Goodinfo", debug_log
-    except Exception as e: debug_log.append(f"G-Err: {e}")
+                    if dynamic_dict:
+                        return dynamic_dict, list(dynamic_dict.values())[0], "Goodinfo", debug_log
+    except Exception as e:
+        debug_log.append(f"G-Err: {e}")
     return {}, 0.0, "失敗", debug_log
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
+    # 修正 SyntaxError: try 必須與對應的 except 在同一層
     if dead_chip_input:
-        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
-    except: pass
+        try:
+            val = float(str(dead_chip_input).replace('%', '').strip())
+            return val, "手動"
+        except:
+            pass
+    
     month_key = str(date_str)[:7].replace('/', '-')
-    if dynamic_dict and month_key in dynamic_dict: return dynamic_dict[month_key], "Goodinfo當月"
-    if dynamic_dict: return list(dynamic_dict.values())[0], "Goodinfo最新"
-    return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
+    if dynamic_dict and month_key in dynamic_dict:
+        return dynamic_dict[month_key], "Goodinfo當月"
+    if dynamic_dict:
+        return list(dynamic_dict.values())[0], "Goodinfo最新"
+    if static_val > 0:
+        return static_val, chip_engine
+    return 0.0, "-"
 
 # ==========================================
-# 📌 模組一：V25.0 指紋辨識引擎
+# 📌 模組一：V25.0 指紋辨識引擎 (去水關鍵)
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}
@@ -130,15 +142,20 @@ def get_v25_broker_intelligence(df_raw):
         flip_rate = group[group['b_vol'] > 50]['next_2d_sell'].sum() / t_buy if t_buy > 0 else 0
         loyalty = net / t_buy if t_buy > 0 else 0
         
-        if any(g in trader for g in govs): tags[trader] = "🏦 [官股]"
-        elif flip_rate > 0.75 and t_buy > 300: tags[trader] = "⚡ [隔日沖]"
-        elif days >= 15 and loyalty > 0.7: tags[trader] = "📈 [波段主]"
-        elif t_buy > 1000 and loyalty > 0.85: tags[trader] = "🧱 [真鎖碼]"
-        else: tags[trader] = "🔵 一般"
+        if any(g in trader for g in govs):
+            tags[trader] = "🏦 [官股]"
+        elif flip_rate > 0.75 and t_buy > 300:
+            tags[trader] = "⚡ [隔日沖]"
+        elif days >= 15 and loyalty > 0.7:
+            tags[trader] = "📈 [波段主]"
+        elif t_buy > 1000 and loyalty > 0.85:
+            tags[trader] = "🧱 [真鎖碼]"
+        else:
+            tags[trader] = "🔵 一般"
     return tags
 
 # ==========================================
-# 📌 模組二：V25.0 數據除水與除水雷達
+# 📌 模組二：V25.0 數據除水與雷達引擎
 # ==========================================
 def get_smart_threshold(price, capital_bn, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
@@ -149,7 +166,9 @@ def get_smart_threshold(price, capital_bn, dead_float):
     raw_threshold = max(shares_by_money, shares_by_influence)
     levels = [100, 200, 400, 600, 800, 1000]
     aligned = min(levels, key=lambda x: abs(x - raw_threshold))
-    return min(aligned, 400) if price < 30 else aligned
+    if price < 30:
+        return min(aligned, 400)
+    return aligned
 
 def process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, dynamic_dict, static_val):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
@@ -170,10 +189,13 @@ def process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, d
         df_f = df_branch_raw[df_branch_raw['date'] == d]
         f_vol = 0
         if not df_f.empty:
+            # 建立暫時標籤
+            df_f = df_f.copy()
             df_f['tag'] = df_f['securities_trader'].map(labels)
             f_vol = df_f[df_f['tag'] == "⚡ [隔日沖]"]['buy'].sum() / 1000
         
-        f_impact = (f_vol / row['總張數']) * 100 if row['總張數'] > 0 else 0
+        total_s = row['總張數']
+        f_impact = (f_vol / total_s) * 100 if total_s > 0 else 0
         raw_chg = 0 if i == 0 else row['1000張以上_比例(%)'] - df_s.iloc[i-1]['1000張以上_比例(%)']
         pure_chg = round(raw_chg - f_impact, 2)
         
@@ -181,21 +203,20 @@ def process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, d
         lev = 100 / (100 - dead) if 0 < dead < 100 else 1
         intensity = round(pure_chg * lev, 2)
         
-        # K值計算 (中實戶規律)
-        mid_ppl_diff = 0 if i == 0 else row['200-400張_人數'] - df_s.iloc[i-1]['200-400張_人數']
-        mid_vol_diff = 0 if i == 0 else row['200-400張_張數'] - df_s.iloc[i-1]['200-400張_張數']
-        k_val = round(mid_vol_diff / mid_ppl_diff, 1) if mid_ppl_diff >= 2 and mid_vol_diff > 0 else 0
-
+        # 實戰診斷
         advice = "🔵 趨勢盤整"
-        if intensity > 2.5 and cur_p > m20: advice = "🚀 [真·暴力軋空]"
-        elif intensity < -1.2: advice = "💀 [主力大舉出貨]"
-        elif f_impact > 1.2: advice = "⚡ [隔日沖虛假訊號]"
-        elif pure_chg > 0.4 and cur_p < m20: advice = "🧱 [主力低檔建倉]"
-        elif k_val > 200: advice = "🔴 [分身集團集結]"
-
+        if intensity > 2.5 and cur_p > m20:
+            advice = "🚀 [真·暴力軋空]"
+        elif intensity < -1.2:
+            advice = "💀 [主力大舉出貨]"
+        elif f_impact > 1.2:
+            advice = "⚡ [隔日沖虛假訊號]"
+        elif pure_chg > 0.4 and cur_p < m20:
+            advice = "🧱 [主力低檔建倉]"
+        
         out.append({
-            "日期": d, "收盤價": cur_p, "真實變動(%)": pure_chg, "除水強度": intensity, 
-            "K_Value": k_val, "V25.0 專家診斷": advice
+            "日期": d, "收盤價": cur_p, "真實變動(%)": pure_chg, 
+            "除水強度": intensity, "V25.0 專家診斷": advice
         })
     return pd.DataFrame(out).sort_values('日期', ascending=False)
 
@@ -258,14 +279,16 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags):
             row["買超分點"] = f"{intel_tags.get(n, '🔵')} {n}"
             row["買超(張)"] = int(buyers.loc[i, 'net'])
             row["佔比"] = f"{(buyers.loc[i, 'net']/total_buy)*100:.1f}%"
-        else: row["買超分點"] = "-"; row["買超(張)"] = 0; row["佔比"] = "-"
+        else:
+            row["買超分點"] = "-"; row["買超(張)"] = 0; row["佔比"] = "-"
             
         if i < len(sellers):
             n = sellers.loc[i, 'securities_trader']
             row["賣超分點"] = f"{intel_tags.get(n, '🔵')} {n}"
             row["賣超(張)"] = abs(int(sellers.loc[i, 'net']))
             row["佔比_"] = f"{(abs(sellers.loc[i, 'net'])/total_buy)*100:.1f}%"
-        else: row["賣超分點"] = "-"; row["賣超(張)"] = 0; row["佔比_"] = "-"
+        else:
+            row["賣超分點"] = "-"; row["賣超(張)"] = 0; row["佔比_"] = "-"
         out.append(row)
     return pd.DataFrame(out)
 
@@ -276,41 +299,46 @@ def fetch_fm_branch_parallel(dates_list, target_id):
         url = "https://api.finmindtrade.com/api/v4/data"
         p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": target_id, "start_date": d, "end_date": d}
         h = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
-        try: return requests.get(url, params=p, headers=h, timeout=15).json().get("data", [])
-        except: return []
+        try:
+            res = requests.get(url, params=p, headers=h, timeout=15).json()
+            return res.get("data", [])
+        except:
+            return []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         results = list(executor.map(fetch_single, dates_list))
-        for r in results: all_data.extend(r)
+        for r in results:
+            if r: all_data.extend(r)
     return pd.DataFrame(all_data)
 
 # ==========================================
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V25.0 終極掃描並過濾隔日沖雜訊..."):
+    with st.spinner(f"正在執行 V25.0 終極掃描... (包含 60 天分點路徑指紋識別)"):
         # 1. 基礎資料獲取
         name = get_stock_name(user_stock_id)
         start = (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d")
         df_p_raw = fetch_fm("TaiwanStockPrice", start, user_stock_id)
-        if df_p_raw.empty: st.error("查無股價資料"); st.stop()
+        if df_p_raw.empty:
+            st.error("查無股價資料"); st.stop()
         
         dates = sorted(df_p_raw['date'].unique().tolist(), reverse=True)
         df_price = process_price(df_p_raw)
         
-        # 2. 籌碼大腦：指紋識別與死籌碼
+        # 2. 籌碼大腦：指紋識別
         dynamic_dict, s_val, engine, _ = scrape_director_holding(user_stock_id)
         df_branch_raw = fetch_fm_branch_parallel(dates[:60], user_stock_id)
         intel_tags = get_v25_broker_intelligence(df_branch_raw)
         
-        # 3. 集保數據融合
+        # 3. 集保數據處理
         df_share_raw = fetch_fm("TaiwanStockHoldingSharesPer", dates[60], user_stock_id)
         df_share_wide, df_unit, df_ppl = process_tdcc(df_share_raw)
         
         # 4. 【核心】產生 V25.0 除水雷達
         df_v25_radar = process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, dynamic_dict, s_val)
         
-        # 5. 其他輔助資料
+        # 5. 其他輔助資料 (法人、資券)
         df_inst = fetch_fm("TaiwanStockInstitutionalInvestorsBuySell", dates[10], user_stock_id)
         df_margin = fetch_fm("TaiwanStockMarginPurchaseShortSale", dates[10], user_stock_id)
 
@@ -320,7 +348,7 @@ if run_btn:
         st.markdown("#### ▼▼▼ 1. V25.0 專家診斷雷達 (除水還原版) ▼▼▼")
         st.table(df_v25_radar.head(8))
         
-        st.markdown("#### ▼▼▼ 2. 主力分點 - 近60日 (含指紋標記) ▼▼▼")
+        st.markdown("#### ▼▼▼ 2. 主力分點 - 近60日 (含指紋識別標籤) ▼▼▼")
         st.table(process_branch_v25(df_branch_raw, 60, dates, intel_tags))
 
         st.markdown("#### ▼▼▼ 3. 集保分級張數表 (近8週) ▼▼▼")
@@ -328,12 +356,14 @@ if run_btn:
 
         # AI 戰報生成
         st.divider()
-        with st.expander("📋 【點擊複製：給 Gemini 的 V25.0 量化分析資料包】", expanded=True):
+        with st.expander("📋 【點擊複製：給 Gemini 的 V25.0 量化戰報資料包】", expanded=True):
             ai_p = f"請依下面 V25.0 除水後的資料幫我分析 {user_stock_id} {name} 的多空強度：\n\n"
             ai_p += f"- V25.0 專家診斷：{df_v25_radar['V25.0 專家診斷'].iloc[0]}\n"
             ai_p += f"- 去水後真實變動：{df_v25_radar['真實變動(%)'].iloc[0]}%\n"
             ai_p += f"- 除水強度係數：{df_v25_radar['除水強度'].iloc[0]}\n"
-            ai_p += f"- 隔日沖雜訊佔比：{round(abs(df_v25_radar['真實變動(%)'].iloc[0] - (df_share_wide['1000張以上_比例(%)'].iloc[0]-df_share_wide['1000張以上_比例(%)'].iloc[1])), 2)}%\n"
-            ai_p += f"- 60天鎖碼分點：{process_branch_v25(df_branch_raw, 60, dates, intel_tags)['買超分點'].head(5).tolist()}\n"
+            # 計算噪音佔比
+            noise = round(abs(df_v25_radar['真實變動(%)'].iloc[0] - (df_share_wide['1000張以上_比例(%)'].iloc[0]-df_share_wide['1000張以上_比例(%)'].iloc[1])), 2)
+            ai_p += f"- 隔日沖雜訊佔比：{noise}%\n"
+            ai_p += f"- 60天核心鎖碼分點：{process_branch_v25(df_branch_raw, 60, dates, intel_tags)['買超分點'].head(5).tolist()}\n"
             ai_p += "\n請針對以上純淨數據給出下週的操作建議與評分(0-100)。"
             st.code(ai_p, language="text")
