@@ -10,14 +10,16 @@ import urllib.request
 import ssl
 import urllib3
 
-# 1. 基礎設定與環境優化
+# 關閉所有憑證警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 設定網頁標題與佈局
 st.set_page_config(page_title="V25.0 終極全息量化系統", layout="wide")
 
-# 內建最新 Token
+# 內建最新 Sponsor Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-# 注入 CSS 強制排版
+# 注入全局 CSS
 st.markdown("""
 <style>
 table.dataframe th, table.dataframe td { white-space: nowrap !important; text-align: center !important; }
@@ -25,17 +27,17 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 V25.0 終極全息量化系統")
-st.caption("指紋辨識 + 數據除水 + 技術位階 + AI 戰報生成器")
+st.title("🤖 V25.0 終極全息量化戰情室")
+st.caption("核心大腦：指紋識別引擎 + 數據除水過濾 + 技術位階融合")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
 with col1:
-    user_stock_id = st.text_input("個股代號", value="1785")
+    user_stock_id = st.text_input("個股代號", value="8027")
 with col2:
-    dead_chip_input = st.text_input("死籌碼 %", placeholder="留空則依董監持股自動計算")
+    dead_chip_input = st.text_input("死籌碼 %", placeholder="留空則自動抓取，或手動輸入比例。")
 
-run_btn = st.button("🚀 啟動 V25.0 引擎：擷取全息資料並校正籌碼", use_container_width=True)
+run_btn = st.button("🚀 啟動 V25.0 引擎：執行全息除水校正", use_container_width=True)
 
 st.divider()
 
@@ -102,14 +104,14 @@ def scrape_director_holding(target_id):
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input:
         try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
-        except: pass
+    except: pass
     month_key = str(date_str)[:7].replace('/', '-')
     if dynamic_dict and month_key in dynamic_dict: return dynamic_dict[month_key], "Goodinfo當月"
     if dynamic_dict: return list(dynamic_dict.values())[0], "Goodinfo最新"
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 模組一：V25.0 指紋辨識引擎 (去水關鍵)
+# 📌 模組一：V25.0 指紋辨識引擎
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}
@@ -136,8 +138,19 @@ def get_v25_broker_intelligence(df_raw):
     return tags
 
 # ==========================================
-# 📌 模組二：V25.0 數據除水與雷達引擎
+# 📌 模組二：V25.0 數據除水與除水雷達
 # ==========================================
+def get_smart_threshold(price, capital_bn, dead_float):
+    if pd.isna(price) or price <= 0: return 1000 
+    sfc = max(3000, capital_bn * 500)
+    si = max(0.1, 0.5 * (100 - dead_float) / 100)
+    shares_by_money = (sfc * 10000) / (price * 1000)
+    shares_by_influence = (capital_bn * 10000) * (si / 100) 
+    raw_threshold = max(shares_by_money, shares_by_influence)
+    levels = [100, 200, 400, 600, 800, 1000]
+    aligned = min(levels, key=lambda x: abs(x - raw_threshold))
+    return min(aligned, 400) if price < 30 else aligned
+
 def process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, dynamic_dict, static_val):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
     labels = get_v25_broker_intelligence(df_branch_raw)
@@ -168,28 +181,40 @@ def process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, d
         lev = 100 / (100 - dead) if 0 < dead < 100 else 1
         intensity = round(pure_chg * lev, 2)
         
+        # K值計算 (中實戶規律)
+        mid_ppl_diff = 0 if i == 0 else row['200-400張_人數'] - df_s.iloc[i-1]['200-400張_人數']
+        mid_vol_diff = 0 if i == 0 else row['200-400張_張數'] - df_s.iloc[i-1]['200-400張_張數']
+        k_val = round(mid_vol_diff / mid_ppl_diff, 1) if mid_ppl_diff >= 2 and mid_vol_diff > 0 else 0
+
         advice = "🔵 趨勢盤整"
         if intensity > 2.5 and cur_p > m20: advice = "🚀 [真·暴力軋空]"
         elif intensity < -1.2: advice = "💀 [主力大舉出貨]"
         elif f_impact > 1.2: advice = "⚡ [隔日沖虛假訊號]"
         elif pure_chg > 0.4 and cur_p < m20: advice = "🧱 [主力低檔建倉]"
-        
-        out.append({"日期": d, "收盤價": cur_p, "真實變動(%)": pure_chg, "除水強度": intensity, "V25.0 專家診斷": advice})
+        elif k_val > 200: advice = "🔴 [分身集團集結]"
+
+        out.append({
+            "日期": d, "收盤價": cur_p, "真實變動(%)": pure_chg, "除水強度": intensity, 
+            "K_Value": k_val, "V25.0 專家診斷": advice
+        })
     return pd.DataFrame(out).sort_values('日期', ascending=False)
 
 # ==========================================
-# 📌 資料清洗與轉換函式 (從原版繼承)
+# 📌 資料清洗與轉換函式
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
-    df = df.rename(columns={"date":"日期","Trading_Volume":"成交量(張)","close":"收盤價(元)"})
-    df['成交量(張)'] = (pd.to_numeric(df['成交量(張)'], errors='coerce') / 1000).round().astype(int)
-    return df[['日期','成交量(張)','收盤價(元)']].sort_values('日期', ascending=False)
+    df_out = df.copy()
+    df_out['Trading_Volume'] = (pd.to_numeric(df_out['Trading_Volume'], errors='coerce').fillna(0) / 1000).round().astype(int)
+    df_out = df_out.rename(columns={"date":"日期","Trading_Volume":"成交量(張)","close":"收盤價(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)","spread":"漲跌(元)"})
+    df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
+    return df_out[['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']].sort_values('日期', ascending=False)
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')]
     df['unit'] = (pd.to_numeric(df['unit'], errors='coerce') / 1000).fillna(0).astype(int)
+    df['people'] = pd.to_numeric(df['people'], errors='coerce').fillna(0).astype(int)
     
     dates = sorted(df['date'].unique(), reverse=True)[:15]
     df = df[df['date'].isin(dates)]
@@ -198,23 +223,22 @@ def process_tdcc(df):
     p_pct = df.pivot_table(index='date', columns='HoldingSharesLevel', values='percent', aggfunc='first').fillna(0)
     p_ppl = df.pivot_table(index='date', columns='HoldingSharesLevel', values='people', aggfunc='first').fillna(0)
     
-    # 修正：由於 FinMind 級距名稱可能變動，這裡使用更強健的對應
     def get_col(df_p, keywords):
         return next((c for c in df_p.columns if all(k in str(c) for k in keywords)), None)
 
     col_1000 = get_col(p_pct, ["1000", "以上"])
-    col_200 = get_col(p_unit, ["200", "400"])
-    col_200_ppl = get_col(p_ppl, ["200", "400"])
+    col_200_u = get_col(p_unit, ["200", "400"])
+    col_200_p = get_col(p_ppl, ["200", "400"])
 
     res = pd.DataFrame({'日期': p_unit.index})
     res['總張數'] = p_unit.sum(axis=1).values
     res['1000張以上_比例(%)'] = p_pct[col_1000].values if col_1000 else 0
-    res['200-400張_張數'] = p_unit[col_200].values if col_200 else 0
-    res['200-400張_人數'] = p_ppl[col_200_ppl].values if col_200_ppl else 0
+    res['200-400張_張數'] = p_unit[col_200_u].values if col_200_u else 0
+    res['200-400張_人數'] = p_ppl[col_200_p].values if col_200_p else 0
     
     return res, p_unit.reset_index(), p_ppl.reset_index()
 
-def process_branch_top15_v25(df_raw, period, actual_dates, intel_tags):
+def process_branch_v25(df_raw, period, actual_dates, intel_tags):
     if df_raw.empty: return pd.DataFrame()
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
     df['bv'] = (df['buy'] / 1000).astype(int)
@@ -226,63 +250,90 @@ def process_branch_top15_v25(df_raw, period, actual_dates, intel_tags):
     sellers = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
     
     out = []
+    total_buy = g['bv'].sum() if g['bv'].sum() > 0 else 1
     for i in range(15):
         row = {}
         if i < len(buyers):
             n = buyers.loc[i, 'securities_trader']
             row["買超分點"] = f"{intel_tags.get(n, '🔵')} {n}"
             row["買超(張)"] = int(buyers.loc[i, 'net'])
-        else: row["買超分點"] = "-"; row["買超(張)"] = 0
+            row["佔比"] = f"{(buyers.loc[i, 'net']/total_buy)*100:.1f}%"
+        else: row["買超分點"] = "-"; row["買超(張)"] = 0; row["佔比"] = "-"
             
         if i < len(sellers):
             n = sellers.loc[i, 'securities_trader']
             row["賣超分點"] = f"{intel_tags.get(n, '🔵')} {n}"
             row["賣超(張)"] = abs(int(sellers.loc[i, 'net']))
-        else: row["賣超分點"] = "-"; row["賣超(張)"] = 0
+            row["佔比_"] = f"{(abs(sellers.loc[i, 'net'])/total_buy)*100:.1f}%"
+        else: row["賣超分點"] = "-"; row["賣超(張)"] = 0; row["佔比_"] = "-"
         out.append(row)
     return pd.DataFrame(out)
+
+def fetch_fm_branch_parallel(dates_list, target_id):
+    if not dates_list: return pd.DataFrame()
+    all_data = []
+    def fetch_single(d):
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": target_id, "start_date": d, "end_date": d}
+        h = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
+        try: return requests.get(url, params=p, headers=h, timeout=15).json().get("data", [])
+        except: return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(fetch_single, dates_list))
+        for r in results: all_data.extend(r)
+    return pd.DataFrame(all_data)
 
 # ==========================================
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V25.0 全息掃描..."):
-        # 1. 抓取基本資料
+    with st.spinner(f"正在執行 V25.0 終極掃描並過濾隔日沖雜訊..."):
+        # 1. 基礎資料獲取
         name = get_stock_name(user_stock_id)
-        start = (datetime.date.today() - datetime.timedelta(days=730)).strftime("%Y-%m-%d")
+        start = (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d")
         df_p_raw = fetch_fm("TaiwanStockPrice", start, user_stock_id)
-        if df_p_raw.empty: st.error("查無資料"); st.stop()
+        if df_p_raw.empty: st.error("查無股價資料"); st.stop()
         
         dates = sorted(df_p_raw['date'].unique().tolist(), reverse=True)
         df_price = process_price(df_p_raw)
         
-        # 2. 死籌碼與分點指紋
+        # 2. 籌碼大腦：指紋識別與死籌碼
         dynamic_dict, s_val, engine, _ = scrape_director_holding(user_stock_id)
-        df_branch_raw = fetch_fm("TaiwanStockTradingDailyReport", dates[59], user_stock_id)
+        df_branch_raw = fetch_fm_branch_parallel(dates[:60], user_stock_id)
         intel_tags = get_v25_broker_intelligence(df_branch_raw)
         
-        # 3. 集保與雷達
+        # 3. 集保數據融合
         df_share_raw = fetch_fm("TaiwanStockHoldingSharesPer", dates[60], user_stock_id)
         df_share_wide, df_unit, df_ppl = process_tdcc(df_share_raw)
+        
+        # 4. 【核心】產生 V25.0 除水雷達
         df_v25_radar = process_v25_radar(df_share_wide, df_price, df_branch_raw, dead_chip_input, dynamic_dict, s_val)
         
+        # 5. 其他輔助資料
+        df_inst = fetch_fm("TaiwanStockInstitutionalInvestorsBuySell", dates[10], user_stock_id)
+        df_margin = fetch_fm("TaiwanStockMarginPurchaseShortSale", dates[10], user_stock_id)
+
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V25.0 戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V25.0 全息量化戰報")
         
-        # 雷達與主要表格
         st.markdown("#### ▼▼▼ 1. V25.0 專家診斷雷達 (除水還原版) ▼▼▼")
         st.table(df_v25_radar.head(8))
         
-        st.markdown("#### ▼▼▼ 2. 60日核心鎖碼分點 (含指紋標籤) ▼▼▼")
-        st.table(process_branch_top15_v25(df_branch_raw, 60, dates, intel_tags))
+        st.markdown("#### ▼▼▼ 2. 主力分點 - 近60日 (含指紋標記) ▼▼▼")
+        st.table(process_branch_v25(df_branch_raw, 60, dates, intel_tags))
+
+        st.markdown("#### ▼▼▼ 3. 集保分級張數表 (近8週) ▼▼▼")
+        st.table(df_unit.head(8))
 
         # AI 戰報生成
         st.divider()
         with st.expander("📋 【點擊複製：給 Gemini 的 V25.0 量化分析資料包】", expanded=True):
-            ai_data = f"請分析 {user_stock_id} {name} 的多空強度：\n"
-            ai_data += f"- V25.0 診斷：{df_v25_radar['V25.0 專家診斷'].iloc[0]}\n"
-            ai_data += f"- 去水後真實變動：{df_v25_radar['真實變動(%)'].iloc[0]}%\n"
-            ai_data += f"- 除水強度係數：{df_v25_radar['除水強度'].iloc[0]}\n"
-            ai_data += f"- 隔日沖干擾度：{round(abs(df_v25_radar['真實變動(%)'].iloc[0] - (df_share_wide['1000張以上_比例(%)'].iloc[0]-df_share_wide['1000張以上_比例(%)'].iloc[1])), 2)}%\n"
-            ai_data += "請依據上述數據給出下週操作評分與應對策略。"
-            st.code(ai_data, language="text")
+            ai_p = f"請依下面 V25.0 除水後的資料幫我分析 {user_stock_id} {name} 的多空強度：\n\n"
+            ai_p += f"- V25.0 專家診斷：{df_v25_radar['V25.0 專家診斷'].iloc[0]}\n"
+            ai_p += f"- 去水後真實變動：{df_v25_radar['真實變動(%)'].iloc[0]}%\n"
+            ai_p += f"- 除水強度係數：{df_v25_radar['除水強度'].iloc[0]}\n"
+            ai_p += f"- 隔日沖雜訊佔比：{round(abs(df_v25_radar['真實變動(%)'].iloc[0] - (df_share_wide['1000張以上_比例(%)'].iloc[0]-df_share_wide['1000張以上_比例(%)'].iloc[1])), 2)}%\n"
+            ai_p += f"- 60天鎖碼分點：{process_branch_v25(df_branch_raw, 60, dates, intel_tags)['買超分點'].head(5).tolist()}\n"
+            ai_p += "\n請針對以上純淨數據給出下週的操作建議與評分(0-100)。"
+            st.code(ai_p, language="text")
