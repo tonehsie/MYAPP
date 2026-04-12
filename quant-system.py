@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V25.2 終極全息量化系統", layout="wide")
+st.set_page_config(page_title="V26.0 終極全息量化系統", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -24,12 +24,13 @@ st.markdown("""
 <style>
 table.dataframe th, table.dataframe td { white-space: nowrap !important; text-align: center !important; }
 .radar-table td:last-child { text-align: left !important; color: #ff4b4b; font-weight: bold; }
+.daily-tracker td:last-child { text-align: left !important; color: #008080; font-weight: bold; }
 .debug-header { color: #f63366; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V25.2 全息量化除水系統")
-st.caption("核心功能：指紋識別、數據除水、技術位階、CSV 稽核資料包")
+st.title("🤖 交易員實戰手冊：V26.0 全息量化除水系統")
+st.caption("核心功能：指紋識別、週末除水雷達、平日戰情矩陣、CSV 稽核包")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -38,12 +39,12 @@ with col1:
 with col2:
     dead_chip_input = st.text_input("死籌碼 %", placeholder="留空自動計算")
 
-run_btn = st.button("🚀 啟動 V25.2 引擎：擷取資料並產生稽核包", use_container_width=True)
+run_btn = st.button("🚀 啟動 V26.0 引擎：執行全息除水與平日追蹤", use_container_width=True)
 
 st.divider()
 
 # ==========================================
-# 📌 工具與爬蟲函式庫 (已全數移至執行區塊上方)
+# 📌 工具與爬蟲函式庫 
 # ==========================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name(target_id):
@@ -58,8 +59,7 @@ def safe_get_fubon(url):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        if hasattr(ssl, 'OP_LEGACY_SERVER_CONNECT'):
-            ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+        if hasattr(ssl, 'OP_LEGACY_SERVER_CONNECT'): ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
             return response.read().decode('big5', errors='ignore')
@@ -77,7 +77,6 @@ def fetch_fm(dataset, start_date, target_id=None, end_date=None):
         return pd.DataFrame(res.get("data", []))
     except: return pd.DataFrame()
 
-# 【修復重點】：將平行抓取函式移到最上方
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_fm_branch_fast_parallel(dates_list, target_id):
     if not dates_list: return pd.DataFrame()
@@ -105,8 +104,7 @@ def scrape_block_trades(target_id, actual_dates):
         res_list = []
         headers = {"User-Agent": "Mozilla/5.0"}
         try:
-            url = f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={d_twse}&response=json"
-            res = requests.get(url, headers=headers, timeout=5, verify=False)
+            res = requests.get(f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={d_twse}&response=json", headers=headers, timeout=5, verify=False)
             if res.status_code == 200:
                 j = res.json()
                 if "data" in j and j["data"]:
@@ -114,8 +112,7 @@ def scrape_block_trades(target_id, actual_dates):
                         if target_id in str(r): res_list.append([d, "TWSE鉅額", r])
         except: pass
         try:
-            url = f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={d_tpex}&id=&response=json"
-            res = requests.get(url, headers=headers, timeout=5, verify=False)
+            res = requests.get(f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={d_tpex}&id=&response=json", headers=headers, timeout=5, verify=False)
             if res.status_code == 200:
                 j = res.json()
                 if "tables" in j and len(j["tables"])>0 and "data" in j["tables"][0]:
@@ -193,7 +190,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 V25.2 指紋識別模組 (強化嚴格分類)
+# 📌 模組一：V25.2 指紋識別模組
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}, pd.DataFrame()
@@ -237,7 +234,7 @@ def get_v25_broker_intelligence(df_raw):
     return tags, pd.DataFrame(debug_rows).sort_values('總買(張)', ascending=False)
 
 # ==========================================
-# 📌 V25.2 除水雷達與 CSV 驗算模組
+# 📌 模組二：V25.2 除水雷達
 # ==========================================
 def get_smart_threshold(price, capital_bn, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
@@ -285,7 +282,6 @@ def process_v25_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
         lev = 100 / (100 - dead) if 0 < dead < 100 else 1
-        max_i = max(abs(pure_chg * lev), abs(row['作戰區變動(%)'] * lev))
         
         advice = []
         if row['總人數變動率(%)'] > 2.0 and pure_chg < 0: advice.append("💀 [逃命]")
@@ -299,6 +295,64 @@ def process_v25_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     diag_df = pd.DataFrame(out_diag)
     df['真實大戶變動(%)'], df['隔日沖雜訊(%)'], df['V25.2_專家診斷'] = diag_df['真實變動'], diag_df['雜訊'], diag_df['診斷']
     return df[['日期', '收盤價(元)', '總人數變動率(%)', '1000張變動(%)', '真實大戶變動(%)', '隔日沖雜訊(%)', 'V25.2_專家診斷']].sort_values('日期', ascending=False), pd.DataFrame(debug_math), pd.DataFrame(debug_friday)
+
+# ==========================================
+# 📌 模組三：V26.0 平日戰情追蹤矩陣 (全新)
+# ==========================================
+def process_v26_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates):
+    """計算週一到週四的每日代理指標"""
+    if df_branch_raw.empty or len(actual_dates) < 5: return pd.DataFrame()
+    
+    out = []
+    # 取近 5 個交易日
+    for d in actual_dates[:5]:
+        # 1. 抓取當日股價
+        p_row = df_price[df_price['日期'] == d]
+        close_p = p_row['收盤價(元)'].iloc[0] if not p_row.empty else 0
+        spread = p_row['漲跌(元)'].iloc[0] if not p_row.empty else 0
+        
+        # 2. 抓取買賣家數差
+        diff_row = df_branch_diff[df_branch_diff['日期'] == d]
+        b_s_diff = diff_row['買賣家數差'].iloc[0] if not diff_row.empty else 0
+        
+        # 3. 分析當日聰明錢與雜訊錢
+        df_d = df_branch_raw[df_branch_raw['date'] == d]
+        smart_net, noise_net = 0, 0
+        if not df_d.empty:
+            df_d = df_d.copy()
+            df_d['tag'] = df_d['securities_trader'].map(intel_tags).fillna("🔵 一般")
+            df_d['net_vol'] = (df_d['buy'] - df_d['sell']) / 1000
+            
+            # 聰明錢：波段主 + 真鎖碼 + 官股 的淨買賣超
+            smart_df = df_d[df_d['tag'].str.contains('波段主|真鎖碼|官股')]
+            smart_net = smart_df['net_vol'].sum()
+            
+            # 雜訊錢：隔日沖 + 當沖客 的淨留倉 (通常隔日沖會很大)
+            noise_df = df_d[df_d['tag'].str.contains('隔日沖')]
+            noise_net = noise_df['net_vol'].sum()
+            
+        # 4. 平日診斷邏輯
+        advice = []
+        if smart_net > 50 and b_s_diff < 0: advice.append("🟢 主力吃貨/籌碼集中")
+        elif smart_net < -100: advice.append("🔴 聰明錢撤退")
+        
+        if noise_net > 300: advice.append("⚠️ 隔日沖進駐")
+        
+        if b_s_diff > 100: advice.append("📉 散戶進場/籌碼發散")
+        
+        final_advice = " | ".join(advice) if advice else "無明顯特徵"
+        
+        out.append({
+            "日期": d,
+            "收盤價": close_p,
+            "漲跌": spread,
+            "聰明錢淨流(張)": int(smart_net),
+            "隔日沖留倉(張)": int(noise_net),
+            "買賣家數差": b_s_diff,
+            "平日獨立診斷": final_advice
+        })
+        
+    return pd.DataFrame(out)
 
 # ==========================================
 # 其他處理函式
@@ -341,78 +395,20 @@ def process_tdcc(df):
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')]
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     df['unit'] = (pd.to_numeric(df.get('unit', 0), errors='coerce').fillna(0) / 1000).round().astype(int)
-    df['people'] = pd.to_numeric(df['people'], errors='coerce').fillna(0).astype(int)
-    df['percent'] = pd.to_numeric(df['percent'], errors='coerce').fillna(0)
+    p_unit = df.pivot_table(index='date', columns='HoldingSharesLevel', values='unit', aggfunc='first').fillna(0)
+    p_ppl = df.pivot_table(index='date', columns='HoldingSharesLevel', values='people', aggfunc='first').fillna(0)
+    p_pct = df.pivot_table(index='date', columns='HoldingSharesLevel', values='percent', aggfunc='first').fillna(0)
     
-    dates = sorted(df['date'].unique(), reverse=True)[:15]
-    df = df[df['date'].isin(dates)]
-    df_levels = df[~df['LevelClean'].str.contains('合計|總計')]
-    if df_levels.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
-    p_unit = df_levels.pivot_table(index='date', columns='LevelClean', values='unit', aggfunc='first').fillna(0)
-    p_ppl = df_levels.pivot_table(index='date', columns='LevelClean', values='people', aggfunc='first').fillna(0)
-    p_pct = df_levels.pivot_table(index='date', columns='LevelClean', values='percent', aggfunc='first').fillna(0)
-    
-    lvls = ['1-999股', '1-5張', '5-10張', '10-15張', '15-20張', '20-30張', '30-40張', '40-50張', '50-100張', '100-200張', '200-400張', '400-600張', '600-800張', '800-1000張', '1000張以上']
-    for l in lvls:
-        if l not in p_unit.columns: p_unit[l] = 0
-        if l not in p_ppl.columns: p_ppl[l] = 0
-        if l not in p_pct.columns: p_pct[l] = 0
-
     res = pd.DataFrame({'日期': p_unit.index})
-    res['總張數'] = p_unit[lvls].sum(axis=1).values
-    res['總人數(人)'] = p_ppl[lvls].sum(axis=1).values
-    res['1000張以上_比例(%)'] = p_pct['1000張以上'].values
-    res['200-400張_比例(%)'] = p_pct['200-400張'].values
-    res['400-600張_比例(%)'] = p_pct['400-600張'].values
-    res['600-800張_比例(%)'] = p_pct['600-800張'].values
-    res['200-400張_人數'] = p_ppl['200-400張'].values
-    res['200-400張_張數'] = p_unit['200-400張'].values
-    
-    df_unit = pd.DataFrame({'日期': p_unit.index})
-    df_unit['總張數'] = res['總張數']
-    for l in lvls: df_unit[l] = p_unit[l].values
-    
-    df_ppl_out = pd.DataFrame({'日期': p_ppl.index})
-    df_ppl_out['總人數(人)'] = res['總人數(人)']
-    for l in lvls: df_ppl_out[l] = p_ppl[l].values
-    
-    return res.sort_values('日期', ascending=False), df_unit.sort_values('日期', ascending=False), df_ppl_out.sort_values('日期', ascending=False)
-
-def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
-    if df_share_wide.empty or df_price.empty: return pd.DataFrame()
-    df_s = df_share_wide.copy()
-    df_p = df_price.copy()
-    df_s['dt'] = pd.to_datetime(df_s['日期'])
-    df_p['dt'] = pd.to_datetime(df_p['日期'])
-    df_m = pd.merge_asof(df_s.sort_values('dt'), df_p.sort_values('dt')[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
-    
-    out = []
-    for _, row in df_m.iterrows():
-        p = row.get('收盤價(元)', 0)
-        d_str = row['日期']
-        if pd.isna(p) or p == 0: continue
-        cur_dead, chip_label = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, chip_engine)
-        cap_bn = row.get('總張數', 0) / 10000
-        ceiling_t = get_smart_threshold(p, cap_bn, cur_dead)
-        
-        l_cols = []
-        if ceiling_t <= 100: l_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        elif ceiling_t <= 200: l_cols = ['200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        elif ceiling_t <= 400: l_cols = ['400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        elif ceiling_t <= 600: l_cols = ['600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        elif ceiling_t <= 800: l_cols = ['800-1000張_比例(%)', '1000張以上_比例(%)']
-        else: l_cols = ['1000張以上_比例(%)']
-
-        l_pct = sum([pd.to_numeric(row.get(c, 0), errors='coerce') for c in l_cols])
-        c_display, status = "-", "無死籌碼數據"
-        if 0 < cur_dead < 100:
-            c_val = max(0, (l_pct - cur_dead) / (100.0 - cur_dead))
-            status = "🔴 絕對控盤" if c_val >= 0.5 else "🟡 高度鎖碼" if c_val >= 0.3 else "🔵 初步集結" if c_val >= 0.15 else "⚪ 籌碼渙散"
-            c_display = round(c_val * 100, 2)
-
-        out.append({"日期": d_str, "收盤價(元)": p, "股本(億)": round(cap_bn, 2), "主導門檻": f"智能精算 ({int(ceiling_t)}張)", "級距總佔比(%)": round(l_pct, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({chip_label})" if cur_dead > 0 else "-", "活大戶C_Value(%)": c_display, "實戰判定": status})
-    return pd.DataFrame(out)
+    res['總張數'] = p_unit.sum(axis=1).values
+    res['總人數(人)'] = p_ppl.sum(axis=1).values
+    res['1000張以上_比例(%)'] = p_pct.iloc[:, -1].values
+    res['200-400張_比例(%)'] = p_pct.iloc[:, 10].values
+    res['400-600張_比例(%)'] = p_pct.iloc[:, 11].values
+    res['600-800張_比例(%)'] = p_pct.iloc[:, 12].values
+    res['200-400張_人數'] = p_ppl.iloc[:, 10].values
+    res['200-400張_張數'] = p_unit.iloc[:, 10].values
+    return res.sort_values('日期', ascending=False), p_unit, p_ppl
 
 def process_branch_v25(df_raw, period, actual_dates, intel_tags):
     if df_raw.empty: return pd.DataFrame()
@@ -422,23 +418,13 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags):
     g['net'] = g['bv'] - g['sv']
     b = g[g['net'] > 0].sort_values('net', ascending=False).head(15).reset_index(drop=True)
     s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
-    
-    total_buy = g['bv'].sum() if g['bv'].sum() > 0 else 1
     out = []
+    total_buy = g['bv'].sum() if g['bv'].sum() > 0 else 1
     for i in range(15):
         row = {}
-        if i < len(b): 
-            n = b.loc[i,'securities_trader']
-            row["買超分點"] = f"{intel_tags.get(n,'🔵')} {n}"
-            row["買超(張)"] = int(b.loc[i,'net'])
-            row["佔比"] = f"{(b.loc[i,'net']/total_buy)*100:.1f}%"
+        if i < len(b): row["買超分點"] = f"{intel_tags.get(b.loc[i,'securities_trader'],'🔵')} {b.loc[i,'securities_trader']}"; row["買超(張)"] = int(b.loc[i,'net']); row["佔比"] = f"{(b.loc[i,'net']/total_buy)*100:.1f}%"
         else: row["買超分點"] = "-"; row["買超(張)"] = 0; row["佔比"] = "-"
-        
-        if i < len(s): 
-            n = s.loc[i,'securities_trader']
-            row["賣超分點"] = f"{intel_tags.get(n,'🔵')} {n}"
-            row["賣超(張)"] = abs(int(s.loc[i,'net']))
-            row["佔比_"] = f"{(abs(s.loc[i,'net'])/total_buy)*100:.1f}%"
+        if i < len(s): row["賣超分點"] = f"{intel_tags.get(s.loc[i,'securities_trader'],'🔵')} {s.loc[i,'securities_trader']}"; row["賣超(張)"] = abs(int(s.loc[i,'net'])); row["佔比_"] = f"{(abs(s.loc[i,'net'])/total_buy)*100:.1f}%"
         else: row["賣超分點"] = "-"; row["賣超(張)"] = 0; row["佔比_"] = "-"
         out.append(row)
     return pd.DataFrame(out)
@@ -631,7 +617,7 @@ def show_table(title, df, custom_class=""):
             else:
                 format_dict[c] = fmt_auto
 
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '平日獨立診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
 
         styler = df.style.format(format_dict)
@@ -653,11 +639,46 @@ def format_to_csv_string(df, title):
     if df is None or df.empty: return header + "此區塊查無最新數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
+def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
+    if df_share_wide.empty or df_price.empty: return pd.DataFrame()
+    df_s = df_share_wide.copy()
+    df_p = df_price.copy()
+    df_s['dt'] = pd.to_datetime(df_s['日期'])
+    df_p['dt'] = pd.to_datetime(df_p['日期'])
+    df_m = pd.merge_asof(df_s.sort_values('dt'), df_p.sort_values('dt')[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
+    
+    out = []
+    for _, row in df_m.iterrows():
+        p = row.get('收盤價(元)', 0)
+        d_str = row['日期']
+        if pd.isna(p) or p == 0: continue
+        cur_dead, chip_label = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, chip_engine)
+        cap_bn = row.get('總張數', 0) / 10000
+        ceiling_t = get_smart_threshold(p, cap_bn, cur_dead)
+        
+        l_cols = []
+        if ceiling_t <= 100: l_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+        elif ceiling_t <= 200: l_cols = ['200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+        elif ceiling_t <= 400: l_cols = ['400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+        elif ceiling_t <= 600: l_cols = ['600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+        elif ceiling_t <= 800: l_cols = ['800-1000張_比例(%)', '1000張以上_比例(%)']
+        else: l_cols = ['1000張以上_比例(%)']
+
+        l_pct = sum([pd.to_numeric(row.get(c, 0), errors='coerce') for c in l_cols])
+        c_display, status = "-", "無死籌碼數據"
+        if 0 < cur_dead < 100:
+            c_val = max(0, (l_pct - cur_dead) / (100.0 - cur_dead))
+            status = "🔴 絕對控盤" if c_val >= 0.5 else "🟡 高度鎖碼" if c_val >= 0.3 else "🔵 初步集結" if c_val >= 0.15 else "⚪ 籌碼渙散"
+            c_display = round(c_val * 100, 2)
+
+        out.append({"日期": d_str, "收盤價(元)": p, "股本(億)": round(cap_bn, 2), "主導門檻": f"智能精算 ({int(ceiling_t)}張)", "級距總佔比(%)": round(l_pct, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({chip_label})" if cur_dead > 0 else "-", "活大戶C_Value(%)": c_display, "實戰判定": status})
+    return pd.DataFrame(out)
+
 # ==========================================
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V25.2 除水引擎..."):
+    with st.spinner(f"正在執行 V26.0 終極除水引擎與平日矩陣追蹤..."):
         name = get_stock_name(user_stock_id)
         df_p_raw = fetch_fm("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: st.error("查無股價"); st.stop()
@@ -672,11 +693,14 @@ if run_btn:
         tags, df_debug_tags = get_v25_broker_intelligence(df_b_raw)
         df_b_diff = process_branch_diff(df_b_raw, dates)
         
-        # 集保與雷達
+        # 週末集保與除水雷達
         df_s_raw = fetch_fm("TaiwanStockHoldingSharesPer", d_60, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, dead_chip_input, dynamic_dict, s_val, chip_eng)
         df_v25_radar, df_debug_math, df_debug_friday = process_v25_ultimate_radar(df_s_wide, dead_chip_input, dynamic_dict, s_val, df_price, df_b_raw, tags)
+
+        # 【V26.0 全新】平日戰情追蹤矩陣
+        df_daily_tracker = process_v26_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates)
 
         df_twse, _ = scrape_block_trades(user_stock_id, dates)
         df_margin = process_margin(fetch_fm("TaiwanStockMarginPurchaseShortSale", d_60, user_stock_id))
@@ -712,9 +736,14 @@ if run_btn:
         df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)]) if not df_cbas_raw.empty else pd.DataFrame()
 
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V25.2 全息戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V26.0 全息戰報")
+        
+        # 【V26.0 全新】平日戰情矩陣放在最顯眼處
+        show_table("⚡ 0. 平日戰情追蹤矩陣 (週一至週四核心代理指標)", df_daily_tracker, "daily-tracker")
+        st.caption("※ 註：此矩陣專門追蹤每日的「聰明錢淨流」與「買賣家數差」，用以在週末集保公佈前，提前預判大戶動向。")
+        
         show_table("1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)", df_s_dyn)
-        show_table("1-2. V25.2 專家診斷雷達 (除水版) (近8週)", df_v25_radar, "radar-table")
+        show_table("1-2. V25.2 專家診斷雷達 (週末除水版) (近8週)", df_v25_radar, "radar-table")
         show_table("2-1. 集保分級 - 張數表 (近8週)", df_s_unit)
         show_table("2-2. 集保分級 - 人數表 (近8週)", df_s_ppl)
         if df_twse.empty: st.markdown("#### 3. 鉅額交易明細 (近3日)"); st.warning("無鉅額交易")
@@ -747,7 +776,7 @@ if run_btn:
         st.divider()
 
         # 稽核中心
-        with st.expander("🛠️ 【開發者專用】V25.2 演算法稽核中心", expanded=True):
+        with st.expander("🛠️ 【開發者專用】V25.2 演算法稽核中心", expanded=False):
             st.markdown("<h5 class='debug-header'>1. 分點指紋圖鑑</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_tags)
             st.markdown("<h5 class='debug-header'>2. 除水驗算公式</h5>", unsafe_allow_html=True)
@@ -755,21 +784,20 @@ if run_btn:
 
         # AI 戰報生成 (CSV 格式)
         st.divider()
-        with st.expander("📋 【點擊展開：給 Gemini 的 V25.2 量化分析與稽核資料包 (CSV格式)】", expanded=True):
-            p = f"請分析標的: {user_stock_id} {name} (V25.2 量化籌碼)\n\n"
+        with st.expander("📋 【點擊展開：給 Gemini 的 V26.0 量化分析與稽核資料包 (CSV格式)】", expanded=True):
+            p = f"請分析標的: {user_stock_id} {name} (V26.0 量化籌碼)\n\n"
+            p += format_to_csv_string(df_daily_tracker, "0. 平日戰情追蹤矩陣 (近5日)")
             p += format_to_csv_string(df_s_dyn.head(8), "1-1. 雙軸活大戶鎖碼判定表 (C-Value)")
-            p += format_to_csv_string(df_v25_radar.head(8), "1-2. V25.2 專家診斷雷達 (除水版)")
+            p += format_to_csv_string(df_v25_radar.head(8), "1-2. V25.2 專家診斷雷達 (週末除水版)")
             p += format_to_csv_string(df_twse, "3. 鉅額交易明細 (近3日)")
             p += format_to_csv_string(df_margin, "4. 散戶資券餘額 (近10天)")
             p += format_to_csv_string(df_inst, "6. 法人買賣超 (近10天)")
             p += format_to_csv_string(df_price.head(10), "7. 收盤價量 (近10天)")
             p += format_to_csv_string(df_b_today, f"9-1. 主力分點 - 今日 ({dates[0]})")
             p += format_to_csv_string(df_b_60, "9-7. 主力分點 - 近60日")
-            p += format_to_csv_string(df_b_diff, "11. 買賣家數差明細 (近10天)")
             
             p += "\n\n【稽核專區 - 供 AI 驗算邏輯正確性】\n"
             p += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
-            p += format_to_csv_string(df_debug_friday, "稽核C：週五隔日沖攔截清單")
-            p += "\n請幫我驗證以上 CSV 數據的邏輯正確性，並給出明天與下週的操作建議。"
+            p += "\n請幫我驗證以上 CSV 數據的邏輯正確性，結合『0.平日戰情追蹤矩陣』，給出明天與下週的操作建議。"
             st.code(p, language="text")
