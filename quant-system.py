@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V26.7 終極全息量化系統", layout="wide")
+st.set_page_config(page_title="V26.8 終極全息量化系統", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -31,16 +31,16 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V26.7 全息量化除水系統")
-st.caption("核心升級：欄位語意白話文優化，內建實戰名詞字典，去除解讀障礙。")
+st.title("🤖 交易員實戰手冊：V26.8 全息量化除水系統")
+st.caption("核心修復：集保級距「800-1000張」錯置歸類 Bug 修正，還原真實籌碼。")
 
 # 內建字典 (展開式)
-with st.expander("📖 【必讀】V26.7 獨家數據欄位與實戰名詞解釋", expanded=False):
+with st.expander("📖 【必讀】V26.8 獨家數據欄位與實戰名詞解釋", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <b>▼ 0. 平日戰情追蹤矩陣 (週一至週四的每日金流)</b><br>
     <ul>
-        <li><b>波段/官股淨流(張)</b>：代表長線大戶 (📈波段主、🧱真鎖碼、🏦官股) 今天的真實買賣超。正數是吃貨，負數是偷跑。</li>
+        <li><b>波段/官股淨流入(張)</b>：代表長線大戶 (📈波段主、🧱真鎖碼、🏦官股) 今天的真實買賣超。正數是吃貨，負數是偷跑。</li>
         <li><b>隔日沖潛在賣壓(張)</b>：代表極短線投機客 (⚡隔日沖) 買進且留倉到明天的張數。數字越大，明天開盤的下殺風險越高。</li>
         <li><b>買賣家數差</b>：當日「買進券商家數 - 賣出券商家數」。負數代表籌碼流向少數人 (大戶集中)；正數代表籌碼發散 (散戶接刀)。</li>
     </ul>
@@ -58,11 +58,10 @@ with st.expander("📖 【必讀】V26.7 獨家數據欄位與實戰名詞解釋
     </div>
     """, unsafe_allow_html=True)
 
-# UI 輸入區
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="留空自動計算")
-run_btn = st.button("🚀 啟動 V26.7 引擎：擷取地緣情報與全息雷達", use_container_width=True)
+run_btn = st.button("🚀 啟動 V26.8 引擎：擷取地緣情報與全息雷達", use_container_width=True)
 st.divider()
 
 # ==========================================
@@ -221,7 +220,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 模組一：V26.7 指紋識別與除水雷達
+# 📌 模組一：V26.8 指紋識別與除水雷達
 # ==========================================
 def get_v25_broker_intelligence(df_raw):
     if df_raw.empty: return {}, pd.DataFrame()
@@ -301,12 +300,11 @@ def process_v25_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    # 【語意優化】：將變數名稱改為白話文
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V26.7_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
-    return df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '純淨大戶變動(%)', '隔日沖虛胖(%)', 'V26.7_雷達診斷']].sort_values('日期', ascending=False), pd.DataFrame(d_math), pd.DataFrame(d_fri)
+    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V26.8_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    return df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '純淨大戶變動(%)', '隔日沖虛胖(%)', 'V26.8_雷達診斷']].sort_values('日期', ascending=False), pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
 # ==========================================
-# 📌 模組二：V26.7 平日戰情追蹤矩陣 (語意優化版)
+# 📌 模組二：V26.8 平日戰情追蹤矩陣
 # ==========================================
 def process_v26_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates):
     if df_branch_raw.empty or len(actual_dates) < 5: return pd.DataFrame()
@@ -329,12 +327,11 @@ def process_v26_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         elif sn < -100: adv.append("🔴 波段大戶撤退")
         if nn > 300: adv.append("⚠️ 短線隔日沖進駐")
         if bsd > 100: adv.append("📉 散戶進場接刀")
-        # 【語意優化】：修改欄位名稱為實戰語言
         out.append({"日期": d, "收盤價(元)": cp, "漲跌(元)": sp, "波段/官股淨流入(張)": int(sn), "隔日沖潛在賣壓(張)": int(nn), "買賣家數差": bsd, "單日微觀診斷": " | ".join(adv) if adv else "無明顯特徵"})
     return pd.DataFrame(out)
 
 # ==========================================
-# 📌 資料處理與排版 (數學自算比例版維持不變)
+# 📌 資料處理與排版
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
@@ -366,6 +363,7 @@ def clean_level_by_math(x):
     elif up <= 400000: return "200-400張"
     elif up <= 600000: return "400-600張"
     elif up <= 800000: return "600-800張"
+    elif up <= 1000000: return "800-1000張"  # ⚠️ 【關鍵修復點】：還原被刪除的 800-1000張 判定條件！
     else: return "1000張以上" 
 
 def process_tdcc(df):
@@ -430,7 +428,6 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
             cv = max(0, (lp - cur_dead) / (100.0 - cur_dead))
             st = "🔴 絕對控盤" if cv >= 0.5 else "🟡 高度鎖碼" if cv >= 0.3 else "🔵 初步集結" if cv >= 0.15 else "⚪ 籌碼渙散"
             cd = round(cv * 100, 2)
-        # 【語意優化】
         out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
     return pd.DataFrame(out)
 
@@ -632,7 +629,7 @@ def format_to_csv_string(df, title):
 # 📌 執行主引擎
 # ==========================================
 if run_btn:
-    with st.spinner(f"正在執行 V26.7 全息除水引擎 (語意與字典優化版)..."):
+    with st.spinner(f"正在執行 V26.8 終極全息引擎 (精準級距修復版)..."):
         name = get_stock_name(user_stock_id)
         df_p_raw = fetch_fm("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: st.error("查無股價"); st.stop()
@@ -692,11 +689,11 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址 (地緣核對)】** {address}"
 
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V26.7 全息戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V26.8 全息戰報")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         show_table("⚡ 0. 平日戰情追蹤矩陣 (週一至週四核心代理指標)", df_daily_tracker, "daily-tracker")
         show_table("1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)", df_s_dyn)
-        show_table("1-2. V26.7 專家診斷雷達 (週末除水版) (近8週)", df_v26_radar, "radar-table")
+        show_table("1-2. V26.8 專家診斷雷達 (週末除水版) (近8週)", df_v26_radar, "radar-table")
         show_table("2-1. 集保分級 - 張數表 (近8週)", df_s_unit)
         show_table("2-2. 集保分級 - 人數表 (近8週)", df_s_ppl)
         if df_twse.empty: st.markdown("#### 3. 鉅額交易明細 (近3日)"); st.warning("無鉅額交易")
@@ -727,19 +724,19 @@ if run_btn:
         show_table("17. CBAS 可轉債數據", df_cbas)
 
         st.divider()
-        with st.expander("🛠️ 【開發者專用】V26.7 演算法稽核中心", expanded=False):
+        with st.expander("🛠️ 【開發者專用】V26.8 演算法稽核中心", expanded=False):
             st.markdown("<h5 class='debug-header'>1. 分點指紋圖鑑</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_tags)
             st.markdown("<h5 class='debug-header'>2. 除水驗算公式</h5>", unsafe_allow_html=True)
             st.dataframe(df_debug_math)
 
         st.divider()
-        with st.expander("📋 【點擊展開：給 Gemini 的 V26.7 量化分析與稽核資料包 (CSV格式)】", expanded=True):
-            p = f"請分析標的: {user_stock_id} {name} (V26.7 量化籌碼)\n"
+        with st.expander("📋 【點擊展開：給 Gemini 的 V26.8 量化分析與稽核資料包 (CSV格式)】", expanded=True):
+            p = f"請分析標的: {user_stock_id} {name} (V26.8 量化籌碼)\n"
             p += f"{company_info_text}\n\n"
             p += format_to_csv_string(df_daily_tracker, "0. 平日戰情追蹤矩陣 (近5日)")
             p += format_to_csv_string(df_s_dyn.head(8), "1-1. 雙軸活大戶鎖碼判定表 (C-Value)")
-            p += format_to_csv_string(df_v26_radar.head(8), "1-2. V26.7 專家診斷雷達 (週末除水版)")
+            p += format_to_csv_string(df_v26_radar.head(8), "1-2. V26.8 專家診斷雷達 (週末除水版)")
             p += format_to_csv_string(df_twse, "3. 鉅額交易明細 (近3日)")
             p += format_to_csv_string(df_margin, "4. 散戶資券餘額 (近10天)")
             p += format_to_csv_string(df_inst, "6. 法人買賣超 (近10天)")
@@ -749,5 +746,5 @@ if run_btn:
             p += "\n\n【稽核專區 - 供 AI 驗算邏輯正確性】\n"
             p += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
-            p += "\n請幫我結合『V26.7 名詞定義』與上列數據，給出最新的實戰操作建議。"
+            p += "\n請幫我結合『V26.8 名詞定義』與上列數據，給出最新的實戰操作建議。"
             st.code(p, language="text")
