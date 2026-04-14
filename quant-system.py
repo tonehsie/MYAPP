@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V30.3 終極全息量化系統 (鷹眼深度解析)", layout="wide")
+st.set_page_config(page_title="V30.4 終極全息量化系統 (全武裝資料包版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -50,8 +50,8 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V30.3 終極全息量化系統 (鷹眼深度解析版)")
-st.caption("火力全開：鷹眼深度剖析矩陣、火力與分點結構；虧損警示前置化；全鷹眼報告入魂 AI 資料包。")
+st.title("📱 V30.4 終極全息量化系統 (全武裝資料包版)")
+st.caption("指令落實：解除資料包封印，01~23 所有表單數據 100% DUMP 入 AI 實戰精華包。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -59,10 +59,10 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V30.3 深度解析運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V30.4 全武裝運算引擎", use_container_width=True)
 
 # 內建字典
-with st.expander("📖 【V30.3 實戰字典：如何觀察新欄位？】", expanded=False):
+with st.expander("📖 【V30 實戰字典：如何觀察新欄位？】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <b>▼ 戰情矩陣三維觀察法 (表 01)</b><br>
@@ -71,9 +71,9 @@ with st.expander("📖 【V30.3 實戰字典：如何觀察新欄位？】", exp
         <li><b>2. 看底氣 (均價落差)</b>：主力買完是賺錢 (+) 還是賠錢 (-)？賺錢才有底氣續攻。</li>
         <li><b>3. 看結構 (火力倍數)</b>：買方火力 > 1.5 倍代表大戶集中吃貨，這才是高勝率買盤。</li>
     </ul>
-    <b>▼ 新增：虧損券商自動標記 (警告前置)</b><br>
+    <b>▼ 虧損券商自動標記 (警告前置)</b><br>
     <ul>
-        <li>系統會自動比對分點買均價與收盤價。若分點處於虧損狀態，會在買均價前標示 <b><span style='color:red;'>⚠️(虧) 115.5</span></b>，第一時間衝擊視覺，提醒停損賣壓。</li>
+        <li>若分點處於虧損狀態，會在買均價前標示 <b><span style='color:red;'>⚠️(虧)</span></b>，第一時間提醒停損賣壓。</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -313,7 +313,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心演算法 (V30.3 虧損警示前置)
+# 📌 核心演算法
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -369,7 +369,6 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         
         tags[trader] = tag
         if tb > 100 or ts > 100:
-            # ⚠️ 虧損標記前置化 (例如：⚠️(虧) 115.50)
             b_str = f"{round(avg_b, 2):,.2f}"
             if avg_b > latest_close and avg_b > 0 and net > 0:
                 b_str = f"⚠️(虧) {b_str}"
@@ -537,11 +536,9 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out)
 
-# ⚠️ 【V30.3 鷹眼邏輯深度擴寫，產生詳細分析報告】
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
     alerts = []
     
-    # 1. 矩陣金流剖析 (結合淨流與均價落差)
     if not df_daily.empty and len(df_daily) >= 1:
         today_d = df_daily.iloc[0]
         alerts.append("<div class='hawk-title'>1. 矩陣金流剖析 (聰明錢與成本底牌)</div>")
@@ -560,7 +557,6 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
         else:
             alerts.append("<span>🔵 今日聰明錢無明顯極端進出，大戶成本線持平。</span>")
 
-    # 2. 家數差與火力剖析
     if not df_diff.empty and len(df_diff) >= 1:
         alerts.append("<div class='hawk-title' style='margin-top:15px;'>2. 火力與籌碼結構剖析 (買賣家數差)</div>")
         latest_diff = df_diff.iloc[0]
@@ -573,7 +569,6 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
         else:
             alerts.append(f"<span>🔵 【中性換手】{fire_str} 買賣雙方實力相當，屬於自然的市場換手階段。</span>")
 
-    # 3. 分點結構剖析 (過濾出虧損的大型分點)
     if not df_fingerprint.empty and len(df_fingerprint) >= 1:
         alerts.append("<div class='hawk-title' style='margin-top:15px;'>3. 主力分點微觀剖析 (前 15 大買超)</div>")
         top_15 = df_fingerprint.head(15)
@@ -591,7 +586,6 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
         elif trapped < 2 and locked < 2 and day_traders <= 8:
              alerts.append(f"<span>🔵 分點進出動機分散，無單一極端勢力控盤。</span>")
 
-    # 4. 週末集保騙局防護
     if not df_radar.empty and len(df_radar) >= 1:
         latest_r = df_radar.iloc[0]
         if latest_r['原始大戶變動(%)'] > 0.5 and latest_r['隔日沖虛胖(%)'] > 0.8 and latest_r['純淨大戶變動(%)'] <= 0.2:
@@ -704,7 +698,6 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
     return pd.DataFrame(out)
 
-# ⚠️ 【V30.3 虧損標記前置化 (⚠️(虧) 115.5) 延伸至所有分點表】
 def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw):
     if df_raw.empty or df_price_raw.empty: return pd.DataFrame()
     
@@ -853,7 +846,6 @@ def show_table(title, df, custom_class=""):
             s = str(x).strip()
             if s in ["-", ""]: return "-"
             
-            # 處理帶有虧損警告的字串 (格式： ⚠️(虧) 115.50)
             if "⚠️(虧)" in s:
                 v_str = s.replace("⚠️(虧)", "").strip()
                 try:
@@ -870,7 +862,7 @@ def show_table(title, df, custom_class=""):
             except: return str(x)
             
         f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V30.3_雷達診斷', '鷹眼診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V30.4_雷達診斷', '鷹眼診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
@@ -878,7 +870,6 @@ def show_table(title, df, custom_class=""):
         except: styler = styler.hide_index()
         html = styler.set_table_styles([dict(selector='th', props=[('text-align', 'center !important')]), dict(selector='table', props=[('width', '100%')])]).to_html()
         
-        # 解除 HTML 轉義以顯示紅色警告
         html = html.replace('&lt;span class=&#x27;loss-warning&#x27;&gt;', "<span class='loss-warning'>").replace('&lt;/span&gt;', "</span>")
         
         if custom_class: html = html.replace('<table', f'<table class="{custom_class}"')
@@ -897,7 +888,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V30.3 深度解析運算引擎..."):
+    with st.spinner(f"正在啟動 V30.4 全武裝運算引擎..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -964,17 +955,15 @@ if run_btn:
         # ==========================================
         # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V30.3 深度解析版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V30.4 全武裝資料包版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
-        # ⚠️ 產生深度鷹眼報告字串 (前台顯示與後台 CSV 打包共用)
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
         hawk_html_display = "<div class='hawk-eye-box'>"
         hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
         
         for alert in hawk_alerts: 
             hawk_html_display += f"{alert}<br>"
-            # 清除 HTML 標籤給 CSV 使用
             clean_text = re.sub(r'<[^>]+>', '', alert).replace('&nbsp;', ' ')
             if "1." in clean_text or "2." in clean_text or "3." in clean_text or "4." in clean_text:
                  hawk_csv_text += f"\n[{clean_text}]\n"
@@ -1026,27 +1015,52 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        # ⚠️ 【將鷹眼診斷報告 DUMP 入實戰資料包】
-        with st.expander(f"📋 給 Gemini 的 V30.3 實戰精華資料包 (CSV格式)", expanded=True):
+        # ⚠️ 【終極資料包解封】：01 到 23 全部一字不漏打入 CSV
+        with st.expander(f"📋 給 Gemini 的 V30.4 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
             p1 += hawk_csv_text + "\n"
             
+            # 01-04
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_v27_radar.head(4), "02. 專家診斷雷達 (近4週)")
             p1 += format_to_csv_string(df_s_dyn.head(4), "03. 雙軸活大戶鎖碼判定表 (近4週)")
+            p1 += format_to_csv_string(df_price.head(10), "04. 收盤價量 (近10天)")
+            
+            # 05-07
             p1 += format_to_csv_string(df_debug_tags.head(30), "05. 主力分點指紋圖鑑 (核心30大)")
             p1 += format_to_csv_string(df_b_today, f"06. 主力分點 - 今日 ({dates[0]})")
             p1 += format_to_csv_string(df_b_60, "07. 主力分點 - 近60日")
-            p1 += format_to_csv_string(df_inst.head(5), "08. 法人買賣超 (近5天)")
-            p1 += format_to_csv_string(df_margin.head(5), "09. 散戶資券餘額 (近5天)")
-            p1 += format_to_csv_string(df_b_diff.head(5), "12. 買賣家數差明細 (近5天)")
+            p1 += format_to_csv_string(df_b_prev1, "07-1. 主力分點 - 前一日")
+            p1 += format_to_csv_string(df_b_3, "07-2. 主力分點 - 近3日")
+            p1 += format_to_csv_string(df_b_10, "07-3. 主力分點 - 近10日")
+            p1 += format_to_csv_string(df_b_20, "07-4. 主力分點 - 近20日")
+            p1 += format_to_csv_string(df_b_30, "07-5. 主力分點 - 近30日")
+            
+            # 08-13
+            p1 += format_to_csv_string(df_inst.head(10), "08. 法人買賣超 (近10天)")
+            p1 += format_to_csv_string(df_margin.head(10), "09. 散戶資券餘額 (近10天)")
+            p1 += format_to_csv_string(df_day_trade.head(10), "10. 現股當沖明細 (近10天)")
+            if not df_gov.empty: p1 += format_to_csv_string(df_gov, "11. 八大官股進出 (今日)")
+            p1 += format_to_csv_string(df_b_diff.head(10), "12. 買賣家數差明細 (近10天)")
+            if not df_fut.empty: p1 += format_to_csv_string(df_fut.head(10), "13. 台指期貨三大法人未平倉 (大盤)")
+            
+            # 14-23
+            p1 += format_to_csv_string(df_s_unit.head(8), "14. 集保分級 - 張數表 (近8週)")
+            p1 += format_to_csv_string(df_s_ppl.head(8), "15. 集保分級 - 人數表 (近8週)")
+            p1 += format_to_csv_string(df_rev.head(12), "16. 月營收 (百萬元) (近12個月)")
+            if not df_p_sum.empty: p1 += format_to_csv_string(df_p_sum, "17. 董監大股東質設總覽")
             if not df_p_det.empty: p1 += format_to_csv_string(df_p_det, "18. 董監大股東質設明細")
+            if not df_twse.empty: p1 += format_to_csv_string(df_twse, "19. 鉅額交易明細 (近3日)")
+            if not df_div.empty: p1 += format_to_csv_string(df_div.head(5), "20. 歷年股利 (近5年)")
+            p1 += format_to_csv_string(df_per.head(10), "21. 本益比、淨值比與殖利率")
+            if not df_disp.empty: p1 += format_to_csv_string(df_disp, "22. 處置有價證券狀態")
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
+            
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V30.3 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V30.4 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
