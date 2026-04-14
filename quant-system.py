@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V29.2 終極全息量化系統 (股利修復版)", layout="wide")
+st.set_page_config(page_title="V29.3 終極全息量化系統 (主力成本透視版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -43,6 +43,8 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 .hawk-eye-box { background-color: #fff9db; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 6px solid #f59f00; font-size: 16px; line-height: 1.8;}
 .hawk-alert { color: #d9480f; font-weight: bold; }
 .hawk-safe { color: #2b8a3e; font-weight: bold; }
+
+/* 統一所有標題的文字大小、粗細與顏色 */
 .section-title { 
     font-size: 1.3rem !important; 
     font-weight: 700 !important; 
@@ -61,8 +63,8 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V29.2 終極全息量化系統")
-st.caption("UI 重構：修復歷年股利年份含『年』字導致轉型失敗的 Bug，強化空欄位防護機制。")
+st.title("📱 V29.3 終極全息量化系統")
+st.caption("火力升級：導入加權成本精算引擎，全線分點表單新增「買賣均價」，精準鎖定主力防守線。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -70,12 +72,16 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="1815", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V29.2 完美強迫症版引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V29.3 主力成本透視引擎", use_container_width=True)
 
 # 內建字典
 with st.expander("📖 忘記名詞意思？點我查看【V29 實戰字典】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
+    <b>▼ 新增：成本防守線</b><br>
+    <ul>
+        <li><b>買賣均價</b>：利用 (總成交金額 ÷ 總成交股數) 精算而出的絕對成本。當股價跌至大戶的「買均價」時，極易形成強力支撐。</li>
+    </ul>
     <b>▼ 均價信心標籤 (盤中動能)</b><br>
     <ul>
         <li><b>🧱 [主動鎖碼]</b>：大戶買進且收盤價 > 全天均價。帳面獲利且強勢控盤。</li>
@@ -257,7 +263,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 指紋辨識核心引擎
+# 📌 V29.3 指紋辨識 (新增買賣均價成本引擎)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -272,17 +278,33 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
 
     df = df_b_raw.copy()
     df['date'] = pd.to_datetime(df['date'])
-    df['bv'] = (pd.to_numeric(df['buy'].astype(str).str.replace(',', ''), errors='coerce').fillna(0) / 1000).astype(int)
-    df['sv'] = (pd.to_numeric(df['sell'].astype(str).str.replace(',', ''), errors='coerce').fillna(0) / 1000).astype(int)
+    
+    # 數值強制脫水
+    df['buy_shares'] = pd.to_numeric(df['buy'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    df['sell_shares'] = pd.to_numeric(df['sell'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    df['price_val'] = pd.to_numeric(df['price'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    
+    # 計算單筆總金額 (用來算加權平均)
+    df['buy_amt'] = df['buy_shares'] * df['price_val']
+    df['sell_amt'] = df['sell_shares'] * df['price_val']
+    df['bv'] = (df['buy_shares'] / 1000).astype(int)
+    df['sv'] = (df['sell_shares'] / 1000).astype(int)
     
     tags, d_rows = {}, []
     for trader, g in df.groupby('securities_trader'):
-        tb, ts = g['bv'].sum(), g['sv'].sum()
+        tb = g['bv'].sum()
+        ts = g['sv'].sum()
         tv = tb + ts
         if tv == 0: continue
         dr = (min(tb, ts) * 2) / tv
         net = tb - ts
         nr = net / tb if tb > 0 else -1
+        
+        # ⚠️ 【新增加權均價精算】
+        sum_buy_shares = g['buy_shares'].sum()
+        sum_sell_shares = g['sell_shares'].sum()
+        avg_b = g['buy_amt'].sum() / sum_buy_shares if sum_buy_shares > 0 else 0
+        avg_s = g['sell_amt'].sum() / sum_sell_shares if sum_sell_shares > 0 else 0
         
         ld = g['date'].max()
         stats = price_stats.get(ld, {'pos': 0.5, 'strength': 0})
@@ -302,6 +324,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         if tb > 100 or ts > 100:
             d_rows.append({
                 "分點名稱": trader, "最終標籤": tag, "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(net), 
+                "買均價": round(avg_b, 2), "賣均價": round(avg_s, 2),
                 "當沖率(%)": round(dr*100, 1), "均價強度(%)": round(strn*100, 2), "收盤位階": round(pos, 2)
             })
             
@@ -357,10 +380,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V29.2_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V29.3_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
     
-    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V29.2_雷達診斷']].sort_values('日期', ascending=False)
-    df_radar = df_radar[df_radar['V29.2_雷達診斷'] != '⚪ 初始化']
+    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V29.3_雷達診斷']].sort_values('日期', ascending=False)
+    df_radar = df_radar[df_radar['V29.3_雷達診斷'] != '⚪ 初始化']
     
     return df_radar, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
@@ -516,22 +539,51 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
     return pd.DataFrame(out)
 
+# ⚠️ 【V29.3 新增買賣均價顯示於每日分點排行】
 def process_branch_v25(df_raw, period, actual_dates, intel_tags):
     if df_raw.empty: return pd.DataFrame()
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
-    df['bv'] = (pd.to_numeric(df['buy'].astype(str).str.replace(',', ''), errors='coerce').fillna(0) / 1000).astype(int)
-    df['sv'] = (pd.to_numeric(df['sell'].astype(str).str.replace(',', ''), errors='coerce').fillna(0) / 1000).astype(int)
-    g = df.groupby('securities_trader')[['bv', 'sv']].sum().reset_index()
+    
+    df['buy_shares'] = pd.to_numeric(df['buy'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    df['sell_shares'] = pd.to_numeric(df['sell'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    df['price_val'] = pd.to_numeric(df['price'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+    
+    df['buy_amt'] = df['buy_shares'] * df['price_val']
+    df['sell_amt'] = df['sell_shares'] * df['price_val']
+    df['bv'] = (df['buy_shares'] / 1000).astype(int)
+    df['sv'] = (df['sell_shares'] / 1000).astype(int)
+    
+    g = df.groupby('securities_trader').agg(
+        bv=('bv', 'sum'), sv=('sv', 'sum'),
+        buy_shares=('buy_shares', 'sum'), sell_shares=('sell_shares', 'sum'),
+        buy_amt=('buy_amt', 'sum'), sell_amt=('sell_amt', 'sum')
+    ).reset_index()
+    
     g['net'] = g['bv'] - g['sv']
+    g['avg_b'] = np.where(g['buy_shares'] > 0, g['buy_amt'] / g['buy_shares'], 0)
+    g['avg_s'] = np.where(g['sell_shares'] > 0, g['sell_amt'] / g['sell_shares'], 0)
+    
     b = g[g['net'] > 0].sort_values('net', ascending=False).head(15).reset_index(drop=True)
     s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
+    
     out, tv = [], g['bv'].sum() if g['bv'].sum() > 0 else 1
     for i in range(15):
         r = {}
-        if i < len(b): r["買超分點"] = f"{intel_tags.get(b.loc[i,'securities_trader'],'🔵')} {b.loc[i,'securities_trader']}"; r["買超(張)"] = int(b.loc[i,'net']); r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%"
-        else: r["買超分點"] = "-"; r["買超(張)"] = 0; r["佔比"] = "-"
-        if i < len(s): r["賣超分點"] = f"{intel_tags.get(s.loc[i,'securities_trader'],'🔵')} {s.loc[i,'securities_trader']}"; r["賣超(張)"] = abs(int(s.loc[i,'net'])); r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%"
-        else: r["賣超分點"] = "-"; r["賣超(張)"] = 0; r["佔比_"] = "-"
+        if i < len(b): 
+            r["買超分點"] = f"{intel_tags.get(b.loc[i,'securities_trader'],'🔵')} {b.loc[i,'securities_trader']}"
+            r["買超(張)"] = int(b.loc[i,'net'])
+            r["買均價"] = round(b.loc[i,'avg_b'], 2)
+            r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%"
+        else: 
+            r["買超分點"] = "-"; r["買超(張)"] = 0; r["買均價"] = "-"; r["佔比"] = "-"
+            
+        if i < len(s): 
+            r["賣超分點"] = f"{intel_tags.get(s.loc[i,'securities_trader'],'🔵')} {s.loc[i,'securities_trader']}"
+            r["賣超(張)"] = abs(int(s.loc[i,'net']))
+            r["賣均價"] = round(s.loc[i,'avg_s'], 2)
+            r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%"
+        else: 
+            r["賣超分點"] = "-"; r["賣超(張)"] = 0; r["賣均價"] = "-"; r["佔比_"] = "-"
         out.append(r)
     return pd.DataFrame(out)
 
@@ -693,7 +745,6 @@ def process_disp(df):
     cols = [c for c in ['公告日期', '處置次數', '處置起日', '處置迄日', '處置條件', '處置措施'] if c in df_out.columns]
     return df_out[cols].tail(5).sort_values('公告日期', ascending=False)
 
-# ⚠️ 【Bug修復】：徹底解決「歷年股利無資料」的問題，將年份中的「年」字剝離後再轉型
 def process_div(df):
     if df.empty: return pd.DataFrame()
     df_out = df.rename(columns={"date": "公告日期", "year": "股利年份", "StockEarningsDistribution": "盈餘配股(元)", "StockStatutorySurplus": "公積配股(元)", "CashEarningsDistribution": "盈餘配息(元)", "CashStatutorySurplus": "公積配息(元)"})
@@ -725,7 +776,7 @@ def show_table(title, df, custom_class=""):
                 return f"{v:,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(v):,}"
             except: return str(x)
         f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V29.2_雷達診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V29.3_雷達診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
@@ -748,7 +799,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V29.2 完美強迫症引擎 (歷年股利修復版)..."):
+    with st.spinner(f"正在啟動 V29.3 終極引擎 (主力成本加權計算中)..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -813,7 +864,7 @@ if run_btn:
         # ==========================================
         # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V29.2 股利修復版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V29.3 主力成本透視版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags)
@@ -864,7 +915,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V29.2 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V29.3 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料幫我分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
@@ -879,7 +930,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V29.2 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V29.3 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
