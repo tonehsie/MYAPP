@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V30.1 終極全息量化系統 (尊爵完全體)", layout="wide")
+st.set_page_config(page_title="V30.2 終極全息量化系統 (鷹眼火力版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -45,11 +45,12 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 .hawk-safe { color: #2b8a3e; font-weight: bold; }
 .section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }
 .category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }
+.loss-warning { color: #d9480f; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V30.1 終極全息量化系統 (火力與成本版)")
-st.caption("終極修復：補回因重構誤刪的董監質設函式，完美運作所有核心模組。")
+st.title("📱 V30.2 終極全息量化系統 (鷹眼火力版)")
+st.caption("AI 升級：自動標示虧損套牢券商，鷹眼診斷全面融合「大戶火力倍數」與「均價落差」。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -57,24 +58,21 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V30.1 尊爵運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V30.2 鷹眼火力運算引擎", use_container_width=True)
 
 # 內建字典
-with st.expander("📖 【V30 實戰字典：火力與成本破局法】", expanded=False):
+with st.expander("📖 【V30.2 實戰字典：如何觀察新欄位？】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
-    <b>▼ 四象限成本矩陣 (平日戰情)</b><br>
+    <b>▼ 戰情矩陣三維觀察法 (表 01)</b><br>
     <ul>
-        <li><b>🔥 主動鎖碼</b>：聰明錢大買 ＋ 均價落差 > 0 (買完賺錢)。最扎實吃貨盤。</li>
-        <li><b>🩹 大戶接刀</b>：聰明錢大買 ＋ 均價落差 < 0 (買完套牢)。弱勢護盤，明日易有賣壓。</li>
-        <li><b>📉 拉高派發</b>：聰明錢大賣 ＋ 股價收紅。主力利用當沖客熱度出貨。</li>
-        <li><b>💀 波段棄守</b>：聰明錢大賣 ＋ 股價收黑。趨勢轉弱，順勢停損。</li>
+        <li><b>1. 看方向 (聰明錢淨流)</b>：主力今天買還賣？</li>
+        <li><b>2. 看底氣 (均價落差)</b>：主力買完是賺錢 (+) 還是賠錢 (-)？賺錢才有底氣續攻。</li>
+        <li><b>3. 看結構 (火力倍數)</b>：買方火力 > 1.5 倍代表大戶集中吃貨，這才是高勝率買盤。</li>
     </ul>
-    <b>▼ 大戶火力倍數 (家數差 2.0)</b><br>
+    <b>▼ 新增：虧損券商自動標記</b><br>
     <ul>
-        <li><b>買方火力(倍)</b>：(總買張/買家數) ÷ (總賣張/賣家數)。</li>
-        <li><b>> 1.5倍</b>：大戶集中吃貨，散戶螞蟻倒貨。</li>
-        <li><b>< 0.7倍</b>：大戶單點大舉倒貨，散戶蜂擁接刀 (極度危險)。</li>
+        <li>系統會自動比對分點買均價與收盤價。若分點處於虧損狀態，會在買均價旁標示 <b><span style='color:red;'>⚠️(虧)</span></b>，提醒您注意其明天的停損賣壓。</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -243,9 +241,6 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     if dynamic_dict: return list(dynamic_dict.values())[0], "Goodinfo最新"
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
-# ==========================================
-# ⚠️ 找回遺失的董監質設核心爬蟲函式
-# ==========================================
 def extract_fubon_table(html_text, trigger, cols):
     start_idx = html_text.find(trigger)
     if start_idx == -1: return []
@@ -317,7 +312,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 V30.1 核心演算法
+# 📌 V30.2 核心演算法 (新增虧損券商標示)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -329,6 +324,8 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
     df_p['pos'] = np.where(range_diff == 0, 1.0, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
     df_p['strength'] = np.where(df_p['avg_price'] == 0, 0, (df_p['close'] - df_p['avg_price']) / df_p['avg_price'].replace(0, 1))
     price_stats = df_p.set_index('date')[['pos', 'strength']].to_dict('index')
+
+    latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0]
 
     df = df_b_raw.copy()
     df['date'] = pd.to_datetime(df['date'])
@@ -371,9 +368,14 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         
         tags[trader] = tag
         if tb > 100 or ts > 100:
+            # ⚠️ 判斷是否虧損
+            b_str = f"{round(avg_b, 2)}"
+            if avg_b > latest_close and avg_b > 0 and net > 0:
+                b_str += " ⚠️(虧)"
+                
             d_rows.append({
                 "分點名稱": trader, "最終標籤": tag, "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(net), 
-                "買均價": round(avg_b, 2), "賣均價": round(avg_s, 2),
+                "買均價": b_str, "賣均價": round(avg_s, 2),
                 "當沖率(%)": round(dr*100, 1), "均價強度(%)": round(strn*100, 2), "收盤位階": round(pos, 2)
             })
             
@@ -429,10 +431,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V30.1_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V30.2_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
     
-    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V30.1_雷達診斷']].sort_values('日期', ascending=False)
-    df_radar = df_radar[df_radar['V30.1_雷達診斷'] != '⚪ 初始化']
+    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V30.2_雷達診斷']].sort_values('日期', ascending=False)
+    df_radar = df_radar[df_radar['V30.2_雷達診斷'] != '⚪ 初始化']
     
     return df_radar, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
@@ -534,31 +536,31 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out)
 
-def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint):
+# ⚠️ 【V30.2 鷹眼邏輯升級】全面採用新指標判斷
+def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
     alerts = []
+    
+    if not df_diff.empty and len(df_diff) >= 1:
+        latest_diff = df_diff.iloc[0]
+        if latest_diff['買方火力(倍)'] > 1.5:
+            alerts.append(f"<span class='hawk-safe'>🔥 【火力壓制】今日大戶買方火力高達 {latest_diff['買方火力(倍)']} 倍，籌碼高度集中，真實買盤強勁。</span>")
+        elif latest_diff['買方火力(倍)'] < 0.7:
+            alerts.append(f"<span class='hawk-alert'>💀 【散戶接刀】今日買方火力僅 {latest_diff['買方火力(倍)']} 倍，大戶單點大舉倒貨，散戶螞蟻搬家接盤，極度危險！</span>")
+
     if not df_daily.empty and len(df_daily) >= 1:
         today_d = df_daily.iloc[0]
-        if today_d['聰明錢淨流(張)'] < -100 and today_d['買賣家數差'] > 50:
-            alerts.append("<span class='hawk-alert'>🚨 【假突破/虛假熱度】股價高檔爆量，但「聰明錢」單日大撤退，且買賣家數發散，散戶正在接刀！</span>")
-        elif today_d['聰明錢淨流(張)'] > 200 and today_d['買賣家數差'] < 0:
-            alerts.append("<span class='hawk-safe'>🛡️ 【真實推升】波段大戶與官股真金白銀吃貨，且籌碼集中，非當沖客虛火。</span>")
-
-    if not df_fingerprint.empty and len(df_fingerprint) >= 1:
-        top_15 = df_fingerprint.head(15)
-        trapped = len(top_15[top_15['最終標籤'] == '🩹 [被動套牢]'])
-        locked = len(top_15[top_15['最終標籤'] == '🧱 [主動鎖碼]'])
-        if trapped >= 2 and trapped > locked:
-            alerts.append(f"<span class='hawk-alert'>⚠️ 【誘多套牢】前 15 大分點有 {trapped} 家處於『均價虧損』被迫留倉，明日易引發多殺多賣壓。</span>")
-        elif locked >= 2 and locked > trapped:
-            alerts.append(f"<span class='hawk-safe'>🔥 【主動鎖碼】前 15 大分點有 {locked} 家處於『獲利強勢留倉』狀態，主力買均價極具優勢，具波段續攻潛力。</span>")
+        if today_d['聰明錢淨流(張)'] > 200 and today_d['均價落差'] != "-" and float(today_d['均價落差']) < 0:
+            alerts.append("<span class='hawk-alert'>🩹 【護盤套牢】聰明錢今日大舉買進，但「均價落差為負」，代表大戶接刀套牢，明日開盤易有沉重停損賣壓。</span>")
+        elif today_d['聰明錢淨流(張)'] < -100 and today_d['漲跌(元)'] > 0:
+            alerts.append("<span class='hawk-alert'>📉 【拉高派發】股價收紅，但聰明錢趁機大舉撤退，利用當沖熱度倒貨，慎防追高套牢。</span>")
 
     if not df_radar.empty and len(df_radar) >= 1:
         latest_r = df_radar.iloc[0]
         if latest_r['原始大戶變動(%)'] > 0.5 and latest_r['隔日沖虛胖(%)'] > 0.8 and latest_r['純淨大戶變動(%)'] <= 0.2:
-            alerts.append("<span class='hawk-alert'>🚨 【集保騙局】週末公佈大戶持股增加，實則九成以上全是『隔日沖虛胖』，純淨大戶根本沒買，小心週一遭倒貨！</span>")
+            alerts.append("<span class='hawk-alert'>🚨 【集保騙局】週末大戶持股看似增加，實則九成以上全是『隔日沖虛胖』，純淨大戶並未進場，提防週一遭倒貨！</span>")
             
     if not alerts:
-        alerts.append("<span>🔍 目前籌碼結構中性，無極端操作訊號，請依紀律操作。</span>")
+        alerts.append("<span>🔍 綜合火力與成本評估：目前籌碼結構中性，無極端操作訊號，請依紀律操作。</span>")
     return alerts
 
 # ==========================================
@@ -662,8 +664,13 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
     return pd.DataFrame(out)
 
-def process_branch_v25(df_raw, period, actual_dates, intel_tags):
-    if df_raw.empty: return pd.DataFrame()
+# ⚠️ 【V30.2 虧損標示延伸至所有分點表】
+def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw):
+    if df_raw.empty or df_price_raw.empty: return pd.DataFrame()
+    
+    # 取得最新收盤價來比對是否虧損
+    latest_close = df_price_raw.sort_values('date', ascending=False)['close'].iloc[0]
+    
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
     df['buy_shares'] = pd.to_numeric(df['buy'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
     df['sell_shares'] = pd.to_numeric(df['sell'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
@@ -688,9 +695,14 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags):
     for i in range(15):
         r = {}
         if i < len(b): 
+            # 虧損判定
+            b_str = f"{round(b.loc[i,'avg_b'], 2)}"
+            if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0:
+                b_str += " ⚠️(虧)"
+                
             r["買超分點"] = f"{intel_tags.get(b.loc[i,'securities_trader'],'🔵')} {b.loc[i,'securities_trader']}"
             r["買超(張)"] = int(b.loc[i,'net_vol'])
-            r["買均價"] = round(b.loc[i,'avg_b'], 2)
+            r["買均價"] = b_str
             r["佔比"] = f"{(b.loc[i,'net_vol']/tv)*100:.1f}%"
         else: 
             r["買超分點"] = "-"; r["買超(張)"] = 0; r["買均價"] = "-"; r["佔比"] = "-"
@@ -791,6 +803,7 @@ def process_cbas(df):
     cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "轉換價(元)", "標的股價(元)", "未償還餘額", "票面利率(%)"] if c in df_out.columns]
     return df_out[cols]
 
+# ⚠️ 增強 HTML 渲染：若文字包含 "⚠️(虧)"，套用紅色警告樣式
 def show_table(title, df, custom_class=""):
     st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
     if df is None or df.empty: 
@@ -800,19 +813,35 @@ def show_table(title, df, custom_class=""):
             if pd.isna(x): return "-"
             s = str(x).strip()
             if s in ["-", ""]: return "-"
+            
+            # 處理帶有虧損警告的字串
+            if "⚠️(虧)" in s:
+                v_str = s.replace(" ⚠️(虧)", "")
+                try:
+                    v = float(v_str.replace(',', '').replace('%', ''))
+                    fmt_v = f"{v:,.2f}" if '.' in v_str else f"{int(v):,}"
+                    return f"<span class='loss-warning'>{fmt_v} ⚠️(虧)</span>"
+                except:
+                    return f"<span class='loss-warning'>{s}</span>"
+            
             is_pct = "%" in s
             try:
                 v = float(s.replace(',', '').replace('%', ''))
                 return f"{v:,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(v):,}"
             except: return str(x)
+            
         f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V30.1_雷達診斷', '鷹眼診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V30.2_雷達診斷', '鷹眼診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
         try: styler = styler.hide(axis="index")
         except: styler = styler.hide_index()
         html = styler.set_table_styles([dict(selector='th', props=[('text-align', 'center !important')]), dict(selector='table', props=[('width', '100%')])]).to_html()
+        
+        # 解除 HTML 轉義以顯示紅色警告
+        html = html.replace('&lt;span class=&#x27;loss-warning&#x27;&gt;', "<span class='loss-warning'>").replace('&lt;/span&gt;', "</span>")
+        
         if custom_class: html = html.replace('<table', f'<table class="{custom_class}"')
         st.markdown(f'<div class="table-responsive">{html}</div>', unsafe_allow_html=True)
 
@@ -829,7 +858,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V30.1 尊爵完全體引擎..."):
+    with st.spinner(f"正在啟動 V30.2 鷹眼火力全開引擎..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -867,18 +896,18 @@ if run_btn:
             df_rev['月營收(百萬元)'] = (pd.to_numeric(df_rev['月營收(百萬元)'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)/1000000).round().astype(int)
             df_rev = df_rev.sort_values('營收月份', ascending=False)
 
-        df_b_today = process_branch_v25(df_b_raw, 1, dates, tags)
-        df_b_prev1 = process_branch_v25(df_b_raw, 1, dates[1:], tags)
-        df_b_3 = process_branch_v25(df_b_raw, 3, dates, tags)
-        df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags)
-        df_b_20 = process_branch_v25(df_b_raw, 20, dates, tags)
-        df_b_30 = process_branch_v25(df_b_raw, 30, dates, tags)
-        df_b_60 = process_branch_v25(df_b_raw, 60, dates, tags)
+        # ⚠️ 傳入 df_p_raw 給 process_branch_v25 進行虧損判定
+        df_b_today = process_branch_v25(df_b_raw, 1, dates, tags, df_p_raw)
+        df_b_prev1 = process_branch_v25(df_b_raw, 1, dates[1:], tags, df_p_raw)
+        df_b_3 = process_branch_v25(df_b_raw, 3, dates, tags, df_p_raw)
+        df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw)
+        df_b_20 = process_branch_v25(df_b_raw, 20, dates, tags, df_p_raw)
+        df_b_30 = process_branch_v25(df_b_raw, 30, dates, tags, df_p_raw)
+        df_b_60 = process_branch_v25(df_b_raw, 60, dates, tags, df_p_raw)
 
         df_gov = pd.DataFrame()
         if not df_b_today.empty: df_gov = df_b_today[df_b_today.astype(str).apply(lambda x: x.str.contains('|'.join(["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]))).any(axis=1)]
 
-        # ⚠️ 這裡就是之前引發 NameError 的關鍵，現在函式已經完美補回！
         df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
         
         df_fut = process_fut_inst(fetch_fm("TaiwanFuturesInstitutionalInvestors", d_60, "TX"))
@@ -897,23 +926,24 @@ if run_btn:
         # ==========================================
         # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V30.1 尊爵完全體)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V30.2 鷹眼火力版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
-        hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags)
-        hawk_html = "<div class='hawk-eye-box'><b>👁️‍🗨️ AI 鷹眼自動破局診斷：</b><br>"
+        # ⚠️ AI 鷹眼加入 df_b_diff 參數以獲取火力倍數
+        hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
+        hawk_html = "<div class='hawk-eye-box'><b>👁️‍🗨️ AI 鷹眼綜合破局診斷：</b><br>"
         for alert in hawk_alerts: hawk_html += f"► {alert}<br>"
         hawk_html += "</div>"
         st.markdown(hawk_html, unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
-        show_table("01. 平日戰情追蹤矩陣 (結合大戶買均價與火力)", df_daily_tracker, "daily-tracker")
+        show_table("01. 平日戰情追蹤矩陣 (結合大戶買均價與落差)", df_daily_tracker, "daily-tracker")
         show_table("02. 專家診斷雷達 (週末除水版)", df_v27_radar.head(8), "radar-table")
         show_table("03. 雙軸活大戶鎖碼判定表 (C-Value)", df_s_dyn.head(8))
         show_table("04. 收盤價量 (近10天)", df_price.head(10))
 
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
-        show_table("05. 主力分點指紋圖鑑 (盤中動能辨識)", df_debug_tags.head(30))
+        show_table("05. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
         show_table(f"06. 主力分點 - 今日 ({dates[0]})", df_b_today)
         show_table(f"07. 主力分點 - 近60日", df_b_60)
         
@@ -948,7 +978,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V30.1 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V30.2 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料幫我分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
@@ -964,7 +994,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V30.1 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V30.2 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
