@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V29.1 終極全息量化系統 (完美強迫症版)", layout="wide")
+st.set_page_config(page_title="V29.2 終極全息量化系統 (股利修復版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -43,8 +43,6 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 .hawk-eye-box { background-color: #fff9db; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 6px solid #f59f00; font-size: 16px; line-height: 1.8;}
 .hawk-alert { color: #d9480f; font-weight: bold; }
 .hawk-safe { color: #2b8a3e; font-weight: bold; }
-
-/* ⚠️ 統一所有標題的文字大小、粗細與顏色，確保視覺一致性 */
 .section-title { 
     font-size: 1.3rem !important; 
     font-weight: 700 !important; 
@@ -63,16 +61,16 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V29.1 終極全息量化系統")
-st.caption("UI 重構：全表單標題字體大小絕對一致，圖表序號 01~23 邏輯順序重排。")
+st.title("📱 V29.2 終極全息量化系統")
+st.caption("UI 重構：修復歷年股利年份含『年』字導致轉型失敗的 Bug，強化空欄位防護機制。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
 with col1: 
-    user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
+    user_stock_id = st.text_input("個股代號", value="1815", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V29.1 完美強迫症版引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V29.2 完美強迫症版引擎", use_container_width=True)
 
 # 內建字典
 with st.expander("📖 忘記名詞意思？點我查看【V29 實戰字典】", expanded=False):
@@ -251,7 +249,7 @@ def scrape_director_holding(target_id):
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input and str(dead_chip_input).strip() != "":
-        try: return float(str(dead_chip_input).replace('%', '').strip()), "手掌握"
+        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
         except: pass
     m_key = str(date_str)[:7].replace('/', '-')
     if dynamic_dict and m_key in dynamic_dict: return dynamic_dict[m_key], "Goodinfo當月"
@@ -359,10 +357,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V29.2_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
     
-    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '診斷']].sort_values('日期', ascending=False)
-    df_radar = df_radar[df_radar['診斷'] != '⚪ 初始化']
+    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V29.2_雷達診斷']].sort_values('日期', ascending=False)
+    df_radar = df_radar[df_radar['V29.2_雷達診斷'] != '⚪ 初始化']
     
     return df_radar, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
@@ -418,7 +416,7 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint):
     return alerts
 
 # ==========================================
-# 📌 資料處理與排版 (全線強制數值脫水)
+# 📌 資料處理與排版 
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
@@ -630,16 +628,22 @@ def process_day_trading(df):
     df_out = df.copy().rename(columns={"date": "日期", "Volume": "當沖總股數", "BuyAfterSale": "先買後賣股數", "SellAfterBuy": "先賣後買股數", "DayTradingVolume": "當沖總股數"})
     for col in ["當沖總股數", "先買後賣股數", "先賣後買股數"]:
         if col in df_out.columns: df_out[col.replace('股數', '張數')] = (pd.to_numeric(df_out[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0) / 1000).round().astype(int); df_out = df_out.drop(columns=[col])
-    return df_out[['日期'] + [c for c in df_out.columns if '張數' in c or '率' in c]].tail(10).sort_values('日期', ascending=False)
+    cols = ['日期'] + [c for c in df_out.columns if '張數' in c or '率' in c]
+    return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_margin(df):
     if df.empty: return pd.DataFrame()
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
         if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', ''), errors='coerce').fillna(0).round().astype(int)
     df = df.rename(columns={"date":"日期", "MarginPurchaseBuy":"融資買進(萬元)", "MarginPurchaseSell":"融資賣出(萬元)", "MarginPurchaseCashRepayment":"融資現償(萬元)", "MarginPurchaseTodayBalance":"融資餘額(萬元)", "ShortSaleBuy":"融券買進(張)", "ShortSaleSell":"融券賣出(張)", "ShortSaleTodayBalance":"融券餘額(張)", "OffsetLoanAndShort":"資券相抵(張)"})
-    df['融資增減(萬元)'] = df['融資餘額(萬元)'] - df.get('MarginPurchaseYesterdayBalance', 0)
-    df['融券增減(張)'] = df['融券餘額(張)'] - df.get('ShortSaleYesterdayBalance', 0)
-    return df[['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)']].tail(10).sort_values('日期', ascending=False)
+    
+    if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
+        df['融資增減(萬元)'] = df['融資餘額(萬元)'] - df['MarginPurchaseYesterdayBalance']
+    if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns:
+        df['融券增減(張)'] = df['融券餘額(張)'] - df['ShortSaleYesterdayBalance']
+        
+    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
+    return df[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_inst(df):
     if df.empty: return pd.DataFrame()
@@ -686,16 +690,18 @@ def process_per(df):
 def process_disp(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy().rename(columns={"date":"公告日期","disposition_cnt":"處置次數","condition":"處置條件","measure":"處置措施","period_start":"處置起日","period_end":"處置迄日"})
-    return df_out[['公告日期', '處置次數', '處置起日', '處置迄日', '處置條件', '處置措施']].tail(5).sort_values('公告日期', ascending=False)
+    cols = [c for c in ['公告日期', '處置次數', '處置起日', '處置迄日', '處置條件', '處置措施'] if c in df_out.columns]
+    return df_out[cols].tail(5).sort_values('公告日期', ascending=False)
 
+# ⚠️ 【Bug修復】：徹底解決「歷年股利無資料」的問題，將年份中的「年」字剝離後再轉型
 def process_div(df):
     if df.empty: return pd.DataFrame()
     df_out = df.rename(columns={"date": "公告日期", "year": "股利年份", "StockEarningsDistribution": "盈餘配股(元)", "StockStatutorySurplus": "公積配股(元)", "CashEarningsDistribution": "盈餘配息(元)", "CashStatutorySurplus": "公積配息(元)"})
     cols = [c for c in ["公告日期", "股利年份", "盈餘配息(元)", "公積配息(元)", "盈餘配股(元)", "公積配股(元)"] if c in df_out.columns]
     if '股利年份' in df_out.columns:
-        df_out['股利年份'] = pd.to_numeric(df_out['股利年份'].astype(str).str.replace(',', ''), errors='coerce')
-        recent = sorted(df_out['股利年份'].dropna().unique(), reverse=True)[:5]
-        return df_out[df_out['股利年份'].isin(recent)][cols].sort_values(['公告日期'], ascending=[False])
+        year_num = pd.to_numeric(df_out['股利年份'].astype(str).str.replace(',', '').str.replace('年', '').str.strip(), errors='coerce')
+        recent = sorted(year_num.dropna().unique(), reverse=True)[:5]
+        return df_out[year_num.isin(recent)][cols].sort_values('公告日期', ascending=False)
     return df_out[cols].sort_values('公告日期', ascending=False).head(10)
 
 def process_cbas(df):
@@ -704,7 +710,6 @@ def process_cbas(df):
     cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "轉換價(元)", "標的股價(元)", "未償還餘額", "票面利率(%)"] if c in df_out.columns]
     return df_out[cols]
 
-# ⚠️ 終極修復：強制接管所有表單標題，統一 1.3rem CSS 大小，完全避免字體忽大忽小
 def show_table(title, df, custom_class=""):
     st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
     if df is None or df.empty: 
@@ -720,7 +725,7 @@ def show_table(title, df, custom_class=""):
                 return f"{v:,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(v):,}"
             except: return str(x)
         f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V29.2_雷達診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
@@ -743,7 +748,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V29.1 完美強迫症引擎 (序號重排與樣式統一處理中)..."):
+    with st.spinner(f"正在啟動 V29.2 完美強迫症引擎 (歷年股利修復版)..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -806,9 +811,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
 
         # ==========================================
-        # ⚠️ 頁面呈現 (採用全新 01~23 邏輯順序與絕對統一標題)
+        # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V29.1 完美強迫症版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V29.2 股利修復版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags)
@@ -848,7 +853,6 @@ if run_btn:
         show_table("15. 集保分級 - 人數表 (近8週)", df_s_ppl)
         show_table("16. 月營收 (百萬元) (近24個月)", df_rev)
         
-        # ⚠️ 解決自訂渲染導致文字忽大忽小，全面納入 show_table 管理
         show_table("17. 董監大股東質設總覽", df_p_sum)
         show_table("18. 董監大股東質設明細", df_p_det)
         show_table("19. 鉅額交易明細 (近3日)", df_twse)
@@ -860,7 +864,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V29.1 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V29.2 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料幫我分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
@@ -875,7 +879,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V29.1 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V29.2 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
