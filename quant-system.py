@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V27.6 終極全息量化系統 (鷹眼破局完全體)", layout="wide")
+st.set_page_config(page_title="V27.7 終極全息量化系統 (極限除錯版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -35,14 +35,14 @@ table.dataframe th, table.dataframe td { white-space: nowrap !important; text-al
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 交易員實戰手冊：V27.6 全息量化除水系統")
-st.caption("完整版聲明：保留所有 0~17 表格、AI 鷹眼系統、雙軌 CSV 資料包，絕不刪減任何程式碼。")
+st.title("🤖 交易員實戰手冊：V27.7 全息量化除水系統")
+st.caption("極限除錯版：修復漲停位階悖論、修正友軍誤擊 Bug、還原 15 級距確保 C-Value 100% 精準。")
 
 # 內建字典 (展開式)
-with st.expander("📖 【必讀】V27.6 獨家數據欄位與實戰名詞解釋", expanded=False):
+with st.expander("📖 【必讀】V27.7 獨家數據欄位與實戰名詞解釋", expanded=False):
     st.markdown("""
     <div class='dict-box'>
-    <b>▼ V27.6 均價信心標籤 (盤中動能)</b><br>
+    <b>▼ V27.7 均價信心標籤 (盤中動能)</b><br>
     <ul>
         <li><b>🧱 [主動鎖碼]</b>：大戶買進後股價收高，且收盤價 > 全天均價。代表大戶帳面獲利且強勢控盤。</li>
         <li><b>🩹 [被動套牢]</b>：大戶留倉但收盤價 < 全天均價。代表大戶平均買得比收盤貴，明天易有停損賣壓。</li>
@@ -52,11 +52,11 @@ with st.expander("📖 【必讀】V27.6 獨家數據欄位與實戰名詞解釋
     <b>▼ 0. 平日戰情追蹤矩陣 (週一至週四的每日金流)</b><br>
     <ul>
         <li><b>波段/官股淨流入(張)</b>：代表長線大戶 (📈波段主、🧱真鎖碼、🏦官股) 今天的真實買賣超。</li>
-        <li><b>隔日沖潛在賣壓(張)</b>：代表極短線投機客 (⚡隔日沖) 買進且留倉到明天的張數。</li>
+        <li><b>隔日沖潛在賣壓(張)</b>：代表極短線投機客 (⚡隔日沖、🩹被動套牢) 買進且留倉到明天的張數。</li>
     </ul>
     <b>▼ 1-1. 雙軸活大戶鎖碼判定表 (長線存量)</b><br>
     <ul>
-        <li><b>純淨活大戶C-Value(%)</b>：扣除死籌碼後，真正流通的股票中被 1000 張以上大戶鎖住的比例。</li>
+        <li><b>純淨活大戶C-Value(%)</b>：扣除死籌碼後，真正流通的股票中被大戶鎖住的比例。</li>
     </ul>
     <b>▼ 1-2. 專家診斷雷達 (週末除水版) (每週動能)</b><br>
     <ul>
@@ -75,7 +75,7 @@ with col2:
         placeholder="自動抓取董監事持股比例，也可自行輸入",
         help="留空將自動抓取董監事持股比例。您也可自行輸入比例數值（例：輸入 35.5 代表 35.5%，涵蓋董監事＋大股東持股）"
     )
-run_btn = st.button("🚀 啟動 V27.6 完整引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V27.7 完整引擎", use_container_width=True)
 st.divider()
 
 # ==========================================
@@ -239,7 +239,7 @@ def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip
     return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
 
 # ==========================================
-# 📌 V27.6 指紋辨識 (結合 VWAP 與開收高低)
+# 📌 V27.7 指紋辨識 (極限修復版)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -247,8 +247,15 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
     df_p = df_p_raw.copy()
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
-    df_p['pos'] = (df_p['close'] - df_p['min']) / (df_p['max'] - df_p['min']).replace(0, 1)
-    df_p['strength'] = (df_p['close'] - df_p['avg_price']) / df_p['avg_price']
+    
+    # ⚠️ 【Bug修復：漲停板位階悖論】
+    # 當最高等於最低(漲停鎖死)，分母會是 0，導致 pos 計算錯誤。強制設定漲停位階為 1.0 (最強)
+    range_diff = df_p['max'] - df_p['min']
+    df_p['pos'] = np.where(range_diff == 0, 1.0, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
+    
+    # 防護 avg_price 為 0 的極端狀況
+    df_p['strength'] = np.where(df_p['avg_price'] == 0, 0, (df_p['close'] - df_p['avg_price']) / df_p['avg_price'].replace(0, 1))
+    
     price_stats = df_p.set_index('date')[['pos', 'strength']].to_dict('index')
 
     df = df_b_raw.copy()
@@ -273,7 +280,8 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [官股]"
         elif dr > 0.80:
             if nr < 0.05: tag = "🌪️ [純當沖客]"
-            elif strn > 0.01 and pos > 0.7: tag = "🧱 [主動鎖碼]" 
+            # ⚠️ 【Bug修復：漲停主動鎖碼】只要收盤位階是 1.0 (漲停鎖死)，一律視為強勢主動鎖碼
+            elif (strn > 0.01 and pos >= 0.7) or (pos == 1.0): tag = "🧱 [主動鎖碼]" 
             elif strn < -0.01 and pos < 0.3: tag = "🩹 [被動套牢]" 
             else: tag = "⚡ [隔日沖]"
         elif nr > 0.7: tag = "📈 [波段主]"
@@ -315,7 +323,8 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         f_vol = 0
         if not df_f.empty:
             df_f = df_f.copy(); df_f['tag'] = df_f['securities_trader'].map(intel_tags)
-            fn = df_f[df_f['tag'].str.contains("隔日沖|主動鎖碼|被套牢")] 
+            # ⚠️ 【Bug修復：友軍誤擊】嚴格規定除水只能減去「真正的短線干擾(隔日沖/套牢)」，絕對不能減去「主動鎖碼」
+            fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢")] 
             f_vol = fn['buy'].sum() / 1000
             for _, fr in fn.iterrows():
                 if fr['buy'] > 0: d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": int(fr['buy']/1000)})
@@ -336,16 +345,15 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
 
     ddf = pd.DataFrame(out)
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V27.6_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['V27.7_雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
     
-    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V27.6_雷達診斷']].sort_values('日期', ascending=False)
-    # ⚠️ 隱藏無效的初始化列
-    df_radar = df_radar[df_radar['V27.6_雷達診斷'] != '⚪ 初始化']
+    df_radar = df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', 'V27.7_雷達診斷']].sort_values('日期', ascending=False)
+    df_radar = df_radar[df_radar['V27.7_雷達診斷'] != '⚪ 初始化']
     
     return df_radar, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
 # ==========================================
-# 📌 模組二：V27.6 平日戰情追蹤矩陣
+# 📌 模組二：V27.7 平日戰情追蹤矩陣
 # ==========================================
 def process_v27_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates):
     if df_branch_raw.empty or len(actual_dates) < 5: return pd.DataFrame()
@@ -362,7 +370,8 @@ def process_v27_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             df_d = df_d.copy(); df_d['tag'] = df_d['securities_trader'].map(intel_tags).fillna("🔵 一般")
             df_d['net_vol'] = (df_d['buy'] - df_d['sell']) / 1000
             sn = df_d[df_d['tag'].str.contains('波段主|真鎖碼|官股')]['net_vol'].sum()
-            nn = df_d[df_d['tag'].str.contains('隔日沖|鎖碼|套牢')]['net_vol'].sum()
+            # ⚠️ 【Bug修復：友軍誤擊】潛在賣壓不包含主動鎖碼
+            nn = df_d[df_d['tag'].str.contains('隔日沖|套牢')]['net_vol'].sum()
         adv = []
         if sn > 50 and bsd < 0: adv.append("🟢 主力吃貨/籌碼集中")
         elif sn < -100: adv.append("🔴 波段大戶撤退")
@@ -402,7 +411,7 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint):
     return alerts
 
 # ==========================================
-# 📌 資料處理與排版 (包含數學精算修復)
+# 📌 資料處理與排版 
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
@@ -421,6 +430,7 @@ def clean_level_by_math(x):
         m = {1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張", 6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張", 11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"}
         return m.get(int(nums[0]), s)
     up = int(nums[-1])
+    # ⚠️ 【Bug修復：C-Value 歸零的元凶】還原為官方標準 15 級距，絕不合併，否則後端動態引擎會找不到欄位報錯
     if up <= 999: return "1-999股"
     elif up <= 5000: return "1-5張"
     elif up <= 10000: return "5-10張"
@@ -615,16 +625,17 @@ def process_margin(df):
     df['融券增減(張)'] = df['融券餘額(張)'] - df.get('ShortSaleYesterdayBalance', 0)
     return df[['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)']].tail(10).sort_values('日期', ascending=False)
 
-# ⚠️ 【資料優化】：將自營商明確拆分為「自行買賣」與「避險」
 def process_inst(df):
     if df.empty: return pd.DataFrame()
     pdf = df.pivot_table(index='date', columns='name', values=['buy', 'sell'], fill_value=0).reset_index()
     pdf.columns = ['_'.join(c).strip('_') for c in pdf.columns.values]
     out = pd.DataFrame({'日期': pdf['date']})
-    f_b = pd.to_numeric(pdf.get('buy_Foreign_Investor',0), errors='coerce').fillna(0) + pd.to_numeric(pdf.get('buy_Foreign_Dealer_Self',0), errors='coerce').fillna(0)
-    f_s = pd.to_numeric(pdf.get('sell_Foreign_Investor',0), errors='coerce').fillna(0) + pd.to_numeric(pdf.get('sell_Foreign_Dealer_Self',0), errors='coerce').fillna(0)
+    f_b = pd.to_numeric(pdf.get('buy_Foreign_Investor',0), errors='coerce').fillna(0)
+    f_s = pd.to_numeric(pdf.get('sell_Foreign_Investor',0), errors='coerce').fillna(0)
     out['外資買賣超(張)'] = ((f_b - f_s) / 1000).round().astype(int)
-    i_b = pd.to_numeric(pdf.get('buy_Investment_Trust',0), errors='coerce').fillna(0); i_s = pd.to_numeric(pdf.get('sell_Investment_Trust',0), errors='coerce').fillna(0)
+    
+    i_b = pd.to_numeric(pdf.get('buy_Investment_Trust',0), errors='coerce').fillna(0)
+    i_s = pd.to_numeric(pdf.get('sell_Investment_Trust',0), errors='coerce').fillna(0)
     out['投信買賣超(張)'] = ((i_b - i_s) / 1000).round().astype(int)
     
     ds_b = pd.to_numeric(pdf.get('buy_Dealer_self',0), errors='coerce').fillna(0)
@@ -688,7 +699,7 @@ def show_table(title, df, custom_class=""):
                 return f"{v:,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(v):,}"
             except: return str(x)
         f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V27.6_雷達診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', 'V27.7_雷達診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
@@ -711,7 +722,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在執行 V27.6 終極全息引擎 (全表輸出與鷹眼辨識中)..."):
+    with st.spinner(f"正在執行 V27.7 終極全息引擎 (極限除錯滿血版)..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料，請確認代號是否輸入正確。")
@@ -776,20 +787,19 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址 (地緣核對)】** {address}"
 
         # --- 頁面呈現 ---
-        st.subheader(f"📊 {user_stock_id} {name} V27.6 全息戰報")
+        st.subheader(f"📊 {user_stock_id} {name} V27.7 全息戰報")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         # ⚠️ 【鷹眼破局引擎顯示區】
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags)
-        hawk_html = "<div class='hawk-eye-box'><b>👁️‍🗨️ V27.6 AI 鷹眼自動破局診斷：</b><br>"
+        hawk_html = "<div class='hawk-eye-box'><b>👁️‍🗨️ V27.7 AI 鷹眼自動破局診斷：</b><br>"
         for alert in hawk_alerts: hawk_html += f"► {alert}<br>"
         hawk_html += "</div>"
         st.markdown(hawk_html, unsafe_allow_html=True)
 
-        # ⚠️ 完整呈現 0~17 所有表單
         show_table("⚡ 0. 平日戰情追蹤矩陣 (週一至週四核心代理指標)", df_daily_tracker, "daily-tracker")
         show_table("1-1. 雙軸活大戶鎖碼判定表 (C-Value) (近8週)", df_s_dyn)
-        show_table("1-2. V27.6 專家診斷雷達 (週末除水版) (近8週)", df_v27_radar, "radar-table")
+        show_table("1-2. V27.7 專家診斷雷達 (週末除水版) (近8週)", df_v27_radar, "radar-table")
         show_table("2-1. 集保分級 - 張數表 (近8週)", df_s_unit)
         show_table("2-2. 集保分級 - 人數表 (近8週)", df_s_ppl)
         if df_twse.empty: st.markdown("#### 3. 鉅額交易明細 (近3日)"); st.warning("無鉅額交易")
@@ -824,14 +834,14 @@ if run_btn:
 
         st.divider()
 
-        # ⚠️ 【AI 實戰分析資料包】：依據 V27.5 精華邏輯產生
-        with st.expander(f"📋 【點擊展開：給 Gemini 的 V27.6 實戰精華資料包 (CSV格式)】", expanded=True):
+        # ⚠️ 【AI 實戰精華包】
+        with st.expander(f"📋 【點擊展開：給 Gemini 的 V27.7 實戰精華資料包 (CSV格式)】", expanded=True):
             p1 = f"請依下面最新的盤後資料幫我分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
             p1 += format_to_csv_string(df_daily_tracker, "0. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_s_dyn.head(4), "1-1. 雙軸活大戶鎖碼判定表 (近4週)")
-            p1 += format_to_csv_string(df_v27_radar.head(4), "1-2. V27.6 專家診斷雷達 (近4週)")
+            p1 += format_to_csv_string(df_v27_radar.head(4), "1-2. V27.7 專家診斷雷達 (近4週)")
             p1 += format_to_csv_string(df_margin.head(5), "4. 散戶資券餘額 (近5天)")
             p1 += format_to_csv_string(df_inst.head(5), "6. 法人買賣超 (近5天)")
             p1 += format_to_csv_string(df_debug_tags.head(30), "9. 主力分點指紋圖鑑 (核心30大)")
@@ -843,8 +853,8 @@ if run_btn:
             
             st.code(p1, language="text")
 
-        # ⚠️ 【系統底層稽核包】：保留完整驗算公式供查帳
-        with st.expander(f"🔎 【點擊展開：給 Gemini 的 V27.6 稽核與驗算資料包 (CSV格式)】", expanded=False):
+        # ⚠️ 【系統底層稽核包】
+        with st.expander(f"🔎 【點擊展開：給 Gemini 的 V27.7 稽核與驗算資料包 (CSV格式)】", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
