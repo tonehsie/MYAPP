@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V31.2 終極全息量化系統 (完美對帳無缺件版)", layout="wide")
+st.set_page_config(page_title="V32.0 終極全息量化系統 (籌碼技術雙劍合璧)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -50,8 +50,8 @@ table.dataframe th:first-child, table.dataframe td:first-child {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V31.2 終極全息量化系統 (完美對帳無缺件版)")
-st.caption("嚴重除錯修復：補回被截斷的 process_price 等核心資料處理函式，確保全線順暢執行不當機。")
+st.title("📱 V32.0 終極全息量化系統 (雙劍合璧版)")
+st.caption("終極升級：實裝純 Pandas 技術分析引擎 (MA, RSI, MACD)，籌碼與技術面完美融合，並自動餵入 AI 決策包。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -59,48 +59,31 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V31.2 無懈可擊運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V32.0 雙劍合璧運算引擎", use_container_width=True)
 
 # 內建字典
-with st.expander("📖 【V31.2 實戰字典：破解主力的最高機密】", expanded=False):
+with st.expander("📖 【V32.0 實戰字典：籌碼與技術的完美結合】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
-    <h4 style="color:#e03131; margin-top:0;">壹、均價信心標籤 (盤中動能剖析)</h4>
-    這代表主力當天的操作意圖與帳面損益：
+    <h4 style="color:#e03131; margin-top:0;">壹、新增：技術面雙重濾網 (表 04-1)</h4>
+    這讓您不再因為單看籌碼而被「軋空」或「接刀」：
     <ul>
-        <li><b>🧱 [主動鎖碼] (強勢)</b>：大戶買進且收盤價 > 全天買進均價。這代表大戶有能力在尾盤拉抬，讓自己處於<b>獲利狀態</b>，這是最強勢的防守與進攻訊號，隔日續強機率極高。</li>
-        <li><b>🩹 [被動套牢] (弱勢)</b>：大戶大買，但收盤價 < 全天買進均價。這代表大戶雖然護盤，但賣壓太重導致<b>買完就套牢</b>。如果隔天開盤沒有強力拉升解套，這批籌碼很容易變成「停損多殺多」的炸彈。</li>
-        <li><b>🚀 [尾盤偷襲] (投機)</b>：收盤價突然大幅拉開與全天均價的距離，通常是主力為了做線、或特定目的的突襲。</li>
-        <li><b>🌪️ [純當沖客] (雜訊)</b>：該分點買賣張數極度對稱（當沖率 > 90%）。他們今天買明天就會賣，不構成長線支撐，數值再大也只是過客。</li>
+        <li><b>黃金買點 (抄底)</b>：聰明錢連買 3 天 ＋ 買方火力 > 1.5 倍 ＋ <b>股價剛好回踩 MA20 (月線)</b>。這代表主力趁技術面回檔偷偷吃貨。</li>
+        <li><b>誘多陷阱 (逃命)</b>：前 15 大買超全是 ⚡[隔日沖] ＋ <b>RSI > 80 (嚴重超買)</b>。這代表股價過熱，且充滿短線當沖客，隨時會崩盤。</li>
+        <li><b>多殺多 (放空)</b>：聰明錢大賣 ＋ 買方火力小於 0.7 倍 ＋ <b>MACD 發生死亡交叉 且 跌破月線</b>。籌碼技術雙重轉空，趕快跑！</li>
     </ul>
 
-    <h4 style="color:#e03131;">貳、戰情矩陣三維口訣 (看懂表 01)</h4>
-    不要只看淨流入，要結合均價看主力的底氣：
+    <h4 style="color:#e03131;">貳、戰情矩陣三維口訣 (表 01)</h4>
     <ol>
-        <li><b>看方向 (聰明錢淨流)</b>：如果是正數（買超），代表長線波段大戶或官股正在進場；負數則是他們在撤退。</li>
-        <li><b>看底氣 (均價落差)</b>：均價落差 = 當日收盤價 - 大戶買均價。<b>正數代表大戶賺錢，負數代表大戶賠錢</b>。大戶賺錢才有底氣拉抬，賠錢隨時準備跑路。</li>
-        <li><b>看結構 (微觀診斷)</b>：
-            <ul>
-                <li><code>🔥 主動鎖碼</code>：大買 + 賺錢。可以跟單上車。</li>
-                <li><code>🩹 大戶接刀</code>：大買 + 賠錢。觀望，等他們解套再說。</li>
-                <li><code>📉 拉高派發</code>：大賣 + 股價收紅。主力趁熱鬧倒貨，快跑！</li>
-                <li><code>💀 波段棄守</code>：大賣 + 股價收黑。趨勢已壞，嚴格停損。</li>
-            </ul>
-        </li>
+        <li><b>看方向 (聰明錢淨流)</b>：正數代表大戶進場；負數代表大戶撤退。</li>
+        <li><b>看底氣 (均價落差)</b>：正數代表大戶賺錢，有底氣拉抬；負數代表大戶賠錢。</li>
+        <li><b>看結構 (微觀診斷)</b>：🔥 主動鎖碼 (大買+賺錢) / 🩹 大戶接刀 (大買+賠錢) / 📉 拉高派發 (大賣+收紅) / 💀 波段棄守 (大賣+收黑)。</li>
     </ol>
 
-    <h4 style="color:#e03131;">參、鷹眼火力倍數 (看懂表 12 家數差)</h4>
-    破解「成交量很大，到底誰在買」的終極指標：
+    <h4 style="color:#e03131;">參、鷹眼火力倍數 (表 12)</h4>
     <ul>
-        <li><b>買方火力(倍)</b>：(平均每個買方分點買進張數) ÷ (平均每個賣方分點賣出張數)。</li>
-        <li><b>🟢 大於 1.5 倍 (大戶火力壓制)</b>：代表極少數的「大黑手」正在用龐大資金，吃掉幾百家散戶丟出來的籌碼。這是高度集中的吃貨訊號。</li>
-        <li><b>🔴 小於 0.7 倍 (散戶螞蟻搬家)</b>：代表大戶在少數幾個點瘋狂倒貨，而進場接盤的是全台幾百家散戶。這叫「散戶接刀」，極度危險。</li>
-    </ul>
-
-    <h4 style="color:#e03131;">肆、虧損券商自動標記 (表 05 ~ 07)</h4>
-    <ul>
-        <li>系統會自動計算所有主力的「買均價」，並與「最新收盤價」比對。</li>
-        <li>若該主力目前處於<b>虧損狀態 (且手中有留倉)</b>，會在買均價前標示 <b><span class='loss-warning'>⚠️(虧)</span></b>。如果前 15 大買超券商一片紅通通的 ⚠️(虧)，代表市場上都是套牢的冤魂，上漲壓力極大。</li>
+        <li><b>大於 1.5 倍</b>：大戶集中火力掃貨，勝率極高。</li>
+        <li><b>小於 0.7 倍</b>：散戶螞蟻搬家進場接刀，極度危險。</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -340,7 +323,66 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心演算法 (V31.1 修復：四捨五入聚合與防禦套牢標記)
+# 📌 V32.0 技術分析與動能指標 (純 Pandas 實作)
+# ==========================================
+def process_technical_analysis(df_price):
+    if df_price.empty or len(df_price) < 30: 
+        return pd.DataFrame()
+    
+    # 確保資料是按照時間由舊到新排序來計算技術指標
+    df_ta = df_price.sort_values('日期', ascending=True).reset_index(drop=True).copy()
+    
+    # 1. 計算移動平均線 (MA)
+    df_ta['MA5'] = df_ta['收盤價(元)'].rolling(window=5).mean().round(2)
+    df_ta['MA10'] = df_ta['收盤價(元)'].rolling(window=10).mean().round(2)
+    df_ta['MA20(月線)'] = df_ta['收盤價(元)'].rolling(window=20).mean().round(2)
+    
+    # 2. 計算乖離率 (BIAS)
+    df_ta['月線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta['MA20(月線)']) / df_ta['MA20(月線)'] * 100).round(2)
+    
+    # 3. 計算 RSI (14日)
+    delta = df_ta['收盤價(元)'].diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=14, min_periods=14).mean()
+    avg_loss = loss.rolling(window=14, min_periods=14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan) # 防止除以零
+    df_ta['RSI(14)'] = (100 - (100 / (1 + rs))).round(2)
+    df_ta['RSI(14)'] = df_ta['RSI(14)'].fillna(50) # 初始值補 50
+    
+    # 4. 計算 MACD (12, 26, 9)
+    exp1 = df_ta['收盤價(元)'].ewm(span=12, adjust=False).mean()
+    exp2 = df_ta['收盤價(元)'].ewm(span=26, adjust=False).mean()
+    df_ta['MACD_DIF'] = (exp1 - exp2).round(2)
+    df_ta['MACD_MACD(信號線)'] = df_ta['MACD_DIF'].ewm(span=9, adjust=False).mean().round(2)
+    df_ta['MACD_OSC(柱狀圖)'] = (df_ta['MACD_DIF'] - df_ta['MACD_MACD(信號線)']).round(2)
+    
+    # 5. 技術面微觀診斷
+    diag = []
+    for i in range(len(df_ta)):
+        adv = []
+        if pd.notna(df_ta['MA20(月線)'].iloc[i]):
+            if df_ta['收盤價(元)'].iloc[i] > df_ta['MA20(月線)'].iloc[i]: adv.append("🟢 站上月線")
+            else: adv.append("🔴 跌破月線")
+            
+        if df_ta['RSI(14)'].iloc[i] > 80: adv.append("⚠️ 嚴重超買")
+        elif df_ta['RSI(14)'].iloc[i] < 20: adv.append("🛡️ 嚴重超賣")
+        
+        if i > 0 and pd.notna(df_ta['MACD_OSC(柱狀圖)'].iloc[i]) and pd.notna(df_ta['MACD_OSC(柱狀圖)'].iloc[i-1]):
+            if df_ta['MACD_OSC(柱狀圖)'].iloc[i] > 0 and df_ta['MACD_OSC(柱狀圖)'].iloc[i-1] <= 0:
+                adv.append("🔥 MACD 黃金交叉")
+            elif df_ta['MACD_OSC(柱狀圖)'].iloc[i] < 0 and df_ta['MACD_OSC(柱狀圖)'].iloc[i-1] >= 0:
+                adv.append("💀 MACD 死亡交叉")
+                
+        diag.append(" | ".join(adv) if adv else "🔵 盤整")
+        
+    df_ta['技術面診斷'] = diag
+    
+    cols = ['日期', '收盤價(元)', 'MA5', 'MA10', 'MA20(月線)', '月線乖離(%)', 'RSI(14)', 'MACD_OSC(柱狀圖)', '技術面診斷']
+    return df_ta[cols].sort_values('日期', ascending=False).head(10)
+
+# ==========================================
+# 📌 核心演算法 (V31 完美四捨五入防飄移版)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -396,7 +438,6 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         tags[trader] = tag
         if tb > 100 or ts > 100:
             b_str = f"{round(avg_b, 2):,.2f}"
-            # ⚠️ 嚴格假套牢過濾：必須手中有留倉(net>0)，套牢才有意義
             if avg_b > latest_close and avg_b > 0 and net > 0:
                 b_str = f"⚠️(虧) {b_str}"
                 
@@ -436,7 +477,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         if not df_f.empty:
             df_f = df_f.copy(); df_f['tag'] = df_f['securities_trader'].map(intel_tags)
             fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢")] 
-            # ⚠️ 修正：聚合前四捨五入，避免飄移
             f_vol = round(pd.to_numeric(fn['buy'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0).sum() / 1000)
             for _, fr in fn.iterrows():
                 buy_vol = pd.to_numeric(str(fr['buy']).replace(',', '').strip(), errors='coerce')
@@ -491,7 +531,6 @@ def process_branch_diff(df_raw, actual_dates):
         total_buy_vol = buy_branches['buy'].sum()
         total_sell_vol = sell_branches['sell'].sum()
         
-        # ⚠️ 【Bug修復：除以零防護】
         avg_buy_per_branch = total_buy_vol / buy_count if buy_count > 0 else 0
         avg_sell_per_branch = total_sell_vol / sell_count if sell_count > 0 else 0
         
@@ -537,7 +576,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_b = day_b[day_b['tag'].str.contains('波段主|真鎖碼|官股')]
         short_b = day_b[day_b['tag'].str.contains('隔日沖|套牢')]
         
-        # ⚠️ 完美的四捨五入聚合，根除總和飄移
         smart_grouped = smart_b.groupby(['securities_trader', 'tag'])[['bs', 'ss']].sum().reset_index()
         smart_grouped['net_vol'] = ((smart_grouped['bs'] - smart_grouped['ss']) / 1000).round().astype(int)
         
@@ -644,7 +682,6 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
         if today_d['均價落差'] != "-":
             try:
                 gap_val = float(str(today_d['均價落差']).replace(',', '').strip())
-                # ⚠️ 【Bug修復：安全浮點數轉換防當機】
                 chg_val = float(str(today_d['漲跌(元)']).replace(',', '').strip()) if today_d['漲跌(元)'] not in ["-", ""] else 0.0
                 
                 if gap_val > 0 and today_d['聰明錢淨流(張)'] > 0:
@@ -818,308 +855,4 @@ def process_day_trading(df):
     df_out = df.copy().rename(columns={"date": "日期", "Volume": "當沖總股數", "BuyAfterSale": "先買後賣股數", "SellAfterBuy": "先賣後買股數", "DayTradingVolume": "當沖總股數"})
     for col in ["當沖總股數", "先買後賣股數", "先賣後買股數"]:
         if col in df_out.columns: df_out[col.replace('股數', '張數')] = (pd.to_numeric(df_out[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) / 1000).round().astype(int); df_out = df_out.drop(columns=[col])
-    cols = ['日期'] + [c for c in df_out.columns if '張數' in c or '率' in c]
-    return df_out[cols].tail(10).sort_values('日期', ascending=False)
-
-def process_margin(df):
-    if df.empty: return pd.DataFrame()
-    for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
-        if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0).round().astype(int)
-    df = df.rename(columns={"date":"日期", "MarginPurchaseBuy":"融資買進(萬元)", "MarginPurchaseSell":"融資賣出(萬元)", "MarginPurchaseCashRepayment":"融資現償(萬元)", "MarginPurchaseTodayBalance":"融資餘額(萬元)", "ShortSaleBuy":"融券買進(張)", "ShortSaleSell":"融券賣出(張)", "ShortSaleTodayBalance":"融券餘額(張)", "OffsetLoanAndShort":"資券相抵(張)"})
-    
-    if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
-        df['融資增減(萬元)'] = df['融資餘額(萬元)'] - df['MarginPurchaseYesterdayBalance']
-    if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns:
-        df['融券增減(張)'] = df['融券餘額(張)'] - df['ShortSaleYesterdayBalance']
-        
-    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
-    return df[cols].tail(10).sort_values('日期', ascending=False)
-
-def process_inst(df):
-    if df.empty: return pd.DataFrame()
-    pdf = df.pivot_table(index='date', columns='name', values=['buy', 'sell'], fill_value=0).reset_index()
-    pdf.columns = ['_'.join(c).strip('_') for c in pdf.columns.values]
-    out = pd.DataFrame({'日期': pdf['date']})
-    f_b = pd.to_numeric(pdf.get('buy_Foreign_Investor',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    f_s = pd.to_numeric(pdf.get('sell_Foreign_Investor',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    out['外資買賣超(張)'] = ((f_b - f_s) / 1000).round().astype(int)
-    
-    i_b = pd.to_numeric(pdf.get('buy_Investment_Trust',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    i_s = pd.to_numeric(pdf.get('sell_Investment_Trust',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    out['投信買賣超(張)'] = ((i_b - i_s) / 1000).round().astype(int)
-    
-    ds_b = pd.to_numeric(pdf.get('buy_Dealer_self',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    ds_s = pd.to_numeric(pdf.get('sell_Dealer_self',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    out['自營商(自行)買賣超'] = ((ds_b - ds_s) / 1000).round().astype(int)
-    
-    dh_b = pd.to_numeric(pdf.get('buy_Dealer_Hedging',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    dh_s = pd.to_numeric(pdf.get('sell_Dealer_Hedging',0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    out['自營商(避險)買賣超'] = ((dh_b - dh_s) / 1000).round().astype(int)
-    
-    out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超'] + out['自營商(避險)買賣超']
-    return out.tail(10).sort_values('日期', ascending=False)
-
-def process_fut_inst(df):
-    if df.empty: return pd.DataFrame()
-    df['net'] = pd.to_numeric(df['long_open_interest_balance_volume'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) - pd.to_numeric(df['short_open_interest_balance_volume'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-    pdf = df.pivot_table(index='date', columns='institutional_investors', values='net', fill_value=0).reset_index()
-    pdf.columns.name = None
-    for col in ['Foreign_Investor', 'Investment_Trust', 'Dealer']:
-        if col not in pdf.columns: pdf[col] = 0
-    return pdf.rename(columns={'date': '日期', 'Foreign_Investor': '外資多空(口)', 'Investment_Trust': '投信多空(口)', 'Dealer': '自營多空(口)'}).tail(10).sort_values('日期', ascending=False)
-
-def process_per(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.copy().rename(columns={"date":"日期","dividend_yield":"殖利率(%)","PER":"本益比(倍)","PBR":"淨值比(倍)"})
-    for col in ["殖利率(%)", "本益比(倍)", "淨值比(倍)"]: 
-        if col in df_out.columns:
-            df_out[col] = pd.to_numeric(df_out[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').round(2)
-    cols = [c for c in ['日期', '本益比(倍)', '淨值比(倍)', '殖利率(%)'] if c in df_out.columns]
-    return df_out[cols].tail(10).sort_values('日期', ascending=False)
-
-def process_disp(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.copy().rename(columns={"date":"公告日期","disposition_cnt":"處置次數","condition":"處置條件","measure":"處置措施","period_start":"處置起日","period_end":"處置迄日"})
-    cols = [c for c in ['公告日期', '處置次數', '處置起日', '處置迄日', '處置條件', '處置措施'] if c in df_out.columns]
-    return df_out[cols].tail(5).sort_values('公告日期', ascending=False)
-
-def process_div(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.rename(columns={"date": "公告日期", "year": "股利年份", "StockEarningsDistribution": "盈餘配股(元)", "StockStatutorySurplus": "公積配股(元)", "CashEarningsDistribution": "盈餘配息(元)", "CashStatutorySurplus": "公積配息(元)"})
-    cols = [c for c in ["公告日期", "股利年份", "盈餘配息(元)", "公積配息(元)", "盈餘配股(元)", "公積配股(元)"] if c in df_out.columns]
-    if '股利年份' in df_out.columns:
-        year_num = pd.to_numeric(df_out['股利年份'].astype(str).str.replace(',', '').str.replace('年', '').str.strip(), errors='coerce')
-        recent = sorted(year_num.dropna().unique(), reverse=True)[:5]
-        return df_out[year_num.isin(recent)][cols].sort_values('公告日期', ascending=False)
-    return df_out[cols].sort_values('公告日期', ascending=False).head(10)
-
-def process_cbas(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.rename(columns={"date": "日期", "cb_id": "可轉債代號", "cb_name": "可轉債名稱", "ConversionPrice": "轉換價(元)", "PriceOfUnderlyingStock": "標的股價(元)", "OutstandingAmount": "未償還餘額", "CouponRate": "票面利率(%)"})
-    cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "轉換價(元)", "標的股價(元)", "未償還餘額", "票面利率(%)"] if c in df_out.columns]
-    return df_out[cols]
-
-def show_table(title, df, custom_class=""):
-    st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
-    if df is None or df.empty: 
-        st.warning("此區塊查無數據或無發行紀錄")
-    else:
-        def fmt_auto(x):
-            if pd.isna(x): return "-"
-            s = str(x).strip()
-            if s in ["-", ""]: return "-"
-            
-            if "⚠️(虧)" in s:
-                v_str = s.replace("⚠️(虧)", "").strip()
-                try:
-                    v = float(v_str.replace(',', '').replace('%', ''))
-                    fmt_v = f"{v:,.2f}" if '.' in v_str else f"{int(v):,}"
-                    return f"<span class='loss-warning'>⚠️(虧) {fmt_v}</span>"
-                except:
-                    return f"<span class='loss-warning'>{s}</span>"
-            
-            is_pct = "%" in s
-            try:
-                v = float(s.replace(',', '').replace('%', ''))
-                return f"{v:,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(v):,}"
-            except: return str(x)
-            
-        f_dict = {c: fmt_auto for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷'])]
-        right_cols = [c for c in df.columns if c not in left_cols]
-        styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
-        if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
-        try: styler = styler.hide(axis="index")
-        except: styler = styler.hide_index()
-        html = styler.set_table_styles([dict(selector='th', props=[('text-align', 'center !important')]), dict(selector='table', props=[('width', '100%')])]).to_html()
-        
-        html = html.replace('&lt;span class=&#x27;loss-warning&#x27;&gt;', "<span class='loss-warning'>").replace('&lt;/span&gt;', "</span>")
-        
-        if custom_class: html = html.replace('<table', f'<table class="{custom_class}"')
-        st.markdown(f'<div class="table-responsive">{html}</div>', unsafe_allow_html=True)
-
-def format_to_csv_string(df, title):
-    header = f"▼▼▼ {title} ▼▼▼\n"
-    if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
-    return header + df.to_csv(index=False) + "\n"
-
-# ==========================================
-# 📌 執行主引擎
-# ==========================================
-if run_btn:
-    if not user_stock_id.strip():
-        st.warning("⚠️ 請先在上方輸入股票代號！")
-        st.stop()
-
-    with st.spinner(f"正在啟動 V31.2 完美無缺運算引擎..."):
-        name = get_stock_name(user_stock_id)
-        if not name:
-            st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
-            
-        df_p_raw = fetch_fm("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
-        if df_p_raw.empty: 
-            st.error("⚠️ 查無歷史股價資料。"); st.stop()
-        
-        dates = sorted(df_p_raw['date'].unique().tolist(), reverse=True)
-        d_60 = dates[59] if len(dates) >= 60 else dates[-1]
-        df_price = process_price(df_p_raw)
-        dynamic_dict, s_val, chip_eng, _ = scrape_director_holding(user_stock_id)
-        
-        df_b_raw = fetch_fm_branch_fast_parallel(dates[:60], user_stock_id)
-        tags, df_debug_tags = get_v27_intelligence(df_b_raw, df_p_raw)
-        
-        df_b_diff = process_branch_diff(df_b_raw, dates)
-        df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates)
-        
-        df_s_raw = fetch_fm("TaiwanStockHoldingSharesPer", d_60, user_stock_id)
-        df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
-        df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, dead_chip_input, dynamic_dict, s_val, chip_eng)
-        df_v27_radar, df_debug_math, _ = process_v27_ultimate_radar(df_s_wide, dead_chip_input, dynamic_dict, s_val, df_price, df_b_raw, tags)
-
-        df_twse, _ = scrape_block_trades(user_stock_id, dates)
-        df_margin = process_margin(fetch_fm("TaiwanStockMarginPurchaseShortSale", d_60, user_stock_id))
-        df_day_trade = process_day_trading(fetch_fm("TaiwanStockDayTrading", d_60, user_stock_id))
-        df_inst = process_inst(fetch_fm("TaiwanStockInstitutionalInvestorsBuySell", d_60, user_stock_id))
-        
-        df_rev_raw = fetch_fm("TaiwanStockMonthRevenue", "2022-01-01", user_stock_id)
-        df_rev = pd.DataFrame()
-        if not df_rev_raw.empty:
-            df_rev_raw['營收月份'] = df_rev_raw['revenue_year'].astype(str) + "-" + df_rev_raw['revenue_month'].astype(str).str.zfill(2)
-            df_rev = df_rev_raw.rename(columns={"revenue":"月營收(百萬元)"})[['營收月份','月營收(百萬元)']].tail(24)
-            df_rev['月營收(百萬元)'] = (pd.to_numeric(df_rev['月營收(百萬元)'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)/1000000).round().astype(int)
-            df_rev = df_rev.sort_values('營收月份', ascending=False)
-
-        df_b_today = process_branch_v25(df_b_raw, 1, dates, tags, df_p_raw)
-        df_b_prev1 = process_branch_v25(df_b_raw, 1, dates[1:], tags, df_p_raw)
-        df_b_3 = process_branch_v25(df_b_raw, 3, dates, tags, df_p_raw)
-        df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw)
-        df_b_20 = process_branch_v25(df_b_raw, 20, dates, tags, df_p_raw)
-        df_b_30 = process_branch_v25(df_b_raw, 30, dates, tags, df_p_raw)
-        df_b_60 = process_branch_v25(df_b_raw, 60, dates, tags, df_p_raw)
-
-        df_gov = pd.DataFrame()
-        if not df_b_today.empty: df_gov = df_b_today[df_b_today.astype(str).apply(lambda x: x.str.contains('|'.join(["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]))).any(axis=1)]
-
-        df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
-        
-        df_fut = process_fut_inst(fetch_fm("TaiwanFuturesInstitutionalInvestors", d_60, "TX"))
-        df_div = process_div(fetch_fm("TaiwanStockDividend", "2015-01-01", user_stock_id))
-        df_per = process_per(fetch_fm("TaiwanStockPER", d_60, user_stock_id))
-        df_disp = process_disp(fetch_fm("TaiwanStockDispositionSecuritiesPeriod", (datetime.date.today()-datetime.timedelta(days=180)).strftime("%Y-%m-%d"), user_stock_id))
-        df_cbas_raw = fetch_fm("TaiwanStockConvertibleBondDailyOverview", dates[0])
-        df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)]) if not df_cbas_raw.empty else pd.DataFrame()
-
-        market_cap_str = "計算中..."
-        industry, address = get_company_profile(user_stock_id)
-        if not df_price.empty and not df_s_wide.empty:
-            market_cap_str = f"{(df_price['收盤價(元)'].iloc[0] * df_s_wide['總張數'].iloc[0]) / 100000:,.2f} 億"
-        company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
-
-        # ==========================================
-        # ⚠️ 頁面呈現
-        # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V31.2 完美對帳無缺件版)")
-        st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
-        
-        hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
-        hawk_html_display = "<div class='hawk-eye-box'>"
-        hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
-        
-        for alert in hawk_alerts: 
-            hawk_html_display += f"{alert}<br>"
-            clean_text = re.sub(r'<[^>]+>', '', alert).replace('&nbsp;', ' ')
-            if "1." in clean_text or "2." in clean_text or "3." in clean_text or "4." in clean_text:
-                 hawk_csv_text += f"\n[{clean_text}]\n"
-            else:
-                 hawk_csv_text += f"- {clean_text}\n"
-                 
-        hawk_html_display += "</div>"
-        st.markdown(hawk_html_display, unsafe_allow_html=True)
-
-        st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
-        show_table("01. 平日戰情追蹤矩陣 (結合大戶買均價與落差)", df_daily_tracker, "daily-tracker")
-        show_table("02. 專家診斷雷達 (週末除水版)", df_v27_radar.head(8), "radar-table")
-        show_table("03. 雙軸活大戶鎖碼判定表 (C-Value)", df_s_dyn.head(8))
-        show_table("04. 收盤價量 (近10天)", df_price.head(10))
-
-        st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
-        show_table("05. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
-        show_table(f"06. 主力分點 - 今日 ({dates[0]})", df_b_today)
-        show_table(f"07. 主力分點 - 近60日", df_b_60)
-        
-        with st.expander("📂 點此展開過渡期分點 (前一日、近3日~近30日)", expanded=False):
-            show_table(f"07-1. 主力分點 - 前一日 ({dates[1] if len(dates)>1 else '無'})", df_b_prev1)
-            show_table("07-2. 主力分點 - 近3日", df_b_3)
-            show_table("07-3. 主力分點 - 近10日", df_b_10)
-            show_table("07-4. 主力分點 - 近20日", df_b_20)
-            show_table("07-5. 主力分點 - 近30日", df_b_30)
-
-        st.markdown("<div class='category-title'>🏦 法人與資券變化</div>", unsafe_allow_html=True)
-        show_table("08. 法人買賣超 (近10天)", df_inst)
-        show_table("09. 散戶資券餘額 (近10天)", df_margin)
-        show_table("10. 現股當沖明細 (近10天)", df_day_trade)
-        show_table("11. 八大官股進出 (今日)", df_gov)
-        show_table("12. 買賣家數差明細 (結合火力倍數)", df_b_diff)
-        show_table("13. 台指期貨三大法人未平倉 (大盤)", df_fut)
-
-        st.markdown("<div class='category-title'>📈 基本面與進階籌碼數據</div>", unsafe_allow_html=True)
-        show_table("14. 集保分級 - 張數表 (近8週)", df_s_unit)
-        show_table("15. 集保分級 - 人數表 (近8週)", df_s_ppl)
-        show_table("16. 月營收 (百萬元) (近24個月)", df_rev)
-        
-        show_table("17. 董監大股東質設總覽", df_p_sum)
-        show_table("18. 董監大股東質設明細", df_p_det)
-        show_table("19. 鉅額交易明細 (近3日)", df_twse)
-        show_table("20. 歷年股利 (近5年)", df_div)
-        show_table("21. 本益比、淨值比與殖利率", df_per)
-        show_table("22. 處置有價證券狀態", df_disp)
-        show_table("23. CBAS 可轉債數據", df_cbas)
-
-        st.divider()
-        st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        
-        # ⚠️ 【指令落實：精準剔除 04, 05, 07-1~07-5, 14, 15, 18, 21】
-        with st.expander(f"📋 給 Gemini 的 V31.2 實戰精華資料包 (CSV格式)", expanded=True):
-            p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
-            p1 += f"{company_info_text}\n\n"
-            
-            p1 += hawk_csv_text + "\n"
-            
-            p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
-            p1 += format_to_csv_string(df_v27_radar.head(4), "02. 專家診斷雷達 (近4週)")
-            p1 += format_to_csv_string(df_s_dyn.head(4), "03. 雙軸活大戶鎖碼判定表 (近4週)")
-            
-            p1 += format_to_csv_string(df_b_today, f"06. 主力分點 - 今日 ({dates[0]})")
-            p1 += format_to_csv_string(df_b_60, "07. 主力分點 - 近60日")
-            
-            p1 += format_to_csv_string(df_inst.head(10), "08. 法人買賣超 (近10天)")
-            p1 += format_to_csv_string(df_margin.head(10), "09. 散戶資券餘額 (近10天)")
-            p1 += format_to_csv_string(df_day_trade.head(10), "10. 現股當沖明細 (近10天)")
-            if not df_gov.empty: p1 += format_to_csv_string(df_gov, "11. 八大官股進出 (今日)")
-            p1 += format_to_csv_string(df_b_diff.head(10), "12. 買賣家數差明細 (近10天)")
-            if not df_fut.empty: p1 += format_to_csv_string(df_fut.head(10), "13. 台指期貨三大法人未平倉 (大盤)")
-            
-            p1 += format_to_csv_string(df_rev.head(12), "16. 月營收 (百萬元) (近12個月)")
-            if not df_p_sum.empty: p1 += format_to_csv_string(df_p_sum, "17. 董監大股東質設總覽")
-            if not df_twse.empty: p1 += format_to_csv_string(df_twse, "19. 鉅額交易明細 (近3日)")
-            if not df_div.empty: p1 += format_to_csv_string(df_div.head(5), "20. 歷年股利 (近5年)")
-            if not df_disp.empty: p1 += format_to_csv_string(df_disp, "22. 處置有價證券狀態")
-            if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
-            
-            st.code(p1, language="text")
-
-        # ⚠️ 【稽核包升級】：DUMP 出聰明錢與火力倍數的底層原始資料供驗算
-        with st.expander(f"🔎 給 Gemini 的 V31.2 稽核與驗算資料包 (CSV格式)", expanded=False):
-            p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
-            p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
-            p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
-            
-            p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
-            
-            df_audit_fire = df_b_raw[df_b_raw['date'] == dates[0]].copy()
-            df_audit_fire['buy'] = pd.to_numeric(df_audit_fire['buy'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-            df_audit_fire['sell'] = pd.to_numeric(df_audit_fire['sell'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-            df_audit_fire = df_audit_fire.rename(columns={'securities_trader': '分點', 'buy': '買進(股)', 'sell': '賣出(股)', 'price': '成交價'})
-            p2 += format_to_csv_string(df_audit_fire[['分點', '買進(股)', '賣出(股)', '成交價']], f"稽核D：今日({dates[0]})全台分點進出原始表 (用以驗算活躍家數與火力倍數)")
-
-            st.code(p2, language="text")
+    cols = ['日期'] + [c for c in df
