@@ -1,7 +1,8 @@
 import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concurrent.futures, urllib.request, ssl, urllib3
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-st.set_page_config(page_title="V36.3 終極全息量化系統 (極簡看盤完全體)", layout="wide")
+
+st.set_page_config(page_title="V36.4 終極全息量化系統 (極簡看盤完全體)", layout="wide")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
@@ -24,16 +25,31 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V36.3 終極全息量化系統 (極簡看盤完全體)")
-st.caption("系統重構：程式碼極限壓縮防截斷，完整還原 180 天大局觀與無網格十字查價線。")
+st.title("📱 V36.4 終極全息量化系統 (極簡看盤完全體)")
+st.caption("系統重構：補回遺失的死籌碼計算引擎，確保全線資料流順暢無阻。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V36.3 完美運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V36.4 完美運算引擎", use_container_width=True)
 
-with st.expander("📖 【V36.3 實戰字典：破解主力的最高機密】", expanded=False):
-    st.markdown("<div class='dict-box'><b>看方向</b>：正數代表大戶進場。<br><b>看底氣</b>：正數代表大戶賺錢，負數賠錢。<br><b>看結構</b>：買方火力 > 1.5 倍代表大戶吃貨。</div>", unsafe_allow_html=True)
+with st.expander("📖 【V36.4 實戰字典：破解主力的最高機密】", expanded=False):
+    st.markdown("""
+    <div class='dict-box'>
+    <h4 style="color:#e03131; margin-top:0;">壹、戰情矩陣三維口訣 (看懂表 01)</h4>
+    <ol>
+        <li><b>看方向</b>：正數波段大戶進場；負數撤退。</li>
+        <li><b>看底氣</b>：正數大戶賺錢，負數大戶賠錢(接刀)。</li>
+        <li><b>看結構</b>：買方火力 > 1.5 倍代表大戶集中吃貨。</li>
+    </ol>
+    <h4 style="color:#e03131;">貳、職業極簡技術動線 (看 00 區塊 K線圖)</h4>
+    <ul>
+        <li><b>純淨視野</b>：拔除浮動框與網格線，十字虛線對齊 Y 軸與成交量。</li>
+        <li><b>長線買點</b>：聰明錢連買 3 天 ＋ 買方火力 > 1.5 倍，回踩 MA60 (季線)。</li>
+        <li><b>停損多殺多</b>：聰明錢大賣，跌破季線，嚴格停損。</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.divider()
 
@@ -166,6 +182,16 @@ def scrape_director_holding(target_id):
     except: pass
     return {}, 0.0, "失敗", []
 
+# ⚠️ 這是您報錯缺失的核心函式，已經完美歸位！
+def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
+    if dead_chip_input and str(dead_chip_input).strip() != "":
+        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
+        except: pass
+    m_key = str(date_str)[:7].replace('/', '-')
+    if dynamic_dict and m_key in dynamic_dict: return dynamic_dict[m_key], "Goodinfo當月"
+    if dynamic_dict: return list(dynamic_dict.values())[0], "Goodinfo最新"
+    return (static_val, chip_engine) if static_val > 0 else (0.0, "-")
+
 def extract_fubon_table(html_text, trigger, cols):
     start_idx = html_text.find(trigger)
     if start_idx == -1: return []
@@ -232,65 +258,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心資料處理引擎 (V36.3 補回區塊)
-# ==========================================
-def process_price(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.copy()
-    df_out['Trading_Volume'] = (pd.to_numeric(df_out['Trading_Volume'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) / 1000).round().astype(int)
-    df_out = df_out.rename(columns={"date":"日期","Trading_Volume":"成交量(張)","close":"收盤價(元)","spread":"漲跌(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)"})
-    df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
-    return df_out[['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']].sort_values('日期', ascending=False)
-
-def process_technical_analysis(df_price):
-    if df_price.empty or len(df_price) < 30: return pd.DataFrame()
-    df_ta = df_price.sort_values('日期', ascending=True).copy()
-    df_ta['MA10'] = df_ta['收盤價(元)'].rolling(window=10).mean().round(2)
-    df_ta['MA60(季線)'] = df_ta['收盤價(元)'].rolling(window=60).mean().round(2)
-    df_ta['MA240(年線)'] = df_ta['收盤價(元)'].rolling(window=240).mean().round(2)
-    df_ta['季線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta['MA60(季線)']) / df_ta['MA60(季線)'] * 100).round(2)
-    diag = []
-    for i in range(len(df_ta)):
-        adv = []
-        if df_ta['收盤價(元)'].iloc[i] > df_ta['MA60(季線)'].iloc[i]: adv.append("🟢 站上季線")
-        elif df_ta['收盤價(元)'].iloc[i] < df_ta['MA60(季線)'].iloc[i]: adv.append("🔴 跌破季線")
-        diag.append(" | ".join(adv) if adv else "🔵 盤整")
-    df_ta['技術面診斷'] = diag
-    return df_ta.sort_values('日期', ascending=False)
-
-def plot_interactive_kline(df_price, df_ta):
-    if df_price.empty or df_ta.empty: return None
-    try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-    except ImportError:
-        st.warning("⚠️ 系統缺少 plotly 套件，請在環境中安裝 pip install plotly 以顯示 K 線圖。")
-        return None
-
-    df_p = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(180).copy()
-    ta_cols = ['日期', 'MA10', 'MA60(季線)', 'MA240(年線)']
-    valid_ta_cols = [c for c in ta_cols if c in df_ta.columns]
-    df_t = df_ta[valid_ta_cols].head(180).copy()
-    df = pd.merge(df_p, df_t, on='日期', how='inner').sort_values('日期', ascending=True)
-    df['日期'] = df['日期'].astype(str)
-    
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-    
-    # ⚠️ hoverinfo='skip' 強制關閉浮動框
-    fig.add_trace(go.Candlestick(x=df['日期'], open=df['開盤價(元)'], high=df['最高價(元)'], low=df['最低價(元)'], close=df['收盤價(元)'], name='K線', increasing_line_color='#ef5350', decreasing_line_color='#26a69a', hoverinfo='skip'), row=1, col=1)
-    if 'MA10' in df.columns: fig.add_trace(go.Scatter(x=df['日期'], y=df['MA10'], mode='lines', name='MA10', line=dict(color='#ffa726', width=1.5), hoverinfo='skip'), row=1, col=1)
-    if 'MA60(季線)' in df.columns: fig.add_trace(go.Scatter(x=df['日期'], y=df['MA60(季線)'], mode='lines', name='MA60', line=dict(color='#29b6f6', width=2), hoverinfo='skip'), row=1, col=1)
-    if 'MA240(年線)' in df.columns: fig.add_trace(go.Scatter(x=df['日期'], y=df['MA240(年線)'], mode='lines', name='MA240', line=dict(color='#ab47bc', width=2.5), hoverinfo='skip'), row=1, col=1)
-    colors = ['#ef5350' if row['收盤價(元)'] >= row['開盤價(元)'] else '#26a69a' for i, row in df.iterrows()]
-    fig.add_trace(go.Bar(x=df['日期'], y=df['成交量(張)'], marker_color=colors, name='成交量', hoverinfo='skip'), row=2, col=1)
-
-    fig.update_layout(height=600, margin=dict(l=30, r=30, t=20, b=30), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', showlegend=True, legend=dict(orientation="h", yanchor="top", y=1.02, xanchor="left", x=0.01), hovermode='x')
-    fig.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, showspikes=True, spikemode='across', spikethickness=1, spikedash='dash', spikecolor='#333333', spikesnap='cursor')
-    fig.update_yaxes(showgrid=False, zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dash', spikecolor='#333333', spikesnap='cursor')
-    return fig
-
-# ==========================================
-# 📌 籌碼分析與診斷引擎
+# 📌 核心運算引擎
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -312,10 +280,11 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
     
     tags, d_rows = {}, []
     for trader, g in df.groupby('securities_trader'):
-        tb = round(g['buy_shares'].sum() / 1000); ts = round(g['sell_shares'].sum() / 1000); tv = tb + ts
+        tb, ts = round(g['buy_shares'].sum() / 1000), round(g['sell_shares'].sum() / 1000)
+        tv = tb + ts
         if tv == 0: continue
-        dr = (min(tb, ts) * 2) / tv if tv > 0 else 0
-        net, nr = tb - ts, (tb - ts) / tb if tb > 0 else -1
+        dr, net = (min(tb, ts) * 2) / tv if tv > 0 else 0, tb - ts
+        nr = net / tb if tb > 0 else -1
         sum_b, sum_s = g['buy_shares'].sum(), g['sell_shares'].sum()
         avg_b = g['buy_amt'].sum() / sum_b if sum_b > 0 else 0
         avg_s = g['sell_amt'].sum() / sum_s if sum_s > 0 else 0
@@ -433,7 +402,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         pr_row = df_price[df_price['日期'] == d]
         cp = pr_row['收盤價(元)'].iloc[0] if not pr_row.empty else 0
         sp = pr_row['漲跌(元)'].iloc[0] if not pr_row.empty else 0
-
         diff_row = df_branch_diff[df_branch_diff['日期'] == d]
         bsd = diff_row['買賣家數差'].iloc[0] if not diff_row.empty else 0
         firepower = diff_row['買方火力(倍)'].iloc[0] if not diff_row.empty and '買方火力(倍)' in diff_row.columns else 1.0
@@ -565,8 +533,32 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
     return alerts
 
 # ==========================================
-# 📌 基礎清洗引擎 (防缺件)
+# 📌 資料處理與格式化模組
 # ==========================================
+def process_price(df):
+    if df.empty: return pd.DataFrame()
+    df_out = df.copy()
+    df_out['Trading_Volume'] = (pd.to_numeric(df_out['Trading_Volume'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) / 1000).round().astype(int)
+    df_out = df_out.rename(columns={"date":"日期","Trading_Volume":"成交量(張)","close":"收盤價(元)","spread":"漲跌(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)"})
+    df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
+    return df_out[['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']].sort_values('日期', ascending=False)
+
+def process_technical_analysis(df_price):
+    if df_price.empty or len(df_price) < 30: return pd.DataFrame()
+    df_ta = df_price.sort_values('日期', ascending=True).copy()
+    df_ta['MA10'] = df_ta['收盤價(元)'].rolling(window=10).mean().round(2)
+    df_ta['MA60(季線)'] = df_ta['收盤價(元)'].rolling(window=60).mean().round(2)
+    df_ta['MA240(年線)'] = df_ta['收盤價(元)'].rolling(window=240).mean().round(2)
+    df_ta['季線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta['MA60(季線)']) / df_ta['MA60(季線)'] * 100).round(2)
+    diag = []
+    for i in range(len(df_ta)):
+        adv = []
+        if df_ta['收盤價(元)'].iloc[i] > df_ta['MA60(季線)'].iloc[i]: adv.append("🟢 站上季線")
+        elif df_ta['收盤價(元)'].iloc[i] < df_ta['MA60(季線)'].iloc[i]: adv.append("🔴 跌破季線")
+        diag.append(" | ".join(adv) if adv else "🔵 盤整")
+    df_ta['技術面診斷'] = diag
+    return df_ta.sort_values('日期', ascending=False)
+
 def clean_level_by_math(x):
     s = str(x).replace(',', '').replace(' ', '')
     if s in ["17", "17.0", "合計", "總計"]: return "合計"
@@ -764,12 +756,12 @@ def format_to_csv_string(df, title):
     return header + df.to_csv(index=False) + "\n"
 
 # ==========================================
-# 📌 執行主引擎
+# 📌 主執行引擎
 # ==========================================
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V36.3 終極看盤引擎..."):
+    with st.spinner(f"正在啟動 V36.4 完美無損看盤引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -831,7 +823,7 @@ if run_btn:
             market_cap_str = f"{(df_price['收盤價(元)'].iloc[0] * df_s_wide['總張數'].iloc[0]) / 100000:,.2f} 億"
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
 
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V36.3 無損完全體)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V36.4 無損完全體)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
@@ -850,7 +842,7 @@ if run_btn:
             show_table("00-1. 技術分析指標 (近10天)", df_ta_display.head(10))
             st.markdown("<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (近180日)</div>", unsafe_allow_html=True)
             
-            # --- 內嵌畫圖防錯引擎 ---
+            # 📌 內嵌畫圖防錯引擎
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
             df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(180).copy()
@@ -910,7 +902,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V36.3 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V36.4 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -934,7 +926,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V36.3 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V36.4 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
