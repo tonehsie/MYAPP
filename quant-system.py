@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V32.1 終極全息量化系統 (技術籌碼合璧版)", layout="wide")
+st.set_page_config(page_title="V33.0 終極全息量化系統 (視覺化K線版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -40,8 +40,8 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V32.1 終極全息量化系統 (技術籌碼合璧版)")
-st.caption("防截斷優化：修復語法未閉合錯誤，確保百萬字元也能穩定執行。")
+st.title("📱 V33.0 終極全息量化系統 (視覺化K線版)")
+st.caption("新增互動式 K 線引擎，支援台股紅綠色彩，精準對齊 MACD 與 RSI 訊號。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -49,9 +49,9 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V32.1 完整運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V33.0 圖表合璧運算引擎", use_container_width=True)
 
-with st.expander("📖 【V32.1 實戰字典：破解主力的最高機密】", expanded=False):
+with st.expander("📖 【V33.0 實戰字典：破解主力的最高機密】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <h4 style="color:#e03131; margin-top:0;">壹、戰情矩陣三維口訣 (看懂表 01)</h4>
@@ -60,11 +60,11 @@ with st.expander("📖 【V32.1 實戰字典：破解主力的最高機密】", 
         <li><b>看底氣 (均價落差)</b>：正數代表大戶賺錢，負數代表大戶賠錢(接刀)。</li>
         <li><b>看結構 (火力倍數)</b>：買方火力 > 1.5 倍代表大戶集中吃貨，高勝率。</li>
     </ol>
-    <h4 style="color:#e03131;">貳、技術與籌碼雙劍合璧 (看懂表 04-1)</h4>
+    <h4 style="color:#e03131;">貳、技術與籌碼雙劍合璧 (配合 K 線圖)</h4>
     <ul>
-        <li><b>抄底黃金買點</b>：聰明錢連買 3 天 ＋ 買方火力 > 1.5 倍，且技術面剛好回踩 MA20 (月線乖離接近 0)。</li>
-        <li><b>誘多逃命陷阱</b>：前 15 大買超全是 ⚡[隔日沖]，且技術面 RSI > 80 (嚴重超買)。明天必定倒貨。</li>
-        <li><b>停損多殺多</b>：聰明錢大賣，且 MACD 出現死亡交叉並跌破月線。主力與技術派同時倒貨，嚴格停損。</li>
+        <li><b>抄底黃金買點</b>：聰明錢連買 3 天 ＋ 買方火力 > 1.5 倍，且 K 線圖剛好回踩 MA20 (紫色月線)。</li>
+        <li><b>誘多逃命陷阱</b>：前 15 大買超全是 ⚡[隔日沖]，且 K 線圖下方 RSI > 80 (觸及紅色虛線)。明天必定倒貨。</li>
+        <li><b>停損多殺多</b>：聰明錢大賣，且 MACD 綠柱狀圖放大並跌破月線。主力與技術派同時倒貨，嚴格停損。</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -226,7 +226,7 @@ def scrape_director_holding(target_id):
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input and str(dead_chip_input).strip() != "":
-        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
+        try: return float(str(dead_chip_input).replace('%', '').strip()), "手掌握"
         except: pass
     m_key = str(date_str)[:7].replace('/', '-')
     if dynamic_dict and m_key in dynamic_dict: return dynamic_dict[m_key], "Goodinfo當月"
@@ -305,7 +305,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心演算法 (V32.1 防斷行與精確除錯)
+# 📌 核心演算法
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -352,7 +352,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [官股]"
         elif dr > 0.80:
             if nr < 0.05: tag = "🌪️ [純當沖客]"
-            elif (strn > 0.01 and pos >= 0.7) or (pos == 1.0): tag = "🧱 [主主動鎖碼]" 
+            elif (strn > 0.01 and pos >= 0.7) or (pos == 1.0): tag = "🧱 [主動鎖碼]" 
             elif strn < -0.01 and pos < 0.3: tag = "🩹 [被動套牢]" 
             else: tag = "⚡ [隔日沖]"
         elif nr > 0.7: tag = "📈 [波段主]"
@@ -720,7 +720,71 @@ def process_technical_analysis(df_price):
         
     df_ta['技術面診斷'] = diag
     cols = ['日期', '收盤價(元)', 'MA5', 'MA10', 'MA20(月線)', '月線乖離(%)', 'RSI(14)', 'MACD_OSC(柱狀圖)', '技術面診斷']
-    return df_ta[cols].sort_values('日期', ascending=False).head(10)
+    
+    # ⚠️ 這裡回傳全部資料，讓後續 K 線圖有足夠天數可以畫
+    return df_ta[cols].sort_values('日期', ascending=False)
+
+# ==========================================
+# 📌 新增：互動式 K 線與技術分析整合繪圖引擎
+# ==========================================
+def plot_interactive_kline(df_price, df_ta):
+    if df_price.empty or df_ta.empty: return None
+    try:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+    except ImportError:
+        st.warning("⚠️ 系統缺少 plotly 套件，請在環境中安裝 pip install plotly 以顯示 K 線圖。")
+        return None
+
+    # 抓取最近 60 個交易日作圖
+    df_p = df_price.head(60).copy()
+    df_t = df_ta.head(60).copy()
+    
+    # 合併並依照日期舊到新排序 (繪圖需要由左至右)
+    df = pd.merge(df_p, df_t, on='日期', how='inner').sort_values('日期', ascending=True)
+    
+    # 建立 4 列的聯動子圖
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.03,
+                        row_heights=[0.5, 0.15, 0.15, 0.2],
+                        subplot_titles=("K線與均線", "成交量(張)", "MACD (12,26,9)", "RSI (14)"))
+
+    # 1. K線圖 (台股色彩: 紅漲綠跌)
+    fig.add_trace(go.Candlestick(x=df['日期'], open=df['開盤價(元)'], high=df['最高價(元)'],
+                                 low=df['最低價(元)'], close=df['收盤價(元)'], name='K線',
+                                 increasing_line_color='#ef5350', decreasing_line_color='#26a69a'), row=1, col=1)
+    
+    # 均線
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['MA5'], mode='lines', name='MA5', line=dict(color='#ffa726', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['MA10'], mode='lines', name='MA10', line=dict(color='#29b6f6', width=1.5)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['MA20(月線)'], mode='lines', name='MA20', line=dict(color='#ab47bc', width=2)), row=1, col=1)
+
+    # 2. 成交量
+    colors = ['#ef5350' if row['收盤價(元)'] >= row['開盤價(元)'] else '#26a69a' for i, row in df.iterrows()]
+    fig.add_trace(go.Bar(x=df['日期'], y=df['成交量(張)'], marker_color=colors, name='成交量'), row=2, col=1)
+
+    # 3. MACD
+    macd_colors = ['#ef5350' if val > 0 else '#26a69a' for val in df['MACD_OSC(柱狀圖)']]
+    fig.add_trace(go.Bar(x=df['日期'], y=df['MACD_OSC(柱狀圖)'], marker_color=macd_colors, name='MACD柱狀圖'), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['MACD_DIF'], mode='lines', name='DIF', line=dict(color='#42a5f5', width=1.5)), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['MACD_MACD(信號線)'], mode='lines', name='MACD信號', line=dict(color='#ffa726', width=1.5)), row=3, col=1)
+
+    # 4. RSI
+    fig.add_trace(go.Scatter(x=df['日期'], y=df['RSI(14)'], mode='lines', name='RSI(14)', line=dict(color='#ab47bc', width=1.5)), row=4, col=1)
+    fig.add_hline(y=80, line_dash="dash", line_color="#ef5350", line_width=1, row=4, col=1)
+    fig.add_hline(y=20, line_dash="dash", line_color="#26a69a", line_width=1, row=4, col=1)
+
+    # 介面優化設定
+    fig.update_layout(height=850, 
+                      margin=dict(l=30, r=30, t=40, b=30),
+                      xaxis_rangeslider_visible=False,
+                      plot_bgcolor='#f8f9fa',
+                      paper_bgcolor='white',
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#e0e0e0', tickangle=45)
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#e0e0e0')
+    return fig
 
 # ==========================================
 # 📌 資料處理與排版 
@@ -823,7 +887,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
     return pd.DataFrame(out)
 
-# ⚠️ 【斷行防禦處理】
+# ⚠️ 防斷行處理完成
 def process_day_trading(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy().rename(columns={
@@ -836,6 +900,7 @@ def process_day_trading(df):
             v_num = pd.to_numeric(df_out[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
             df_out[col.replace('股數', '張數')] = (v_num / 1000).round().astype(int)
             df_out = df_out.drop(columns=[col])
+    
     cols = ['日期'] + [c for c in df_out.columns if '張數' in c or '率' in c]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
@@ -969,7 +1034,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V32.1 雙劍合璧運算引擎..."):
+    with st.spinner(f"正在啟動 V32.1 防截斷與圖表引擎..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -1039,7 +1104,7 @@ if run_btn:
         # ==========================================
         # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V32.1 技術籌碼合璧版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V32.1 雙劍合璧版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
@@ -1062,7 +1127,14 @@ if run_btn:
         show_table("02. 專家診斷雷達 (週末除水版)", df_v27_radar.head(8), "radar-table")
         show_table("03. 雙軸活大戶鎖碼判定表 (C-Value)", df_s_dyn.head(8))
         show_table("04. 收盤價量 (近10天)", df_price.head(10))
-        show_table("04-1. 技術分析指標 (近10天)", df_ta)
+        
+        # ⚠️ 【輸出技術分析與互動式 K 線圖】
+        if not df_ta.empty:
+            show_table("04-1. 技術分析指標 (近10天)", df_ta.head(10))
+            st.markdown("<div class='section-title'>📈 04-2. 互動式 K 線與技術指標圖 (近60日)</div>", unsafe_allow_html=True)
+            fig_kline = plot_interactive_kline(df_price, df_ta)
+            if fig_kline:
+                st.plotly_chart(fig_kline, use_container_width=True)
 
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
         show_table("05. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
@@ -1107,7 +1179,7 @@ if run_btn:
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_v27_radar.head(4), "02. 專家診斷雷達 (近4週)")
             p1 += format_to_csv_string(df_s_dyn.head(4), "03. 雙軸活大戶鎖碼判定表 (近4週)")
-            p1 += format_to_csv_string(df_ta, "04-1. 技術分析指標 (近10天)")
+            p1 += format_to_csv_string(df_ta.head(10), "04-1. 技術分析指標 (近10天)")
             p1 += format_to_csv_string(df_b_today, f"06. 主力分點 - 今日 ({dates[0]})")
             p1 += format_to_csv_string(df_b_60, "07. 主力分點 - 近60日")
             p1 += format_to_csv_string(df_inst.head(10), "08. 法人買賣超 (近10天)")
