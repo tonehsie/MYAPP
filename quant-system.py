@@ -14,7 +14,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 設定網頁標題與佈局
-st.set_page_config(page_title="V33.0 終極全息量化系統 (視覺化K線版)", layout="wide")
+st.set_page_config(page_title="V33.1 終極全息量化系統 (完美圖表修復版)", layout="wide")
 
 # 內建 Token
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
@@ -40,8 +40,8 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V33.0 終極全息量化系統 (視覺化K線版)")
-st.caption("新增互動式 K 線引擎，支援台股紅綠色彩，精準對齊 MACD 與 RSI 訊號。")
+st.title("📱 V33.1 終極全息量化系統 (圖表修復版)")
+st.caption("嚴重除錯：修復 Plotly K 線圖因 Pandas 表格合併導致的 KeyError 欄位衝突。")
 
 # UI 輸入區
 col1, col2 = st.columns([1, 1])
@@ -49,9 +49,9 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入", help="留空將自動抓取。也可自行輸入比例數值")
-run_btn = st.button("🚀 啟動 V33.0 圖表合璧運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V33.1 圖表無瑕運算引擎", use_container_width=True)
 
-with st.expander("📖 【V33.0 實戰字典：破解主力的最高機密】", expanded=False):
+with st.expander("📖 【V33.1 實戰字典：破解主力的最高機密】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <h4 style="color:#e03131; margin-top:0;">壹、戰情矩陣三維口訣 (看懂表 01)</h4>
@@ -60,7 +60,7 @@ with st.expander("📖 【V33.0 實戰字典：破解主力的最高機密】", 
         <li><b>看底氣 (均價落差)</b>：正數代表大戶賺錢，負數代表大戶賠錢(接刀)。</li>
         <li><b>看結構 (火力倍數)</b>：買方火力 > 1.5 倍代表大戶集中吃貨，高勝率。</li>
     </ol>
-    <h4 style="color:#e03131;">貳、技術與籌碼雙劍合璧 (配合 K 線圖)</h4>
+    <h4 style="color:#e03131;">貳、技術與籌碼雙劍合璧 (配合 04-2 K 線圖)</h4>
     <ul>
         <li><b>抄底黃金買點</b>：聰明錢連買 3 天 ＋ 買方火力 > 1.5 倍，且 K 線圖剛好回踩 MA20 (紫色月線)。</li>
         <li><b>誘多逃命陷阱</b>：前 15 大買超全是 ⚡[隔日沖]，且 K 線圖下方 RSI > 80 (觸及紅色虛線)。明天必定倒貨。</li>
@@ -226,7 +226,7 @@ def scrape_director_holding(target_id):
 
 def get_dead_chip_info(date_str, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if dead_chip_input and str(dead_chip_input).strip() != "":
-        try: return float(str(dead_chip_input).replace('%', '').strip()), "手掌握"
+        try: return float(str(dead_chip_input).replace('%', '').strip()), "手動"
         except: pass
     m_key = str(date_str)[:7].replace('/', '-')
     if dynamic_dict and m_key in dynamic_dict: return dynamic_dict[m_key], "Goodinfo當月"
@@ -278,8 +278,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
             p_dates.append(f"{py}-{pts[1].strip()}-{pts[2].strip()}")
         else: p_dates.append(d_str)
     df_all['日期'] = p_dates
-    for col in ["設質(張)", "解質(張)", "累積質設(張)"]: 
-        df_all[col] = pd.to_numeric(df_all[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0).astype(int)
+    for col in ["設質(張)", "解質(張)", "累積質設(張)"]: df_all[col] = pd.to_numeric(df_all[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0).astype(int)
     
     price_dict = {pd.to_datetime(row['date']).strftime('%Y-%m-%d'): row['close'] for _, row in df_price_raw.iterrows()}
     p_prices, m_calls = [], []
@@ -305,7 +304,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心演算法
+# 📌 核心演算法 
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -651,7 +650,7 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
         if trapped >= 2 and trapped > locked:
             alerts.append(f"<span class='hawk-alert'>⚠️ 【誘多套牢炸彈】前 15 大分點有 {trapped} 家處於『均價虧損』被迫留倉。請留意表格中標示 <span style='color:red;'>⚠️(虧)</span> 的主力，這些都是明日潛在的多殺多來源。</span>")
         elif locked >= 2 and locked > trapped:
-            alerts.append(f"<span class='hawk-safe'>🔥 【主動鎖碼強勢】前 15 大分點有 {locked} 家處於『獲利強勢留倉』狀態，主力買均價極具防守優勢，具波段續攻潛力。</span>")
+            alerts.append(f"<span class='hawk-safe'>🔥 【主推鎖碼強勢】前 15 大分點有 {locked} 家處於『獲利強勢留倉』狀態，主力買均價極具防守優勢，具波段續攻潛力。</span>")
         elif trapped < 2 and locked < 2 and day_traders <= 8:
              alerts.append(f"<span>🔵 分點進出動機分散，無單一極端勢力控盤。</span>")
 
@@ -673,7 +672,7 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
     return alerts
 
 # ==========================================
-# 📌 新增：技術分析引擎 (MACD, RSI, MA)
+# 📌 技術分析引擎 (MACD, RSI, MA)
 # ==========================================
 def process_technical_analysis(df_price):
     if df_price.empty or len(df_price) < 30: 
@@ -721,11 +720,10 @@ def process_technical_analysis(df_price):
     df_ta['技術面診斷'] = diag
     cols = ['日期', '收盤價(元)', 'MA5', 'MA10', 'MA20(月線)', '月線乖離(%)', 'RSI(14)', 'MACD_OSC(柱狀圖)', '技術面診斷']
     
-    # ⚠️ 這裡回傳全部資料，讓後續 K 線圖有足夠天數可以畫
     return df_ta[cols].sort_values('日期', ascending=False)
 
 # ==========================================
-# 📌 新增：互動式 K 線與技術分析整合繪圖引擎
+# 📌 互動式 K 線與技術分析整合繪圖引擎
 # ==========================================
 def plot_interactive_kline(df_price, df_ta):
     if df_price.empty or df_ta.empty: return None
@@ -736,45 +734,40 @@ def plot_interactive_kline(df_price, df_ta):
         st.warning("⚠️ 系統缺少 plotly 套件，請在環境中安裝 pip install plotly 以顯示 K 線圖。")
         return None
 
-    # 抓取最近 60 個交易日作圖
     df_p = df_price.head(60).copy()
     df_t = df_ta.head(60).copy()
     
-    # 合併並依照日期舊到新排序 (繪圖需要由左至右)
+    # ⚠️ 終極 KeyError 防護：合併前強制刪除 df_ta 中重複的「收盤價(元)」
+    if '收盤價(元)' in df_t.columns:
+        df_t = df_t.drop(columns=['收盤價(元)'])
+    
     df = pd.merge(df_p, df_t, on='日期', how='inner').sort_values('日期', ascending=True)
     
-    # 建立 4 列的聯動子圖
     fig = make_subplots(rows=4, cols=1, shared_xaxes=True,
                         vertical_spacing=0.03,
                         row_heights=[0.5, 0.15, 0.15, 0.2],
                         subplot_titles=("K線與均線", "成交量(張)", "MACD (12,26,9)", "RSI (14)"))
 
-    # 1. K線圖 (台股色彩: 紅漲綠跌)
     fig.add_trace(go.Candlestick(x=df['日期'], open=df['開盤價(元)'], high=df['最高價(元)'],
                                  low=df['最低價(元)'], close=df['收盤價(元)'], name='K線',
                                  increasing_line_color='#ef5350', decreasing_line_color='#26a69a'), row=1, col=1)
     
-    # 均線
     fig.add_trace(go.Scatter(x=df['日期'], y=df['MA5'], mode='lines', name='MA5', line=dict(color='#ffa726', width=1.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=df['日期'], y=df['MA10'], mode='lines', name='MA10', line=dict(color='#29b6f6', width=1.5)), row=1, col=1)
     fig.add_trace(go.Scatter(x=df['日期'], y=df['MA20(月線)'], mode='lines', name='MA20', line=dict(color='#ab47bc', width=2)), row=1, col=1)
 
-    # 2. 成交量
     colors = ['#ef5350' if row['收盤價(元)'] >= row['開盤價(元)'] else '#26a69a' for i, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df['日期'], y=df['成交量(張)'], marker_color=colors, name='成交量'), row=2, col=1)
 
-    # 3. MACD
     macd_colors = ['#ef5350' if val > 0 else '#26a69a' for val in df['MACD_OSC(柱狀圖)']]
     fig.add_trace(go.Bar(x=df['日期'], y=df['MACD_OSC(柱狀圖)'], marker_color=macd_colors, name='MACD柱狀圖'), row=3, col=1)
     fig.add_trace(go.Scatter(x=df['日期'], y=df['MACD_DIF'], mode='lines', name='DIF', line=dict(color='#42a5f5', width=1.5)), row=3, col=1)
     fig.add_trace(go.Scatter(x=df['日期'], y=df['MACD_MACD(信號線)'], mode='lines', name='MACD信號', line=dict(color='#ffa726', width=1.5)), row=3, col=1)
 
-    # 4. RSI
     fig.add_trace(go.Scatter(x=df['日期'], y=df['RSI(14)'], mode='lines', name='RSI(14)', line=dict(color='#ab47bc', width=1.5)), row=4, col=1)
     fig.add_hline(y=80, line_dash="dash", line_color="#ef5350", line_width=1, row=4, col=1)
     fig.add_hline(y=20, line_dash="dash", line_color="#26a69a", line_width=1, row=4, col=1)
 
-    # 介面優化設定
     fig.update_layout(height=850, 
                       margin=dict(l=30, r=30, t=40, b=30),
                       xaxis_rangeslider_visible=False,
@@ -789,105 +782,6 @@ def plot_interactive_kline(df_price, df_ta):
 # ==========================================
 # 📌 資料處理與排版 
 # ==========================================
-def process_price(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.copy()
-    df_out['Trading_Volume'] = (pd.to_numeric(df_out['Trading_Volume'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) / 1000).round().astype(int)
-    df_out = df_out.rename(columns={"date":"日期","Trading_Volume":"成交量(張)","close":"收盤價(元)","spread":"漲跌(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)"})
-    df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
-    return df_out[['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']].sort_values('日期', ascending=False)
-
-def clean_level_by_math(x):
-    s = str(x).replace(',', '').replace(' ', '')
-    if s in ["17", "17.0", "合計", "總計"]: return "合計"
-    nums = re.findall(r'\d+', s)
-    if not nums: return s
-    if len(nums) == 1 and int(nums[0]) <= 15:
-        m = {1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張", 6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張", 11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"}
-        return m.get(int(nums[0]), s)
-    up = int(nums[-1])
-    if up <= 999: return "1-999股"
-    elif up <= 5000: return "1-5張"
-    elif up <= 10000: return "5-10張"
-    elif up <= 15000: return "10-15張"
-    elif up <= 20000: return "15-20張"
-    elif up <= 30000: return "20-30張"
-    elif up <= 40000: return "30-40張"
-    elif up <= 50000: return "40-50張"
-    elif up <= 100000: return "50-100張"
-    elif up <= 200000: return "100-200張"
-    elif up <= 400000: return "200-400張"
-    elif up <= 600000: return "400-600張"
-    elif up <= 800000: return "600-800張"
-    elif up <= 1000000: return "800-1000張" 
-    else: return "1000張以上" 
-
-def process_tdcc(df):
-    if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')].copy()
-    df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
-    df['unit'] = (pd.to_numeric(df.get('unit', 0).astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0) / 1000).round().astype(int)
-    df['people'] = pd.to_numeric(df['people'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0).astype(int)
-    
-    dates = sorted(df['date'].unique(), reverse=True)[:15]
-    df = df[df['date'].isin(dates)]
-    df_levels = df[~df['LevelClean'].str.contains('合計|總計')]
-    if df_levels.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
-    p_u = df_levels.pivot_table(index='date', columns='LevelClean', values='unit', aggfunc='sum').reset_index().fillna(0)
-    p_p = df_levels.pivot_table(index='date', columns='LevelClean', values='people', aggfunc='sum').reset_index().fillna(0)
-    
-    lvls = ['1-999股', '1-5張', '5-10張', '10-15張', '15-20張', '20-30張', '30-40張', '40-50張', '50-100張', '100-200張', '200-400張', '400-600張', '600-800張', '800-1000張', '1000張以上']
-    for l in lvls:
-        if l not in p_u.columns: p_u[l] = 0
-        if l not in p_p.columns: p_p[l] = 0
-
-    df_t = pd.DataFrame({'date': p_u['date']})
-    df_t['總張數'] = p_u[lvls].sum(axis=1)
-    df_t['總人數(人)'] = p_p[lvls].sum(axis=1)
-    
-    df_w = df_t.copy()
-    for l in lvls:
-        df_w[f"{l}_張數"] = p_u[l]
-        df_w[f"{l}_人數"] = p_p[l]
-        df_w[f"{l}_比例(%)"] = (p_u[l] / df_t['總張數'] * 100).fillna(0).round(2)
-        
-    df_w = df_w.rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
-    df_unit = pd.merge(df_t[['date', '總張數']], p_u[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
-    df_ppl = pd.merge(df_t[['date', '總人數(人)']], p_p[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
-    return df_w, df_unit, df_ppl
-
-def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
-    if df_share_wide.empty or df_price.empty: return pd.DataFrame()
-    df_s, df_p = df_share_wide.copy(), df_price.copy()
-    df_s['dt'], df_p['dt'] = pd.to_datetime(df_s['日期']), pd.to_datetime(df_p['日期'])
-    df_m = pd.merge_asof(df_s.sort_values('dt'), df_p.sort_values('dt')[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
-    
-    out = []
-    for _, row in df_m.iterrows():
-        p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p == 0: continue
-        cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
-        cap = row.get('總張數', 0) / 10000
-        ct = get_smart_threshold(p, cap, cur_dead)
-        
-        lvls = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        if ct > 100: lvls = lvls[1:]
-        if ct > 200: lvls = lvls[1:]
-        if ct > 400: lvls = lvls[1:]
-        if ct > 600: lvls = lvls[1:]
-        if ct > 800: lvls = lvls[1:]
-
-        lp = sum([pd.to_numeric(row.get(c, 0), errors='coerce') for c in lvls])
-        cd, st = "-", "無死籌碼數據"
-        if 0 < cur_dead < 100:
-            cv = max(0, (lp - cur_dead) / (100.0 - cur_dead))
-            st = "🔴 絕對控盤" if cv >= 0.5 else "🟡 高度鎖碼" if cv >= 0.3 else "🔵 初步集結" if cv >= 0.15 else "⚪ 籌碼渙散"
-            cd = round(cv * 100, 2)
-        out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st})
-    return pd.DataFrame(out)
-
-# ⚠️ 防斷行處理完成
 def process_day_trading(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy().rename(columns={
@@ -900,7 +794,6 @@ def process_day_trading(df):
             v_num = pd.to_numeric(df_out[col].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
             df_out[col.replace('股數', '張數')] = (v_num / 1000).round().astype(int)
             df_out = df_out.drop(columns=[col])
-    
     cols = ['日期'] + [c for c in df_out.columns if '張數' in c or '率' in c]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
@@ -1034,7 +927,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V32.1 防截斷與圖表引擎..."):
+    with st.spinner(f"正在啟動 V33.1 圖表修復運算引擎..."):
         name = get_stock_name(user_stock_id)
         if not name:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
@@ -1104,7 +997,7 @@ if run_btn:
         # ==========================================
         # ⚠️ 頁面呈現
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V32.1 雙劍合璧版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V33.1 圖表修復版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
@@ -1127,14 +1020,13 @@ if run_btn:
         show_table("02. 專家診斷雷達 (週末除水版)", df_v27_radar.head(8), "radar-table")
         show_table("03. 雙軸活大戶鎖碼判定表 (C-Value)", df_s_dyn.head(8))
         show_table("04. 收盤價量 (近10天)", df_price.head(10))
+        show_table("04-1. 技術分析指標 (近10天)", df_ta.head(10))
         
-        # ⚠️ 【輸出技術分析與互動式 K 線圖】
-        if not df_ta.empty:
-            show_table("04-1. 技術分析指標 (近10天)", df_ta.head(10))
-            st.markdown("<div class='section-title'>📈 04-2. 互動式 K 線與技術指標圖 (近60日)</div>", unsafe_allow_html=True)
-            fig_kline = plot_interactive_kline(df_price, df_ta)
-            if fig_kline:
-                st.plotly_chart(fig_kline, use_container_width=True)
+        # ⚠️ 【互動式 K 線與技術指標圖】
+        st.markdown("<div class='section-title'>📈 04-2. 互動式 K 線與技術指標圖 (近60日)</div>", unsafe_allow_html=True)
+        fig_kline = plot_interactive_kline(df_price, df_ta)
+        if fig_kline:
+            st.plotly_chart(fig_kline, use_container_width=True)
 
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
         show_table("05. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
@@ -1172,7 +1064,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V32.1 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V33.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1196,7 +1088,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V32.1 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V33.1 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
