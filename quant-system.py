@@ -838,20 +838,18 @@ if run_btn:
         st.markdown("<div class='category-title'>📈 00. 職業極簡技術大局觀</div>", unsafe_allow_html=True)
         if not df_ta_display.empty:
             show_table("00-1. 技術分析指標 (近10天)", df_ta_display.head(10))
+            st.markdown("<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (近180日)</div>", unsafe_allow_html=True)
             
-            # 📌 內嵌畫圖引擎 - 終極設定: 支援手機雙指縮放與拖曳，並加入天數調整拉桿
+            # 📌 內嵌畫圖引擎 - 終極設定: hoverinfo='none' 確保有感應但沒框框
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
-            
-            kline_days = st.slider("🔍 縮放太麻煩？直接拖曳這裡調整 K 線顯示天數：", min_value=30, max_value=240, value=180, step=30)
-            st.markdown(f"<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (近 {kline_days} 日)</div>", unsafe_allow_html=True)
-            
-            df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(kline_days).copy()
-            df_t_plot = df_ta_full[['日期', 'MA10', 'MA60(季線)', 'MA240(年線)']].head(kline_days).copy()
+            df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(180).copy()
+            df_t_plot = df_ta_full[['日期', 'MA10', 'MA60(季線)', 'MA240(年線)']].head(180).copy()
             df_plot = pd.merge(df_p_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             df_plot['日期'] = df_plot['日期'].astype(str)
             fig_kline = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
             
+            # ⚠️ 全部加上 hoverinfo='none', hovertemplate=''
             fig_kline.add_trace(go.Candlestick(x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], name='K線', increasing_line_color='#ef5350', decreasing_line_color='#26a69a'), row=1, col=1)
             fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['MA10'], mode='lines', name='MA10', line=dict(color='#ffa726', width=1.5)), row=1, col=1)
             fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['MA60(季線)'], mode='lines', name='MA60', line=dict(color='#29b6f6', width=2)), row=1, col=1)
@@ -859,13 +857,12 @@ if run_btn:
             colors = ['#ef5350' if row['收盤價(元)'] >= row['開盤價(元)'] else '#26a69a' for i, row in df_plot.iterrows()]
             fig_kline.add_trace(go.Bar(x=df_plot['日期'], y=df_plot['成交量(張)'], marker_color=colors, name='成交量'), row=2, col=1)
             
-            fig_kline.update_traces(hoverinfo='none', hovertemplate='') 
+            fig_kline.update_traces(hoverinfo='none', hovertemplate='') # 強制全圖層隱藏框框，但保留感應
             
-            fig_kline.update_layout(height=600, margin=dict(l=30, r=30, t=20, b=30), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', showlegend=True, legend=dict(orientation="h", yanchor="top", y=1.02, xanchor="left", x=0.01), hovermode='x', dragmode='pan')
+            fig_kline.update_layout(height=600, margin=dict(l=30, r=30, t=20, b=30), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', showlegend=True, legend=dict(orientation="h", yanchor="top", y=1.02, xanchor="left", x=0.01), hovermode='x')
             fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
             fig_kline.update_yaxes(showgrid=False, zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
-            
-            st.plotly_chart(fig_kline, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': False})
+            st.plotly_chart(fig_kline, use_container_width=True)
 
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
         show_table("01. 平日戰情追蹤矩陣 (結合大戶買均價與落差)", df_daily_tracker, "daily-tracker")
