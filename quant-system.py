@@ -1,8 +1,9 @@
 import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concurrent.futures, urllib.request, ssl, urllib3
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-st.set_page_config(page_title="V40.0 終極全息量化系統 (動態主控版)", layout="wide")
 
+# ⚠️ V40.1 新增：initial_sidebar_state="expanded" 讓側邊欄預設開啟，且可手動隱藏
+st.set_page_config(page_title="V40.1 終極全息量化系統 (動態景深版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""
@@ -25,12 +26,13 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🎛️ 左側戰術參數控制面板 (V40.0 新增)
+# 🎛️ 左側戰術參數控制面板 (可隱藏)
 # ==========================================
 st.sidebar.header("🎛️ 戰術參數控制面板")
-st.sidebar.caption("隨時微調參數，右側全息圖表將瞬間重新運算。")
-lookback_days = st.sidebar.selectbox("長線籌碼回溯天數", [20, 60, 90, 120], index=1, help="計算大局觀與主力黏著度的基底天數。預設60天(約一季)。")
-stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0, help="決定分點必須出現幾天才算「潛伏造市者」。越高越嚴格。")
+st.sidebar.caption("調整完畢後，可點擊上方 [X] 將面板收起隱藏。")
+kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 180, 10, help="決定 00-2 區塊 K 線圖要顯示過去幾天的資料。")
+lookback_days = st.sidebar.selectbox("長線籌碼回溯天數", [20, 60, 90, 120], index=1, help="計算大局觀與主力黏著度的基底天數。預設60天。")
+stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0, help="決定分點必須出現幾天才算「潛伏造市者」。")
 footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 20, 10, 1, help="控制主力足跡矩陣橫向展開的天數。")
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1, help="判定大戶是否處於「集中吃貨」狀態的倍數基準。")
 st.sidebar.divider()
@@ -39,21 +41,21 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V40.0 終極全息量化系統 (動態主控版)")
-st.caption("終極解放：導入左側動態參數儀表板，打破魔法數字限制，完全依據股性自訂偵測標準。")
+st.title("📱 V40.1 終極全息量化系統 (動態景深版)")
+st.caption("視野全開：K 線天數無縫縮放，左側參數儀表板支援自由收合隱藏。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V40.0 動態運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V40.1 動態運算引擎", use_container_width=True)
 
-with st.expander("📖 【V40.0 實戰字典：自訂戰術參數全解析】", expanded=False):
+with st.expander("📖 【V40.1 實戰字典：自訂戰術參數全解析】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
-    <h4 style="color:#e03131; margin-top:0;">壹、參數微調戰術</h4>
+    <h4 style="color:#e03131; margin-top:0;">壹、參數微調與版面控制</h4>
     <ul>
-        <li><b>抓長線大妖股</b>：把回溯天數拉到 120天，黏著度設為 60%。過濾出的絕對是死忠護盤公司派。</li>
-        <li><b>抓短線爆發股</b>：把回溯天數縮短為 20天，黏著度降為 20%，火力倍數拉高至 3.0。專抓近期突然瘋狂掃貨的大戶。</li>
+        <li><b>收起面板</b>：設定好參數後，點擊左側面板邊緣的箭頭即可隱藏，讓出全螢幕看盤視野。</li>
+        <li><b>K線景深</b>：從 30 天極短線到 600 天長線大底，自由縮放 K 線圖表天數。</li>
     </ul>
     <h4 style="color:#e03131;">貳、動態防線與足跡矩陣</h4>
     <ul>
@@ -269,7 +271,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心運算引擎 (V40.0 動態參數接收)
+# 📌 核心運算引擎 (V40.1 動態參數接收)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -316,7 +318,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh):
         
         tag = "🔵 一般"
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [官股]"
-        elif stickiness >= stick_thresh: # ⚠️ 使用動態黏著度門檻
+        elif stickiness >= stick_thresh:
             if dr > 0.70: tag = "🥷 [潛伏造市者]"
             else: tag = "👑 [長駐波段主]"
         elif dr > 0.80:
@@ -831,7 +833,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V40.0 動態戰術引擎..."):
+    with st.spinner(f"正在啟動 V40.1 動態戰術引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -839,7 +841,6 @@ if run_btn:
         if df_p_raw.empty: st.error("⚠️ 查無歷史股價資料。"); st.stop()
         
         dates = sorted(df_p_raw['date'].unique().tolist(), reverse=True)
-        # ⚠️ 依據控制台設定抓取回溯天數
         max_len = lookback_days if len(dates) >= lookback_days else len(dates)
         d_end = dates[max_len-1]
         
@@ -871,7 +872,6 @@ if run_btn:
             df_rev['月營收(百萬元)'] = (pd.to_numeric(df_rev['月營收(百萬元)'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)/1000000).round().astype(int)
             df_rev = df_rev.sort_values('營收月份', ascending=False)
 
-        # ⚠️ 依據側邊欄參數，產生自訂天數的主力足跡矩陣
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         df_footprint = process_footprint(df_b_raw, dates[:actual_foot_days], tags)
 
@@ -919,7 +919,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.0 動態主控版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.1 動態景深版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -936,12 +936,12 @@ if run_btn:
         st.markdown("<div class='category-title'>📈 00. 職業極簡技術大局觀</div>", unsafe_allow_html=True)
         if not df_ta_display.empty:
             show_table("00-1. 技術分析指標 (近10天)", df_ta_display.head(10))
-            st.markdown(f"<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (自訂180日)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (近 {kline_days} 日)</div>", unsafe_allow_html=True)
             
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
-            df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(180).copy()
-            df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(180).copy()
+            df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(kline_days).copy()
+            df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_p_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             df_plot['日期'] = df_plot['日期'].astype(str)
             fig_kline = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
@@ -999,7 +999,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V40.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V40.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1026,7 +1026,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V40.0 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V40.1 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
