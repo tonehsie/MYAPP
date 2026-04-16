@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V42.1 終極全息量化系統 (多空足跡版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V42.2 終極全息量化系統 (影子動態版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""
@@ -33,6 +33,8 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 180, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 20, 10, 1)
+# ⚠️ V42.2 新增：可動態調整足跡矩陣的顯示筆數
+footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
 st.sidebar.subheader("技術均線自訂")
@@ -40,15 +42,15 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V42.1 終極全息量化系統 (多空足跡版)")
-st.caption("戰術升級：足跡矩陣拆解為「多單前15大」與「空單前15大」，精準鎖定兩軍主將。")
+st.title("📱 V42.2 終極全息量化系統 (影子動態版)")
+st.caption("戰略更新：正式將官股監測更名為「影子官股」，並全面解放足跡矩陣顯示筆數限制，破解化整為零戰術。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V42.1 終極運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V42.2 防呆運算引擎", use_container_width=True)
 
-with st.expander("📖 【V42.1 實戰字典：自訂戰術與可轉債解析】", expanded=False):
+with st.expander("📖 【V42.2 實戰字典：自訂戰術與可轉債解析】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <h4 style="color:#e03131; margin-top:0;">壹、可轉債 (CB) 未償還比例戰術 (看表 23)</h4>
@@ -60,7 +62,7 @@ with st.expander("📖 【V42.1 實戰字典：自訂戰術與可轉債解析】
     <h4 style="color:#e03131;">貳、足跡與防線</h4>
     <ul>
         <li><b>🏆 潛伏主力防守線</b>：系統加權算出的主力量化底線。跌破且主力轉賣則嚴格停損。</li>
-        <li><b>🐾 雙軌足跡陣列</b>：拆分多空兩軍，追蹤大戶近期是天天 <code>+</code> (真建倉)，還是連續 <code>-</code> (溫水煮青蛙)。</li>
+        <li><b>🐾 十日足跡陣列</b>：追蹤大戶近期是天天 <code>+</code> (真建倉)，還是 <code>+</code> <code>-</code> 交替 (假當沖/游擊客)。</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -337,8 +339,8 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh):
             d_rows.append({"分點名稱": trader, "最終標籤": tag, "黏著度(%)": round(stickiness, 1), "囤貨率(%)": round(hoard_ratio, 1), "活躍天數": active_days, "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(net), "買均價": b_str, "賣均價": round(avg_s, 2), "當沖率(%)": round(dr*100, 1), "均價強度(%)": round(strn*100, 2), "收盤位階": round(pos, 2)})
     return tags, pd.DataFrame(d_rows).sort_values('總買(張)', ascending=False)
 
-# ⚠️ V42.1 拆分多空雙軌足跡
-def process_footprint(df_raw, dynamic_dates, intel_tags):
+# ⚠️ V42.2 更新：引入自訂筆數參數 top_n
+def process_footprint(df_raw, dynamic_dates, intel_tags, top_n):
     if df_raw.empty or not dynamic_dates: return pd.DataFrame(), pd.DataFrame()
     df = df_raw[df_raw['date'].isin(dynamic_dates)].copy()
     if df.empty: return pd.DataFrame(), pd.DataFrame()
@@ -350,9 +352,9 @@ def process_footprint(df_raw, dynamic_dates, intel_tags):
     p = g.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     p['total'] = p.sum(axis=1)
     
-    # 將多單與空單各取前15名
-    top_b = p[p['total'] > 0].nlargest(15, 'total').reset_index()
-    top_s = p[p['total'] < 0].nsmallest(15, 'total').reset_index()
+    # 根據 UI 滑桿動態抓取前 N 名
+    top_b = p[p['total'] > 0].nlargest(top_n, 'total').reset_index()
+    top_s = p[p['total'] < 0].nsmallest(top_n, 'total').reset_index()
     
     def build_df(res_df):
         out = []
@@ -585,7 +587,7 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
             
         if "溢價率(%)" not in df_out.columns or df_out["溢價率(%)"].isna().all():
             if "CB收盤價" in df_out.columns and "轉換價值" in df_out.columns:
-                df_out["轉換價值"] = df_out["轉換價值"].replace(0, np.nan)
+                df_out["轉換價值"] = df_out["轉換價值"].replace(0, np.nan) 
                 df_out["溢價率(%)"] = ((df_out["CB收盤價"] - df_out["轉換價值"]) / df_out["轉換價值"] * 100).round(2)
             else:
                 df_out["溢價率(%)"] = "-"
@@ -906,7 +908,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V42.1 多空足跡引擎 (沙盒防護已啟用)..."):
+    with st.spinner(f"正在啟動 V42.2 影子動態運算引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -948,8 +950,7 @@ if run_btn:
             df_rev = df_rev.sort_values('營收月份', ascending=False)
 
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
-        # ⚠️ V42.1 雙軌接收多單與空單
-        df_footprint_buy, df_footprint_sell = process_footprint(df_b_raw, dates[:actual_foot_days], tags)
+        df_footprint_buy, df_footprint_sell = process_footprint(df_b_raw, dates[:actual_foot_days], tags, footprint_rows)
 
         df_b_today = process_branch_v25(df_b_raw, 1, dates, tags, df_p_raw, stickiness_threshold)
         df_b_prev1 = process_branch_v25(df_b_raw, 1, dates[1:], tags, df_p_raw, stickiness_threshold)
@@ -1003,7 +1004,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V42.1 多空足跡版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V42.2 影子動態版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1052,9 +1053,8 @@ if run_btn:
         show_table("04. 收盤價量 (近10天)", df_price.head(10))
 
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
-        # ⚠️ V42.1 雙軌呈現多單與空單
-        show_table(f"05-1A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前15大)", df_footprint_buy)
-        show_table(f"05-1B. 近 {actual_foot_days} 日主力足跡動態矩陣 (空單前15大)", df_footprint_sell)
+        show_table(f"05-1A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前{footprint_rows}大)", df_footprint_buy)
+        show_table(f"05-1B. 近 {actual_foot_days} 日主力足跡動態矩陣 (空單前{footprint_rows}大)", df_footprint_sell)
         
         show_table(f"05-2. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
         show_table(f"06. 主力分點 - 今日 ({dates[0]})", df_b_today)
@@ -1071,7 +1071,7 @@ if run_btn:
         show_table("08. 法人買賣超 (近10天)", df_inst)
         show_table("09. 散戶資券餘額 (近10天)", df_margin)
         show_table("10. 現股當沖明細 (近10天)", df_day_trade)
-        show_table("11. 八大官股進出 (今日)", df_gov)
+        show_table("11. 影子官股進出 (今日)", df_gov)
         show_table("12. 買賣家數差明細 (結合火力倍數)", df_b_diff)
         show_table("13. 台指期貨三大法人未平倉 (大盤)", df_fut)
 
@@ -1090,7 +1090,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V42.1 極簡戰報資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V42.2 極簡戰報資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1098,15 +1098,13 @@ if run_btn:
             
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_v27_radar.head(4), "02. 專家診斷雷達 (近4週)")
-            
-            # ⚠️ V42.1 CSV 輸出對齊多空雙表
-            p1 += format_to_csv_string(df_footprint_buy, f"05-1A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前15大)")
-            p1 += format_to_csv_string(df_footprint_sell, f"05-1B. 近 {actual_foot_days} 日主力足跡動態矩陣 (空單前15大)")
-            
+            p1 += format_to_csv_string(df_footprint_buy, f"05-1A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前{footprint_rows}大)")
+            p1 += format_to_csv_string(df_footprint_sell, f"05-1B. 近 {actual_foot_days} 日主力足跡動態矩陣 (空單前{footprint_rows}大)")
             p1 += format_to_csv_string(df_b_today, f"06. 主力分點 - 今日 ({dates[0]})")
             p1 += format_to_csv_string(df_inst.head(10), "08. 法人買賣超 (近10天)")
             p1 += format_to_csv_string(df_margin.head(10), "09. 散戶資券餘額 (近10天)")
             p1 += format_to_csv_string(df_day_trade.head(10), "10. 現股當沖明細 (近10天)")
+            if not df_gov.empty: p1 += format_to_csv_string(df_gov, "11. 影子官股進出 (今日)")
             p1 += format_to_csv_string(df_b_diff.head(10), "12. 買賣家數差明細 (近10天)")
             if not df_fut.empty: p1 += format_to_csv_string(df_fut.head(10), "13. 台指期貨三大法人未平倉 (大盤)")
             p1 += format_to_csv_string(df_s_unit.head(4) if not df_s_unit.empty else df_s_unit, "14. 集保分級 - 張數表 (近4週)")
@@ -1120,7 +1118,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V42.1 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V42.2 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
