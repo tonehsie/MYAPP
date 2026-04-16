@@ -1,7 +1,7 @@
 import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concurrent.futures, urllib.request, ssl, urllib3
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-st.set_page_config(page_title="V39.0 終極全息量化系統 (足跡追蹤版)", layout="wide")
+st.set_page_config(page_title="V39.1 終極全息量化系統 (穩定足跡版)", layout="wide")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
@@ -24,15 +24,15 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📱 V39.0 終極全息量化系統 (足跡追蹤版)")
-st.caption("終極升級：導入「10日足跡動態矩陣」，將主力籌碼從二維總量進化為三維時間軌跡。")
+st.title("📱 V39.1 終極全息量化系統 (穩定足跡版)")
+st.caption("系統修復：解決舊版 Python 核心 f-string 反斜線解析錯誤，確保全線順暢執行。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V39.0 終極三維運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V39.1 終極三維運算引擎", use_container_width=True)
 
-with st.expander("📖 【V39.0 實戰字典：破解主力的最高機密】", expanded=False):
+with st.expander("📖 【V39.1 實戰字典：破解主力的最高機密】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
     <h4 style="color:#e03131; margin-top:0;">壹、主力足跡破解法 (看表 05-1)</h4>
@@ -255,7 +255,7 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     return pd.DataFrame(s_rows), df_all
 
 # ==========================================
-# 📌 核心運算引擎 (V38.0 + V39.0 足跡)
+# 📌 核心運算引擎 (防斷線版)
 # ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -321,7 +321,6 @@ def get_v27_intelligence(df_b_raw, df_p_raw):
             d_rows.append({"分點名稱": trader, "最終標籤": tag, "黏著度(%)": round(stickiness, 1), "囤貨率(%)": round(hoard_ratio, 1), "活躍天數": active_days, "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(net), "買均價": b_str, "賣均價": round(avg_s, 2), "當沖率(%)": round(dr*100, 1), "均價強度(%)": round(strn*100, 2), "收盤位階": round(pos, 2)})
     return tags, pd.DataFrame(d_rows).sort_values('總買(張)', ascending=False)
 
-# ⚠️ V39.0 新增：10日足跡矩陣
 def process_10d_footprint(df_raw, dates_10, intel_tags):
     if df_raw.empty or not dates_10: return pd.DataFrame()
     df = df_raw[df_raw['date'].isin(dates_10)].copy()
@@ -333,7 +332,6 @@ def process_10d_footprint(df_raw, dates_10, intel_tags):
     p = g.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     p['total'] = p.sum(axis=1)
     
-    # 取前 15 大買與前 5 大賣
     top_b = p[p['total'] > 0].nlargest(15, 'total')
     top_s = p[p['total'] < 0].nsmallest(5, 'total')
     res = pd.concat([top_b, top_s]).reset_index()
@@ -589,7 +587,7 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff):
     return alerts
 
 # ==========================================
-# 📌 基礎資料與排版模組
+# 📌 基礎資料與排版模組 (V39.1 無反斜線修復版)
 # ==========================================
 def process_price(df):
     if df.empty: return pd.DataFrame()
@@ -773,6 +771,7 @@ def process_cbas(df):
     cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "轉換價(元)", "標的股價(元)", "未償還餘額", "票面利率(%)"] if c in df_out.columns]
     return df_out[cols]
 
+# ⚠️ V39.1 無反斜線修復版
 def show_table(title, df, custom_class=""):
     st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
     if df is None or df.empty: 
@@ -782,15 +781,22 @@ def show_table(title, df, custom_class=""):
             if pd.isna(x): return "-"
             s = str(x).strip()
             if s in ["-", ""]: return "-"
-            # 特別處理 10日足跡表中的加號
             if s.startswith("+"): return f"<span style='color:#d9480f; font-weight:bold;'>{s}</span>"
             if "⚠️(虧)" in s:
                 v_str = s.replace("⚠️(虧)", "").strip()
-                try: return f"<span class='loss-warning'>⚠️(虧) {f'{float(v_str.replace(\",\",\"\").replace(\"%\",\"\")):,.2f}' if '.' in v_str else f'{int(float(v_str.replace(\",\",\"\").replace(\"%\",\"\"))):,}'}</span>"
-                except: return f"<span class='loss-warning'>{s}</span>"
+                try:
+                    c_val = float(v_str.replace(",", "").replace("%", ""))
+                    fmt_v = f"{c_val:,.2f}" if "." in v_str else f"{int(c_val):,}"
+                    return f"<span class='loss-warning'>⚠️(虧) {fmt_v}</span>"
+                except: 
+                    return f"<span class='loss-warning'>{s}</span>"
             is_pct = "%" in s
-            try: return f"{float(s.replace(',','').replace('%','')):,.2f}" + ("%" if is_pct else "") if '.' in s or is_pct else f"{int(float(s.replace(',','').replace('%',''))):,}"
-            except: return str(x)
+            try:
+                c_val = float(s.replace(",", "").replace("%", ""))
+                fmt_v = f"{c_val:,.2f}" if "." in s or is_pct else f"{int(c_val):,}"
+                return f"{fmt_v}%" if is_pct else fmt_v
+            except: 
+                return str(x)
             
         f_dict = {c: fmt_auto for c in df.columns}
         left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '囤貨率(%)', '活躍度', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷'])]
@@ -816,7 +822,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V39.0 全息足跡追蹤引擎..."):
+    with st.spinner(f"正在啟動 V39.1 穩定足跡引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -901,7 +907,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V39.0 足跡追蹤版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V39.1 穩定足跡版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff)
@@ -984,7 +990,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V39.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V39.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1011,7 +1017,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V39.0 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V39.1 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
