@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V40.7 終極全息量化系統 (極簡戰報穩定版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V40.8 終極全息量化系統 (極簡透視版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""
@@ -24,6 +24,9 @@ table.dataframe th:first-child, table.dataframe td:first-child { position: stick
 </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 🎛️ 左側戰術參數控制面板 
+# ==========================================
 st.sidebar.header("🎛️ 戰術參數控制面板")
 st.sidebar.caption("調整完畢後，可點擊上方 [X] 將面板收起隱藏。")
 kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 180, 10)
@@ -37,14 +40,36 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V40.7 終極全息量化系統 (極簡戰報穩定版)")
-st.caption("系統修復：已補回 AI 鷹眼診斷模組，全線流暢貫通。")
+st.title("📱 V40.8 終極全息量化系統 (極簡透視版)")
+st.caption("AI 提問包精準瘦身，並完美對接 FinMind 2026 可轉債最新 API 欄位格式。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V40.7 極簡運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V40.8 終極運算引擎", use_container_width=True)
 
+with st.expander("📖 【V40.8 實戰字典：自訂戰術與可轉債解析】", expanded=False):
+    st.markdown("""
+    <div class='dict-box'>
+    <h4 style="color:#e03131; margin-top:0;">壹、可轉債 (CB) 未償還比例戰術 (看表 23)</h4>
+    <ul>
+        <li><b>💣 核彈級賣壓</b>：轉換價值 > 110 且 未償還比例 > 80%。主力隨時換股砸盤，嚴禁追高現股。</li>
+        <li><b>✅ 安全落地</b>：未償還比例 < 20%。代表籌碼稀釋已近尾聲，若股價守穩季線，反而相對安全。</li>
+        <li><b>🚀 逼空作帳</b>：快到期 且 轉換價值 < 100 且 未償還比例極高。公司為免還錢，極易發動利多拉抬行情。</li>
+    </ul>
+    <h4 style="color:#e03131;">貳、足跡與防線</h4>
+    <ul>
+        <li><b>🏆 潛伏主力防守線</b>：系統加權算出的主力量化底線。跌破且主力轉賣則嚴格停損。</li>
+        <li><b>🐾 十日足跡陣列</b>：追蹤大戶近期是天天 <code>+</code> (真建倉)，還是 <code>+</code> <code>-</code> 交替 (假當沖/游擊客)。</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.divider()
+
+# ==========================================
+# 📌 爬蟲與資料抓取模組
+# ==========================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name(target_id):
     try:
@@ -245,6 +270,9 @@ def scrape_fubon_pledge(df_price_raw, target_id):
     s_rows = [{"身份別": d["title"], "姓名": n, "目前剩餘質設(張)": d["balance"], "最後設質收盤價(元)": d["p"], "估算斷頭價(0.78)": d["mc"]} for n, d in s_map.items() if d["balance"] > 0]
     return pd.DataFrame(s_rows), df_all
 
+# ==========================================
+# 📌 核心運算引擎 
+# ==========================================
 def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
     df_p = df_p_raw.copy()
@@ -520,59 +548,80 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         out.append(r)
     return pd.DataFrame(out)
 
+# ⚠️ V40.8 可轉債終極清洗引擎：精準對接 FinMind 官方欄位，強制清除代號逗號
 def process_cbas(df, current_stock_price, df_cb_info=None):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
     
+    # 根據 FinMind 2026 最新官方文檔精準對齊
     rename_map = {
         "date": "日期", "cb_id": "可轉債代號", "cb_name": "可轉債名稱",
         "conversion_price": "轉換價(元)", "ConversionPrice": "轉換價(元)",
         "underlying_stock_price": "標的股價(元)", "PriceOfUnderlyingStock": "標的股價(元)",
-        "outstanding_amount": "未償還餘額", "OutstandingAmount": "未償還餘額",
-        "outstanding_balance": "未償還餘額", "issue_date": "發行日", "maturity_date": "到期日",
+        "outstanding_amount": "未償還餘額", "OutstandingAmount": "未償還餘額", "outstanding_balance": "未償還餘額",
         "close": "CB收盤價", "closing_price": "CB收盤價",
-        "conversion_premium_rate": "溢價率(%)", "ConversionPremiumRate": "溢價率(%)"
+        "conversion_premium_rate": "溢價率(%)", "premium_rate": "溢價率(%)", "PremiumRate": "溢價率(%)",
+        "theoretical_value": "轉換價值", "TheoreticalValue": "轉換價值"
     }
     df_out = df_out.rename(columns=rename_map)
     
+    # ⚠️ 關鍵修復：強力清洗代號中的逗號 (解決 80,273 找不到發行總額的問題)
     if "可轉債代號" in df_out.columns:
         df_out['可轉債代號'] = df_out['可轉債代號'].astype(str).str.replace(',', '', regex=False).str.replace('.0', '', regex=False).str.strip()
 
-    for c in ["轉換價(元)", "標的股價(元)", "未償還餘額", "CB收盤價", "溢價率(%)"]:
+    # 數值欄位強制清洗轉型
+    for c in ["轉換價(元)", "標的股價(元)", "未償還餘額", "CB收盤價", "溢價率(%)", "轉換價值"]:
         if c in df_out.columns:
             df_out[c] = pd.to_numeric(df_out[c].astype(str).str.replace(',', '').str.strip(), errors='coerce')
             
+    # 補齊標的股價
     if "標的股價(元)" not in df_out.columns or df_out["標的股價(元)"].isna().all():
         df_out["標的股價(元)"] = current_stock_price
         
+    # 精算轉換價值與溢價率
     if "標的股價(元)" in df_out.columns and "轉換價(元)" in df_out.columns:
-        df_out["轉換價值"] = (df_out["標的股價(元)"] / df_out["轉換價(元)"] * 100).round(2)
-        if "溢價率(%)" not in df_out.columns:
-            if "CB收盤價" in df_out.columns:
+        if "轉換價值" not in df_out.columns or df_out["轉換價值"].isna().all():
+            df_out["轉換價值"] = (df_out["標的股價(元)"] / df_out["轉換價(元)"] * 100).round(2)
+            
+        if "溢價率(%)" not in df_out.columns or df_out["溢價率(%)"].isna().all():
+            if "CB收盤價" in df_out.columns and "轉換價值" in df_out.columns:
                 df_out["溢價率(%)"] = ((df_out["CB收盤價"] - df_out["轉換價值"]) / df_out["轉換價值"] * 100).round(2)
             else:
                 df_out["溢價率(%)"] = "-"
                 
+    # ⚠️ 合併 Info 表，撈取原始發行總額 (IssuanceAmount) 並計算比例
     if df_cb_info is not None and not df_cb_info.empty and "未償還餘額" in df_out.columns:
         info_rename = {
             "stock_id": "可轉債代號", "bond_id": "可轉債代號", "cb_id": "可轉債代號",
-            "issue_amount": "發行總額", "IssueAmount": "發行總額"
+            "issue_amount": "發行總額", "IssueAmount": "發行總額", "IssuanceAmount": "發行總額",
+            "DueDateOfConversion": "到期日", "maturity_date": "到期日"
         }
         df_cb_info_clean = df_cb_info.rename(columns=info_rename)
         
-        if "可轉債代號" in df_cb_info_clean.columns and "發行總額" in df_cb_info_clean.columns:
+        if "可轉債代號" in df_cb_info_clean.columns:
             df_cb_info_clean['可轉債代號'] = df_cb_info_clean['可轉債代號'].astype(str).str.replace(',', '', regex=False).str.replace('.0', '', regex=False).str.strip()
-            df_cb_info_clean = df_cb_info_clean[['可轉債代號', '發行總額']].drop_duplicates('可轉債代號')
             
-            df_out = pd.merge(df_out, df_cb_info_clean, on='可轉債代號', how='left')
-            df_out["發行總額"] = pd.to_numeric(df_out["發行總額"].astype(str).str.replace(',', '').str.strip(), errors='coerce')
-            df_out["未償還比例(%)"] = (df_out["未償還餘額"] / df_out["發行總額"] * 100).round(2)
+            # 動態組裝要合併的欄位
+            cols_to_merge = ['可轉債代號']
+            if "發行總額" in df_cb_info_clean.columns: cols_to_merge.append("發行總額")
+            if "到期日" in df_cb_info_clean.columns: cols_to_merge.append("到期日")
+            
+            df_cb_info_sub = df_cb_info_clean[cols_to_merge].drop_duplicates('可轉債代號')
+            df_out = pd.merge(df_out, df_cb_info_sub, on='可轉債代號', how='left')
+            
+            if "發行總額" in df_out.columns:
+                df_out["發行總額"] = pd.to_numeric(df_out["發行總額"].astype(str).str.replace(',', '').str.strip(), errors='coerce')
+                df_out["未償還比例(%)"] = (df_out["未償還餘額"] / df_out["發行總額"] * 100).round(2)
+            else:
+                df_out["未償還比例(%)"] = "缺發行總額"
         else:
-            df_out["未償還比例(%)"] = "需原始發行總額"
+            df_out["未償還比例(%)"] = "缺代號"
     else:
         df_out["未償還比例(%)"] = "需原始發行總額"
                 
-    cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "發行日", "到期日"] if c in df_out.columns]
+    # 輸出整理好的欄位
+    display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
+    cols = [c for c in display_cols if c in df_out.columns]
     return df_out[cols]
 
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
@@ -860,7 +909,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V40.7 終極穩定引擎..."):
+    with st.spinner(f"正在啟動 V40.8 極簡透視引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -918,8 +967,9 @@ if run_btn:
         df_per = process_per(fetch_fm("TaiwanStockPER", d_end, user_stock_id))
         df_disp = process_disp(fetch_fm("TaiwanStockDispositionSecuritiesPeriod", (datetime.date.today()-datetime.timedelta(days=180)).strftime("%Y-%m-%d"), user_stock_id))
         
+        # ⚠️ V40.8 可轉債終極套利雷達
         df_cbas_raw = fetch_fm("TaiwanStockConvertibleBondDailyOverview", dates[0])
-        df_cb_info = fetch_fm("TaiwanStockConvertibleBondInfo", "2000-01-01")
+        df_cb_info = fetch_fm("TaiwanStockConvertibleBondInfo", "2000-01-01") 
         curr_stock_p = df_price['收盤價(元)'].iloc[0] if not df_price.empty else 0
         df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)], curr_stock_p, df_cb_info) if not df_cbas_raw.empty else pd.DataFrame()
 
@@ -949,10 +999,9 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.7 極簡戰報穩定版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.8 極簡透視版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
-        # ⚠️ 補回的 AI 鷹眼引擎！
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
         hawk_html_display = "<div class='hawk-eye-box'>"
         hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
@@ -998,7 +1047,7 @@ if run_btn:
         show_table(f"05-1. 近 {actual_foot_days} 日主力足跡動態矩陣 (看穿連續作案軌跡)", df_footprint)
         show_table(f"05-2. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
         show_table(f"06. 主力分點 - 今日 ({dates[0]})", df_b_today)
-        show_table(f"07. 主力分點 - 近{max_len}日總和", df_b_60)
+        show_table(f"07. 主力分點 - 近 {max_len} 日總和", df_b_60)
         
         with st.expander("📂 點此展開過渡期分點 (前一日、近3日~近30日)", expanded=False):
             show_table(f"07-1. 主力分點 - 前一日 ({dates[1] if len(dates)>1 else '無'})", df_b_prev1)
@@ -1030,11 +1079,13 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V40.7 極簡戰報資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V40.8 極簡戰報資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
             p1 += f"【潛伏主力防線】: {defense_line}\n\n"
+            
+            # ⚠️ V40.8 精準瘦身：剔除了 00-1, 03, 04, 05-2, 07, 11, 20, 00-2 
             p1 += format_to_csv_string(df_daily_tracker, "01. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_v27_radar.head(4), "02. 專家診斷雷達 (近4週)")
             p1 += format_to_csv_string(df_footprint, f"05-1. 近 {actual_foot_days} 日主力足跡動態矩陣")
@@ -1051,14 +1102,8 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V40.7 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V40.8 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
-            p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
-            df_audit_fire = df_b_raw[df_b_raw['date'] == dates[0]].copy()
-            df_audit_fire['buy'] = pd.to_numeric(df_audit_fire['buy'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-            df_audit_fire['sell'] = pd.to_numeric(df_audit_fire['sell'].astype(str).str.replace(',', '').str.strip(), errors='coerce').fillna(0)
-            df_audit_fire = df_audit_fire.rename(columns={'securities_trader': '分點', 'buy': '買進(股)', 'sell': '賣出(股)', 'price': '成交價'})
-            p2 += format_to_csv_string(df_audit_fire[['分點', '買進(股)', '賣出(股)', '成交價']], f"稽核D：今日({dates[0]})全台分點進出原始表 (用以驗算活躍家數與火力倍數)")
             st.code(p2, language="text")
