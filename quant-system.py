@@ -2,7 +2,8 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V40.2 終極全息量化系統 (CB套利雷達版)", layout="wide", initial_sidebar_state="expanded")
+# ⚠️ V40.3 設定
+st.set_page_config(page_title="V40.3 終極全息量化系統 (CB透視版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""
@@ -40,21 +41,22 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V40.2 終極全息量化系統 (CB套利雷達版)")
-st.caption("衍生性商品升級：導入可轉債「轉換價值」與「溢價率」精算引擎，洞悉潛在套利賣壓與作帳拉抬行情。")
+st.title("📱 V40.3 終極全息量化系統 (CB透視版)")
+st.caption("衍生性商品升級：導入可轉債「未償還比例」精算引擎，一眼看穿潛在砸盤賣壓。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027", placeholder="請輸入台股代號 (例: 2330)")
 with col2: dead_chip_input = st.text_input("死籌碼 %", placeholder="自動抓取董監事持股，也可自行輸入")
-run_btn = st.button("🚀 啟動 V40.2 動態運算引擎", use_container_width=True)
+run_btn = st.button("🚀 啟動 V40.3 透視運算引擎", use_container_width=True)
 
-with st.expander("📖 【V40.2 實戰字典：自訂戰術與可轉債解析】", expanded=False):
+with st.expander("📖 【V40.3 實戰字典：自訂戰術與可轉債解析】", expanded=False):
     st.markdown("""
     <div class='dict-box'>
-    <h4 style="color:#e03131; margin-top:0;">壹、可轉債 (CB) 破解戰術 (看表 23)</h4>
+    <h4 style="color:#e03131; margin-top:0;">壹、可轉債 (CB) 未償還比例戰術 (看表 23)</h4>
     <ul>
-        <li><b>🔥 拉抬作帳</b>：CB 快到期，且標的股價遠低於轉換價。公司為避免還錢，極可能發布利多拉抬股價。</li>
-        <li><b>⚠️ 套利砸盤賣壓</b>：轉換價值超過 100，且溢價率接近 0% 甚至負數。法人會買 CB 換現股拋售，即將迎來大跌。</li>
+        <li><b>💣 核彈級賣壓</b>：轉換價值 > 110 且 未償還比例 > 80%。主力隨時換股砸盤，嚴禁追高現股。</li>
+        <li><b>✅ 安全落地</b>：未償還比例 < 20%。代表籌碼稀釋已近尾聲，若股價守穩季線，反而相對安全。</li>
+        <li><b>🚀 逼空作帳</b>：快到期 且 轉換價值 < 100 且 未償還比例極高。公司為免還錢，極易發動利多拉抬行情。</li>
     </ul>
     <h4 style="color:#e03131;">貳、足跡與防線</h4>
     <ul>
@@ -545,14 +547,11 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         out.append(r)
     return pd.DataFrame(out)
 
-# ==========================================
-# ⚠️ V40.2 可轉債 (CB) 套利雷達升級
-# ==========================================
-def process_cbas(df, current_stock_price):
+# ⚠️ V40.3 可轉債透視引擎：加入未償還比例精算
+def process_cbas(df, current_stock_price, df_cb_info=None):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
     
-    # 統一攔截各種可能的 FinMind 欄位命名
     rename_map = {
         "date": "日期", "cb_id": "可轉債代號", "cb_name": "可轉債名稱",
         "conversion_price": "轉換價(元)", "ConversionPrice": "轉換價(元)",
@@ -568,23 +567,29 @@ def process_cbas(df, current_stock_price):
         if c in df_out.columns:
             df_out[c] = pd.to_numeric(df_out[c].astype(str).str.replace(',', '').str.strip(), errors='coerce')
             
-    # 如果 API 漏給了當天的標的股價，從參數強制補上
     if "標的股價(元)" not in df_out.columns or df_out["標的股價(元)"].isna().all():
         df_out["標的股價(元)"] = current_stock_price
         
-    # 計算套利核心指標：轉換價值
     if "標的股價(元)" in df_out.columns and "轉換價(元)" in df_out.columns:
         df_out["轉換價值"] = (df_out["標的股價(元)"] / df_out["轉換價(元)"] * 100).round(2)
-        
-        # 若 API 沒有算溢價率，我們自己算
         if "溢價率(%)" not in df_out.columns:
             if "CB收盤價" in df_out.columns:
                 df_out["溢價率(%)"] = ((df_out["CB收盤價"] - df_out["轉換價值"]) / df_out["轉換價值"] * 100).round(2)
             else:
                 df_out["溢價率(%)"] = "-"
                 
-    # 確保所有顯示欄位存在
-    cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "發行日", "到期日"] if c in df_out.columns]
+    # ⚠️ V40.3 加入發行總額與比例計算
+    if df_cb_info is not None and not df_cb_info.empty and "未償還餘額" in df_out.columns:
+        df_cb_info_clean = df_cb_info.rename(columns={"stock_id": "可轉債代號", "issue_amount": "發行總額"})
+        df_out = pd.merge(df_out, df_cb_info_clean[['可轉債代號', '發行總額']], on='可轉債代號', how='left')
+        df_out["發行總額"] = pd.to_numeric(df_out["發行總額"].astype(str).str.replace(',', '').str.strip(), errors='coerce')
+        # 算出未償還比例
+        df_out["未償還比例(%)"] = (df_out["未償還餘額"] / df_out["發行總額"] * 100).round(2)
+    else:
+        # 如果 API 沒有給發行總額，我們放個提示欄位
+        df_out["未償還比例(%)"] = "需原始發行總額"
+                
+    cols = [c for c in ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "發行日", "到期日"] if c in df_out.columns]
     return df_out[cols]
 
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
@@ -868,7 +873,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V40.2 可轉債套利運算引擎..."):
+    with st.spinner(f"正在啟動 V40.3 可轉債透視引擎..."):
         name = get_stock_name(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -926,10 +931,11 @@ if run_btn:
         df_per = process_per(fetch_fm("TaiwanStockPER", d_end, user_stock_id))
         df_disp = process_disp(fetch_fm("TaiwanStockDispositionSecuritiesPeriod", (datetime.date.today()-datetime.timedelta(days=180)).strftime("%Y-%m-%d"), user_stock_id))
         
-        # ⚠️ V40.2 可轉債動態套利精算
+        # ⚠️ V40.3 可轉債動態套利精算 (撈取發行總額)
         df_cbas_raw = fetch_fm("TaiwanStockConvertibleBondDailyOverview", dates[0])
+        df_cb_info = fetch_fm("TaiwanStockConvertibleBondInfo", "2000-01-01") # 抓取基本面以取得發行總額
         curr_stock_p = df_price['收盤價(元)'].iloc[0] if not df_price.empty else 0
-        df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)], curr_stock_p) if not df_cbas_raw.empty else pd.DataFrame()
+        df_cbas = process_cbas(df_cbas_raw[df_cbas_raw['cb_id'].astype(str).str.startswith(user_stock_id)], curr_stock_p, df_cb_info) if not df_cbas_raw.empty else pd.DataFrame()
 
         defense_line = "無明顯防守區"
         if not df_debug_tags.empty:
@@ -957,7 +963,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.2 CB套利雷達版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V40.3 CB透視版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1033,13 +1039,13 @@ if run_btn:
         show_table("21. 本益比、淨值比與殖利率", df_per)
         show_table("22. 處置有價證券狀態", df_disp)
         
-        # ⚠️ V40.2 動態可轉債資訊顯示
-        show_table("23. CBAS 可轉債數據 (套利雷達與轉換價值精算)", df_cbas)
+        # ⚠️ V40.3 新增
+        show_table("23. CBAS 可轉債數據 (未償還比例與套利雷達精算)", df_cbas)
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V40.2 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V40.3 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1066,7 +1072,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V40.2 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V40.3 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_tags.head(30), "稽核A：前30大分點指紋數據")
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
