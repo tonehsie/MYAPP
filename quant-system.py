@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V46.2 終極全息量化系統 (效能極速版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V46.3 終極全息量化系統 (尊榮極速版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""<style>
@@ -33,13 +33,13 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V46.2 終極全息量化系統 (效能極速版)")
-st.caption("核心優化：導入向量化運算取代迴圈、建立統一型別轉換引擎，大幅提升執行速度與穩定性。")
+st.title("📱 V46.3 終極全息量化系統 (尊榮極速版)")
+st.caption("🚀 專屬特權：已解鎖 Sponsor 等級 6000次/小時額度，分點籌碼啟用 15 執行緒極速併發。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V46.2 全局運算引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V46.3 全局運算引擎", use_container_width=True, key="run_engine")
 
 # 核心優化：統一字串轉數值的安全轉換引擎
 def safe_to_num(series, fill_val=0):
@@ -76,7 +76,8 @@ def fetch_branch_data_v46(dl, tid):
             if r.status_code == 200: return r.json().get("data", [])
         except: pass
         return []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+    # ⚡ V46.3 極速解封：Sponsor 額度專屬，15 條執行緒併發
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
         for r in ex.map(fs, dl):
             if r: all_d.extend(r)
     return pd.DataFrame(all_d)
@@ -102,6 +103,7 @@ def scrape_block_v46(tid, ad):
                     if tid in str(ro): rl.append([d, "TPEx", ro])
         except: pass
         return rl
+    # ⚠️ 證交所爬蟲保持 max_workers=3，避免被官方防火牆封鎖 IP
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
         for data in ex.map(fd, td):
             if data: bd.extend(data)
@@ -247,7 +249,6 @@ def scrape_fubon_pledge(df_pr, tid):
         else: pdts.append(ds)
     df_all['日期'] = pdts
     
-    # 優化：使用 safe_to_num
     for c in ["設質(張)", "解質(張)", "累積質設(張)"]: 
         df_all[c] = safe_to_num(df_all[c]).astype(int)
         
@@ -286,7 +287,6 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days):
     df = df_b_raw.copy()
     df['date'] = pd.to_datetime(df['date'])
     
-    # 優化：使用 safe_to_num
     df['buy_shares'] = safe_to_num(df['buy'])
     df['sell_shares'] = safe_to_num(df['sell'])
     df['price_val'] = safe_to_num(df['price'])
@@ -329,7 +329,6 @@ def process_footprint(df_raw, dynamic_dates, intel_tags, top_n, global_days):
     df = df_raw[df_raw['date'].isin(dynamic_dates)].copy()
     if df.empty: return pd.DataFrame(), pd.DataFrame()
     
-    # 優化：使用 safe_to_num
     df['buy'] = safe_to_num(df['buy'])
     df['sell'] = safe_to_num(df['sell'])
     
@@ -360,7 +359,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
     if df.empty: return pd.DataFrame()
     
-    # 優化：使用 safe_to_num
     df['buy'] = safe_to_num(df['buy'])
     df['sell'] = safe_to_num(df['sell'])
     df['price'] = safe_to_num(df['price'])
@@ -415,10 +413,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         if not df_f.empty:
             df_f = df_f.copy(); df_f['tag'] = df_f['securities_trader'].map(intel_tags)
             fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)] 
-            
-            # 優化：使用 safe_to_num
             f_vol = round(safe_to_num(fn['buy']).sum() / 1000)
-            
             for _, fr in fn.iterrows():
                 buy_vol = pd.to_numeric(str(fr['buy']).replace(',', '').strip(), errors='coerce')
                 if buy_vol and buy_vol > 0: d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(buy_vol/1000)})
@@ -444,7 +439,6 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh):
     out = []
     df_raw_num = df_raw.copy()
     
-    # 優化：使用 safe_to_num
     df_raw_num['buy'] = safe_to_num(df_raw_num['buy'])
     df_raw_num['sell'] = safe_to_num(df_raw_num['sell'])
     
@@ -456,7 +450,7 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh):
         diff_count = buy_count - sell_count
         active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
         concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
-        total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
+        total_buy_vol, total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
         avg_b = total_buy_vol / buy_count if buy_count > 0 else 0
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
@@ -472,7 +466,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     out, audit_smart_money = [], []
     df_b = df_branch_raw.copy()
     
-    # 優化：使用 safe_to_num
     df_b['bs'] = safe_to_num(df_b['buy'])
     df_b['ss'] = safe_to_num(df_b['sell'])
     df_b['pr'] = safe_to_num(df_b['price'])
@@ -521,7 +514,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     df_out = df.copy().rename(columns={"date": "日期", "cb_id": "可轉債代號", "cb_name": "可轉債名稱", "conversion_price": "轉換價(元)", "ConversionPrice": "轉換價(元)", "underlying_stock_price": "標的股價(元)", "PriceOfUnderlyingStock": "標的股價(元)", "outstanding_amount": "未償還餘額", "OutstandingAmount": "未償還餘額", "outstanding_balance": "未償還餘額", "close": "CB收盤價", "closing_price": "CB收盤價", "conversion_premium_rate": "溢價率(%)", "premium_rate": "溢價率(%)", "PremiumRate": "溢價率(%)", "theoretical_value": "轉換價值", "TheoreticalValue": "轉換價值"})
     if "可轉債代號" in df_out.columns: df_out['可轉債代號'] = df_out['可轉債代號'].astype(str).str.replace(',', '', regex=False).str.replace('.0', '', regex=False).str.strip()
     
-    # 優化：使用 safe_to_num
     for c in ["轉換價(元)", "標的股價(元)", "未償還餘額", "CB收盤價", "溢價率(%)", "轉換價值"]:
         if c in df_out.columns: df_out[c] = safe_to_num(df_out[c], fill_val=np.nan)
         
@@ -643,7 +635,6 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma).mean().round(2)
     df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'] * 100).round(2)
     
-    # 效能極速優化：替換迴圈為向量化運算 (np.where)
     cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
     cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
@@ -655,7 +646,6 @@ def process_tdcc(df):
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')].copy()
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     
-    # 優化：使用 safe_to_num
     df['unit'] = (safe_to_num(df.get('unit', 0)) / 1000).round().astype(int)
     df['people'] = safe_to_num(df['people']).astype(int)
     
@@ -733,7 +723,6 @@ def process_inst(df):
     pdf.columns = ['_'.join(c).strip('_') for c in pdf.columns.values]
     out = pd.DataFrame({'日期': pdf['date']})
     
-    # 優化：使用 safe_to_num
     f_b = safe_to_num(pdf.get('buy_Foreign_Investor',0))
     f_s = safe_to_num(pdf.get('sell_Foreign_Investor',0))
     out['外資買賣超(張)'] = ((f_b - f_s) / 1000).round().astype(int)
@@ -831,7 +820,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V46.2 極速核心引擎..."):
+    with st.spinner(f"正在啟動 V46.3 尊榮極速引擎 (15執行緒火力全開)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -933,7 +922,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.2 效能極速版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.3 尊榮極速版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1017,7 +1006,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V46.2 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V46.3 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1045,7 +1034,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V46.2 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V46.3 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
