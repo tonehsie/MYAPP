@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V46.7 終極全息量化系統 (尊榮排序定案版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V46.8 終極全息量化系統 (尊榮客製版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""<style>
@@ -22,10 +22,10 @@ table.dataframe th:first-child,table.dataframe td:first-child{position:sticky;le
 </style>""", unsafe_allow_html=True)
 
 st.sidebar.header("🎛️ 戰術參數控制面板")
-kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 180, 10)
+kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 10)
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
-footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 45, 10, 1)
+footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 60, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
@@ -33,13 +33,13 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V46.7 終極全息量化系統 (尊榮排序定案版)")
-st.caption("🚀 專屬特權：Sponsor 15執行緒極速併發。集保折疊收納、營收重現，官股提拔，序號全面完美重排。")
+st.title("📱 V46.8 終極全息量化系統 (尊榮客製版)")
+st.caption("🚀 專屬特權：Sponsor 15執行緒極速併發。自訂 270日K線 / 20日足跡追蹤，指紋圖鑑折疊收納。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V46.7 全局運算引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V46.8 全局運算引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
@@ -176,7 +176,7 @@ def scrape_director_v46(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手手)", []
+    return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
 def get_company_profile(tid):
     ind, addr = "未知產業", "查無地址"
@@ -310,7 +310,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days):
         tag = "🔵 一般"
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [影子官股]"
         elif stickiness >= stick_thresh: tag = "🥷 [潛伏造市者]" if dr > 0.70 else "👑 [長駐波段主]"
-        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主動鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
+        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主提鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
         elif nr > 0.7: tag = "📈 [波段主]"
         elif tb > 500 and nr > 0.85: tag = "🧱 [真鎖碼]"
         
@@ -850,7 +850,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V46.7 尊榮排序定案引擎 (15執行緒火力全開)..."):
+    with st.spinner(f"正在啟動 V46.8 尊榮客製版引擎 (15執行緒火力全開)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -900,8 +900,6 @@ if run_btn:
         df_b_prev1 = process_branch_v25(df_b_raw, 1, dates[1:], tags, df_p_raw, stickiness_threshold, max_len)
         df_b_3 = process_branch_v25(df_b_raw, 3, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw, stickiness_threshold, max_len)
-        df_b_20 = process_branch_v25(df_b_raw, 20, dates, tags, df_p_raw, stickiness_threshold, max_len)
-        df_b_30 = process_branch_v25(df_b_raw, 30, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_60 = process_branch_v25(df_b_raw, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len)
 
         df_gov = pd.DataFrame()
@@ -952,7 +950,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.7 尊榮排序定案版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.8 尊榮客製版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1008,11 +1006,10 @@ if run_btn:
         with st.expander(f"📂 07. 點此展開過渡期分點 (近3日~近 {max_len} 日總和)", expanded=False):
             show_table("07-1. 主力分點 - 近3日", df_b_3)
             show_table("07-2. 主力分點 - 近10日", df_b_10)
-            show_table("07-3. 主力分點 - 近20日", df_b_20)
-            show_table("07-4. 主力分點 - 近30日", df_b_30)
-            show_table(f"07-5. 主力分點 - 近 {max_len} 日總和", df_b_60)
+            show_table(f"07-3. 主力分點 - 近 {max_len} 日總和", df_b_60)
 
-        show_table(f"08. 主力分點指紋圖鑑 (紅色標示為目前套牢)", df_debug_tags.head(30))
+        with st.expander(f"📂 08. 點此展開主力分點指紋圖鑑 (紅色標示為目前套牢)", expanded=False):
+            show_table("主力分點指紋圖鑑", df_debug_tags.head(30))
 
         st.markdown("<div class='category-title'>🏦 法人與資券變化</div>", unsafe_allow_html=True)
         show_table("09. 影子官股進出 (今日)", df_gov)
@@ -1039,7 +1036,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V46.7 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V46.8 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1070,7 +1067,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "22. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V46.7 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V46.8 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
