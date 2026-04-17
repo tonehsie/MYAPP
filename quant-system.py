@@ -450,7 +450,9 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh):
         diff_count = buy_count - sell_count
         active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
         concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
-        total_buy_vol, total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
+        
+        total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
+        
         avg_b = total_buy_vol / buy_count if buy_count > 0 else 0
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
