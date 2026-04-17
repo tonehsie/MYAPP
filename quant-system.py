@@ -41,7 +41,7 @@ with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 % (留空自動雙引擎抓取)")
 run_btn = st.button("🚀 啟動 V46.1 全局運算引擎", use_container_width=True, key="run_engine")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name_v46(tid):
     try:
         r = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}.TW", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -51,7 +51,7 @@ def get_stock_name_v46(tid):
     except: pass
     return ""
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_finmind_v46(ds, sd, tid=None, ed=None):
     url, p = "https://api.finmindtrade.com/api/v4/data", {"dataset": ds, "start_date": sd}
     if tid: p["data_id"] = tid
@@ -62,7 +62,7 @@ def fetch_finmind_v46(ds, sd, tid=None, ed=None):
     except: pass
     return pd.DataFrame()
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_branch_data_v46(dl, tid):
     if not dl: return pd.DataFrame()
     all_d = []
@@ -77,7 +77,7 @@ def fetch_branch_data_v46(dl, tid):
             if r: all_d.extend(r)
     return pd.DataFrame(all_d)
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def scrape_block_v46(tid, ad):
     if not ad: return pd.DataFrame(), []
     td, bd, dl = ad[:3], [], []
@@ -131,7 +131,7 @@ def safe_get_fubon(url):
         except: pass
     return ""
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def scrape_director_v46(tid):
     dd, sv = {}, 0.0
     try:
@@ -371,12 +371,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         else: r["賣超分點"], r["黏著度(%)_"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", 0, "-", "-"
         out.append(r)
     return pd.DataFrame(out)
-
-def get_smart_threshold(price, capital_bn, dead_float):
-    if pd.isna(price) or price <= 0: return 1000 
-    rt = max((max(3000, capital_bn * 500) * 10000) / (price * 1000), (capital_bn * 10000) * (max(0.1, 0.5 * (100 - dead_float) / 100) / 100))
-    al = min([100, 200, 400, 600, 800, 1000], key=lambda x: abs(x - rt))
-    return min(al, 400) if price < 30 else al
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -922,7 +916,6 @@ if run_btn:
 
         st.markdown("<div class='category-title'>📈 00. 職業極簡技術大局觀</div>", unsafe_allow_html=True)
         if not df_ta_display.empty:
-            show_table("00-1. 技術分析指標 (近10天)", df_ta_display.head(10))
             st.markdown(f"<div class='section-title'>📈 00-2. 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             
             import plotly.graph_objects as go
@@ -952,7 +945,6 @@ if run_btn:
         show_table("01. 平日戰情追蹤矩陣 (結合大戶買均價與落差)", df_daily_tracker, "daily-tracker")
         show_table("02. 專家診斷雷達 (週末除水版)", df_v27_radar.head(8), "radar-table")
         show_table("03. 雙軸活大戶鎖碼判定表 (C-Value)", df_s_dyn.head(8))
-        show_table("04. 收盤價量 (近10天)", df_price.head(10))
 
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
         show_table(f"05-1A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前{footprint_rows}大)", df_footprint_buy)
