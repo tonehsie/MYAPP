@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V45.0 終極全息量化系統 (破壁金剛版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V45.1 終極全息量化系統 (突破防線版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""<style>
@@ -28,7 +28,8 @@ st.sidebar.header("🎛️ 戰術參數控制面板")
 kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 180, 10)
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
-footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 20, 10, 1)
+# ⚠️ 解放足跡天數上限至 45 天
+footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 45, 10, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
@@ -36,16 +37,16 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V45.0 終極全息量化系統 (破壁金剛版)")
-st.caption("核心更新：強制清除所有損壞快取 (Cache Busting)，並優化雲端多執行緒安全機制，保證按鈕 100% 回應。")
+st.title("📱 V45.1 終極全息量化系統 (突破防線版)")
+st.caption("核心更新：解放足跡追蹤至 45 天，並強化 Goodinfo 偽裝爬蟲標頭。若雲端 IP 遭死鎖，請善用右上角【手動死籌碼】輸入框。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
-with col2: dead_chip_input = st.text_input("死籌碼 %")
-run_btn = st.button("🚀 啟動 V45.0 終極運算引擎", use_container_width=True, key="run_engine")
+with col2: dead_chip_input = st.text_input("死籌碼 % (若系統抓不到請手動輸入，例: 15.5)")
+run_btn = st.button("🚀 啟動 V45.1 終極運算引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
-# 📌 爬蟲與資料抓取模組 (V45 強制快取重置版)
+# 📌 爬蟲與資料抓取模組 
 # ==========================================
 @st.cache_data(ttl=3600)
 def get_stock_name_v45(tid):
@@ -79,7 +80,6 @@ def fetch_branch_data_v45(dl, tid):
             if r.status_code == 200: return r.json().get("data", [])
         except: pass
         return []
-    # ⚠️ 安全降速：最多 5 條 Thread，防止 Streamlit Cloud 記憶體溢出卡死
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         for r in ex.map(fs, dl):
             if r: all_d.extend(r)
@@ -132,7 +132,15 @@ def scrape_block_v45(tid, ad):
 def scrape_director_v45(tid):
     dd, sv = {}, 0.0
     try:
-        r = requests.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        # ⚠️ 強制偽裝成高版本 Windows Chrome，加入反制阻擋 Header
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer": "https://goodinfo.tw/tw/index.asp",
+            "Connection": "keep-alive"
+        }
+        r = requests.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers=headers, timeout=10)
         if r.status_code == 200:
             r.encoding = 'utf-8'
             for df in pd.read_html(StringIO(r.text)):
@@ -156,9 +164,10 @@ def scrape_director_v45(tid):
                                     dd[m] = val
                                     if lt == 0.0: lt = val
                             except: pass
-                    if dd: return dd, lt, "Goodinfo", []
-    except: pass
-    return {}, 0.0, "失敗", []
+                    if dd: return dd, lt, "Goodinfo自動抓取", []
+    except Exception as e: 
+        print(f"Goodinfo Scraping Error: {e}")
+    return {}, 0.0, "抓取失敗(請手動輸入)", []
 
 def get_company_profile(tid):
     ind, addr = "未知產業", "查無地址"
@@ -187,13 +196,17 @@ def safe_get_fubon(url):
     return ""
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
+    # ⚠️ 優先權最高：手動輸入死籌碼
     if dci and str(dci).strip() != "":
-        try: return float(str(dci).replace('%', '').strip()), "手動"
+        try: 
+            val = float(str(dci).replace('%', '').strip())
+            return val, "手動輸入"
         except: pass
+        
     mk = str(ds)[:7].replace('/', '-')
     if dd and mk in dd: return dd[mk], "Goodinfo當月"
     if dd: return list(dd.values())[0], "Goodinfo最新"
-    return (sv, ce) if sv > 0 else (0.0, "-")
+    return (sv, ce) if sv > 0 else (0.0, "缺死籌碼")
 
 def extract_fubon_table(ht, trg, cols):
     si = ht.find(trg)
@@ -816,7 +829,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V45.0 破壁金剛引擎..."):
+    with st.spinner(f"正在啟動 V45.1 破壁金剛引擎..."):
         name = get_stock_name_v45(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -920,7 +933,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V45.0 破壁金剛版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V45.1 突破防線版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1006,7 +1019,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V45.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V45.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1034,7 +1047,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V45.0 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V45.1 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
