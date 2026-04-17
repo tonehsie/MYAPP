@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V46.8 終極全息量化系統 (尊榮客製版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V47.0 終極全息量化系統 (終極無瑕版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""<style>
@@ -33,13 +33,13 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V46.8 終極全息量化系統 (尊榮客製版)")
-st.caption("🚀 專屬特權：Sponsor 15執行緒極速併發。自訂 270日K線 / 20日足跡追蹤，指紋圖鑑折疊收納。")
+st.title("📱 V47.0 終極全息量化系統 (終極無瑕版)")
+st.caption("🚀 深度優化：導入 Session 連線池機制、Numpy 向量化繪圖，並修復天數邏輯死角。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V46.8 全局運算引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V47.0 全局運算引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
@@ -65,13 +65,16 @@ def fetch_finmind_v46(ds, sd, tid=None, ed=None):
     except: pass
     return pd.DataFrame()
 
+# ⚡ 優化：導入 requests.Session() 連線池，大幅降低 TLS 握手延遲
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_branch_data_v46(dl, tid):
     if not dl: return pd.DataFrame()
     all_d = []
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
     def fs(d):
         try: 
-            r = requests.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, headers={"Authorization": f"Bearer {FINMIND_TOKEN}"}, timeout=15)
+            r = session.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, timeout=10)
             if r.status_code == 200: return r.json().get("data", [])
         except: pass
         return []
@@ -84,18 +87,20 @@ def fetch_branch_data_v46(dl, tid):
 def scrape_block_v46(tid, ad):
     if not ad: return pd.DataFrame(), []
     td, bd, dl = ad[:3], [], []
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0"})
     def fd(d):
         dtw = d.replace("-", "")
         dtp = f"{int(d.split('-')[0])-1911}/{d.split('-')[1]}/{d.split('-')[2]}"
-        rl, h = [], {"User-Agent": "Mozilla/5.0"}
+        rl = []
         try:
-            r = requests.get(f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={dtw}&response=json", headers=h, timeout=5, verify=False)
+            r = session.get(f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={dtw}&response=json", timeout=5, verify=False)
             if r.status_code == 200 and "data" in r.json():
                 for ro in r.json().get("data", []):
                     if tid in str(ro): rl.append([d, "TWSE", ro])
         except: pass
         try:
-            r = requests.get(f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={dtp}&id=&response=json", headers=h, timeout=5, verify=False)
+            r = session.get(f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={dtp}&id=&response=json", timeout=5, verify=False)
             if r.status_code == 200 and "tables" in r.json() and r.json()["tables"]:
                 for ro in r.json()["tables"][0].get("data", []):
                     if tid in str(ro): rl.append([d, "TPEx", ro])
@@ -218,6 +223,8 @@ def extract_fubon_table(ht, trg, cols):
                 else: out.append(r[:cols])
     return out
 
+# ⚡ 優化：加入快取防護，避免短時間內多次被 Fubon IP Ban
+@st.cache_data(ttl=3600, show_spinner=False)
 def scrape_fubon_pledge(df_pr, tid):
     alld = []
     for i in range(3):
@@ -276,8 +283,8 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days):
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
     range_diff = df_p['max'] - df_p['min']
-    df_p['pos'] = np.where(range_diff == 0, 1.0, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
-    df_p['strength'] = np.where(df_p['avg_price'] == 0, 0, (df_p['close'] - df_p['avg_price']) / df_p['avg_price'].replace(0, 1))
+    df_p['pos'] = np.where(range_diff == 0, 1.0, (df_p['close'] - df_p['min']) / np.where(range_diff==0, 1, range_diff))
+    df_p['strength'] = np.where(df_p['avg_price'] == 0, 0, (df_p['close'] - df_p['avg_price']) / np.where(df_p['avg_price']==0, 1, df_p['avg_price']))
     price_stats = df_p.set_index('date')[['pos', 'strength']].to_dict('index')
     latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0] if not df_p.empty else 0
 
@@ -310,7 +317,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days):
         tag = "🔵 一般"
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [影子官股]"
         elif stickiness >= stick_thresh: tag = "🥷 [潛伏造市者]" if dr > 0.70 else "👑 [長駐波段主]"
-        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主提鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
+        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主動鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
         elif nr > 0.7: tag = "📈 [波段主]"
         elif tb > 500 and nr > 0.85: tag = "🧱 [真鎖碼]"
         
@@ -850,7 +857,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V46.8 尊榮客製版引擎 (15執行緒火力全開)..."):
+    with st.spinner(f"正在啟動 V47.0 終極無瑕極速引擎 (15執行緒火力全開)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -860,8 +867,9 @@ if run_btn:
         dates = sorted(df_p_raw['date'].unique().tolist(), reverse=True)
         if not dates: st.error("⚠️ 無法取得有效交易日期，請確認 API 連線狀態。"); st.stop()
             
-        max_len = lookback_days if len(dates) >= lookback_days else len(dates)
-        if max_len == 0: max_len = 1
+        # ⚡ 修復：動態水位偵測，保證 API 提取天數充足，防止 Index 越界崩潰
+        required_branch_days = max(lookback_days, footprint_days)
+        max_len = required_branch_days if len(dates) >= required_branch_days else len(dates)
         d_end = dates[max_len-1]
         
         df_price = process_price(df_p_raw)
@@ -950,7 +958,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.8 尊榮客製版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V47.0 終極無瑕版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -981,8 +989,11 @@ if run_btn:
                 if f'MA{ma_short}' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5)), row=1, col=1)
                 if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2)), row=1, col=1)
                 if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5)), row=1, col=1)
-                colors = ['#ef5350' if row['收盤價(元)'] >= row['開盤價(元)'] else '#26a69a' for i, row in df_plot.iterrows()]
+                
+                # ⚡ 優化：Numpy 向量化判斷 K 線顏色，避免迴圈卡頓
+                colors = np.where(df_plot['收盤價(元)'] >= df_plot['開盤價(元)'], '#ef5350', '#26a69a').tolist()
                 fig_kline.add_trace(go.Bar(x=df_plot['日期'], y=df_plot['成交量(張)'], marker_color=colors, name='成交量'), row=2, col=1)
+                
                 fig_kline.update_traces(hoverinfo='none', hovertemplate='') 
                 fig_kline.update_layout(height=600, margin=dict(l=30, r=30, t=20, b=30), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', showlegend=True, legend=dict(orientation="h", yanchor="top", y=1.02, xanchor="left", x=0.01), hovermode='x')
                 fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
@@ -1036,7 +1047,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V46.8 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V47.0 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1067,7 +1078,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "22. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V46.8 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V47.0 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
