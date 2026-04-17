@@ -2,7 +2,7 @@ import streamlit as st, requests, pandas as pd, numpy as np, datetime, re, concu
 from io import StringIO
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V46.0 終極全息量化系統 (雙擎復活版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V46.1 終極全息量化系統 (除錯清爽版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 st.markdown("""<style>
@@ -33,13 +33,13 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V46.0 終極全息量化系統 (雙擎復活版)")
-st.caption("核心回歸：還原 V26.5 版本的「富邦備用引擎」與「魔法 Cookie」，徹底解決死籌碼抓不到的問題！")
+st.title("📱 V46.1 終極全息量化系統 (除錯清爽版)")
+st.caption("核心修復：修正 KeyError 繁簡體「漲跌」字元錯誤，並清除所有重複冗餘代碼，提升執行效能。")
 
 col1, col2 = st.columns([1, 1])
 with col1: user_stock_id = st.text_input("個股代號", value="8027")
 with col2: dead_chip_input = st.text_input("死籌碼 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V46.0 全局運算引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V46.1 全局運算引擎", use_container_width=True, key="run_engine")
 
 @st.cache_data(ttl=3600)
 def get_stock_name_v46(tid):
@@ -131,11 +131,9 @@ def safe_get_fubon(url):
         except: pass
     return ""
 
-# ⚠️ V46 復活 V26.5 雙擎架構
 @st.cache_data(ttl=3600)
 def scrape_director_v46(tid):
     dd, sv = {}, 0.0
-    # 引擎一：Goodinfo 魔法 Cookie 版
     try:
         headers = {"User-Agent": "Mozilla/5.0", "Cookie": "CLIENT_KEY=20260413;", "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={tid}"}
         r = requests.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers=headers, timeout=8)
@@ -160,7 +158,6 @@ def scrape_director_v46(tid):
                     if dd: return dd, lt, "Goodinfo", []
     except: pass
     
-    # 引擎二：富邦備用引擎 (從 V26.5 完整移植)
     try:
         html = safe_get_fubon(f"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zck/zck_{tid}.djhtm")
         if html:
@@ -305,7 +302,7 @@ def get_v27_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days):
         tag = "🔵 一般"
         if any(x in trader for x in ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]): tag = "🏦 [影子官股]"
         elif stickiness >= stick_thresh: tag = "🥷 [潛伏造市者]" if dr > 0.70 else "👑 [長駐波段主]"
-        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主動鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被動套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
+        elif dr > 0.80: tag = "🏃 [游擊過客]" if stickiness < 10.0 else "🌪️ [純當沖客]" if nr < 0.05 else "🧱 [主動鎖碼]" if (strn > 0.01 and pos >= 0.7) or (pos == 1.0) else "🩹 [被 পণ্ডিত套牢]" if strn < -0.01 and pos < 0.3 else "⚡ [隔日沖]"
         elif nr > 0.7: tag = "📈 [波段主]"
         elif tb > 500 and nr > 0.85: tag = "🧱 [真鎖碼]"
         
@@ -461,7 +458,9 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         op = pr_row['開盤價(元)'].iloc[0] if not pr_row.empty else 0
         hp = pr_row['最高價(元)'].iloc[0] if not pr_row.empty else 0
         lp = pr_row['最低價(元)'].iloc[0] if not pr_row.empty else 0
-        sp = pr_row['涨跌(元)'].iloc[0] if not pr_row.empty else 0
+        # ⚠️ V46.1 修正：絕對使用繁體中文「漲跌(元)」
+        sp = pr_row['漲跌(元)'].iloc[0] if not pr_row.empty else 0
+        
         diff_row = df_branch_diff[df_branch_diff['日期'] == d]
         bsd = diff_row['買賣家數差'].iloc[0] if not diff_row.empty else 0
         firepower = diff_row['買方火力(倍)'].iloc[0] if not diff_row.empty and '買方火力(倍)' in diff_row.columns else 1.0
@@ -803,7 +802,7 @@ def format_to_csv_string(df, title):
 if run_btn:
     if not user_stock_id.strip(): st.warning("⚠️ 請先在上方輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V46.0 雙擎復活版..."):
+    with st.spinner(f"正在啟動 V46.1 終極清爽引擎..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。"); st.stop()
             
@@ -822,7 +821,6 @@ if run_btn:
         ta_display_cols = ['日期', '收盤價(元)', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)', '中線乖離(%)', '技術面診斷']
         df_ta_display = df_ta_full[ta_display_cols].copy() if not df_ta_full.empty and all(c in df_ta_full.columns for c in ta_display_cols) else pd.DataFrame()
         
-        # ⚠️ 啟動雙引擎抓取死籌碼
         dynamic_dict, s_val, chip_eng, _ = scrape_director_v46(user_stock_id)
         
         df_b_raw = fetch_branch_data_v46(dates[:max_len], user_stock_id)
@@ -908,7 +906,7 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.0 雙擎復活版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V46.1 除錯清爽版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>🏆 <b>【潛伏主力綜合防守線】</b>：{defense_line}</div>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -994,7 +992,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V46.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V46.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1022,7 +1020,7 @@ if run_btn:
             if not df_cbas.empty: p1 += format_to_csv_string(df_cbas, "23. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        with st.expander(f"🔎 給 Gemini 的 V46.0 稽核與驗算資料包 (CSV格式)", expanded=False):
+        with st.expander(f"🔎 給 Gemini 的 V46.1 稽核與驗算資料包 (CSV格式)", expanded=False):
             p2 = f"請幫我驗證 {user_stock_id} {name} 以下 CSV 數據的數學邏輯正確性：\n\n"
             p2 += format_to_csv_string(df_debug_math, "稽核B：除水還原數學驗算表")
             p2 += format_to_csv_string(df_audit_smart, f"稽核C：今日({dates[0]})聰明錢淨流成分表 (應絕對吻合表01之總和)")
