@@ -12,7 +12,7 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V47.5 全息量化系統 (終極職業K線版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V47.6 全息量化系統 (完美K線與邏輯同步版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 CSS = (
@@ -58,24 +58,24 @@ footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 60, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
-st.sidebar.markdown("### 🧠 V47.5 淨化籌碼引擎")
+st.sidebar.markdown("### 🧠 V47.6 淨化籌碼引擎")
 filter_day_trade = st.sidebar.checkbox("剔除隔日沖，計算「純淨均價」", value=True, help="開啟後，主力防守價將排除隔日沖與游擊客的虛假交易量，找出鐵板底單。")
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V47.5 終極全息量化系統 (終極職業K線版)")
+st.title("📱 V47.6 終極全息量化系統 (完美K線與邏輯同步版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度使用狀態: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V47.5 升級：完美修正 K 線擠壓與成交量黑框問題。{usage_text}")
+st.caption(f"🚀 V47.6 升級：修正 K 線抗鋸齒粗邊問題、修復鷹眼文字與表格邏輯不同步 Bug。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V47.5 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V47.6 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -89,8 +89,7 @@ def get_stock_name_v46(tid):
         if r.status_code == 200:
             m = re.search(r'<title>(.*?)\s*\(', r.text)
             return m.group(1).strip() if m else ""
-    except:
-        pass
+    except: pass
     return ""
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -335,7 +334,7 @@ def scrape_fubon_pledge(df_pr, tid):
     return pd.DataFrame(sr), df_all
 
 # ==========================================
-# 🧠 V47.5 替換升級：三維動態行為大腦
+# 🧠 V47.6 替換升級：三維動態行為大腦
 # ==========================================
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -621,7 +620,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             "大戶買均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
-            "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "综合診斷": " | ".join(adv)
+            "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
@@ -675,15 +674,21 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thres
             except: alerts.append("<span>🔵 今日聰明錢數值解析中性。</span>")
         else: alerts.append("<span>🔵 今日大戶無明顯動作，成本線無法精算。</span>")
 
+    # V47.6: 修復鷹眼文字報告與表格邏輯未同步的 Bug，加入 活躍家數 > 500 的判斷
     if not df_diff.empty and len(df_diff) >= 1:
         alerts.append("<div class='hawk-title' style='margin-top:15px;'>2. 火力與籌碼結構剖析 (買賣家數差)</div>")
         latest_diff = df_diff.iloc[0]
         try:
             fp_val = float(str(latest_diff['買方火力(倍)']).replace(',', '').strip())
             fire_str = f"今日活躍券商共 <b>{latest_diff['活躍家數']} 家</b>，買方火力倍數為 <b>{fp_val} 倍</b>。"
-            if fp_val >= fire_thresh: alerts.append(f"<span class='hawk-safe'>🔥 【大戶火力壓制】{fire_str} 代表少數大戶正用絕對的資金優勢集中吃貨，高於自訂的 {fire_thresh} 倍門檻，高勝率訊號！</span>")
-            elif fp_val < 0.7: alerts.append(f"<span class='hawk-alert'>💀 【散戶蜂擁接刀】{fire_str} 代表大戶大舉倒貨，籌碼嚴重發散，極度危險。</span>")
-            else: alerts.append(f"<span>🔵 【中性換手】{fire_str} 買賣雙方實力相當，自然市場換手。</span>")
+            if fp_val >= fire_thresh and latest_diff['籌碼集中度(%)'] > 5: 
+                alerts.append(f"<span class='hawk-safe'>🔥 【大戶火力壓制】{fire_str} 代表少數大戶正用絕對的資金優勢集中吃貨，高於自訂的 {fire_thresh} 倍門檻，高勝率訊號！</span>")
+            elif fp_val < 0.7 and latest_diff['買賣家數差'] > 50: 
+                alerts.append(f"<span class='hawk-alert'>💀 【散戶蜂擁接刀】{fire_str} 代表大戶大舉倒貨，籌碼嚴重發散，極度危險。</span>")
+            elif latest_diff['活躍家數'] > 500 and fp_val < 1.0: 
+                alerts.append(f"<span class='hawk-alert'>⚠️ 【籌碼極度發散】{fire_str} 當沖與游擊客充斥，淪為熱門當沖雷區，少碰為妙。</span>")
+            else: 
+                alerts.append(f"<span>🔵 【中性換手】{fire_str} 買賣雙方實力相當，自然市場換手。</span>")
         except: alerts.append(f"<span>🔵 【中性換手】今日活躍券商共 {latest_diff['活躍家數']} 家，籌碼發散程度一般。</span>")
 
     if not df_fingerprint.empty and len(df_fingerprint) >= 1:
@@ -928,7 +933,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V47.5 決策引擎 (載入中)..."):
+    with st.spinner(f"正在啟動 V47.6 決策引擎 (相容舊有功能載入中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -958,7 +963,6 @@ if run_btn:
         tags, df_debug_tags = get_v47_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         pure_vwap, main_force_vol, active_main_branches = calculate_pure_defense_line(df_b_raw, tags, filter_day_trade)
         
-        # 動態計算不同天期的 Branch Diff
         df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=10)
         df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
         
@@ -1032,9 +1036,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address} ｜ 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V47.5 頂層：紅綠燈號決策看板
+        # 🎨 V47.6 頂層：紅綠燈號決策看板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V47.5 終極職業K線版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V47.6 完美K線版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>📈 最新收盤價: <b>{curr_price} 元</b></div>", unsafe_allow_html=True)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1085,24 +1089,23 @@ if run_btn:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 fig_kline = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
                 
-                # V47.5: 將 K 線邊框粗細降到極致 0.5
+                # V47.6: K線邊框設定為 1，並加入 opacity=0.9 讓線條抗鋸齒渲染更滑順，避免粗邊
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
-                    increasing_line_color='black', increasing_line_width=0.5, increasing_fillcolor='white',
-                    decreasing_line_color='black', decreasing_line_width=0.5, decreasing_fillcolor='black',
-                    whiskerwidth=0
+                    increasing_line_color='black', increasing_line_width=1, increasing_fillcolor='white',
+                    decreasing_line_color='black', decreasing_line_width=1, decreasing_fillcolor='black',
+                    whiskerwidth=0, opacity=0.9
                 ), row=1, col=1)
                 
                 if f'MA{ma_short}' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5)), row=1, col=1)
                 if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2)), row=1, col=1)
                 if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5)), row=1, col=1)
                 
-                # V47.5: 逐根渲染成交量，白棒細框，黑棒無框防擠壓
                 for i, row in df_plot.iterrows():
                     is_up = row['收盤價(元)'] >= row['開盤價(元)']
                     vol_color = 'white' if is_up else 'black'
-                    line_width = 0.5 if is_up else 0  
+                    line_width = 1 if is_up else 0  
                     fig_kline.add_trace(go.Bar(
                         x=[row['日期']], y=[row['成交量(張)']], 
                         marker=dict(color=vol_color, line=dict(color='black', width=line_width)), 
@@ -1110,7 +1113,6 @@ if run_btn:
                     ), row=2, col=1)
                 
                 fig_kline.update_traces(hoverinfo='none', hovertemplate='') 
-                # V47.5: 強制壓縮 K 線間距 bargap=0.1
                 fig_kline.update_layout(height=600, margin=dict(l=30, r=30, t=20, b=30), bargap=0.1, xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', showlegend=True, legend=dict(orientation="h", yanchor="top", y=1.02, xanchor="left", x=0.01), hovermode='x')
                 fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
                 fig_kline.update_yaxes(showgrid=False, zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
@@ -1160,7 +1162,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V47.5 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V47.6 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
