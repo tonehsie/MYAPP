@@ -19,11 +19,11 @@ CSS = (
     "<style>"
     ".table-responsive { overflow-x: auto; width: 100%; display: block; margin-bottom: 20px; } "
     "table.dataframe { border-collapse: collapse; width: max-content !important; min-width: 100%; max-width: none !important; } "
-    /* 表頭(欄位)：允許斷行、置中對齊 */
+    # 表頭(欄位)：允許斷行、置中對齊
     "table.dataframe th { white-space: normal !important; word-break: keep-all !important; text-align: center !important; padding: 10px 8px !important; min-width: 70px; vertical-align: middle; line-height: 1.3; background-color: #f1f3f5; color: #333; } "
-    /* 資料內容：絕對不斷行、靠右對齊 */
+    # 資料內容：絕對不斷行、靠右對齊
     "table.dataframe td { white-space: nowrap !important; word-break: keep-all !important; text-align: right !important; padding: 10px 15px !important; vertical-align: middle; } "
-    /* 第一欄(日期/名稱)：固定左側並置中 */
+    # 第一欄(日期/名稱)：固定左側並置中
     "table.dataframe th:first-child, table.dataframe td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 1; border-right: 2px solid #dee2e6; text-align: center !important; } "
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; } "
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; } "
@@ -847,7 +847,7 @@ def process_margin(df):
     df = df.rename(columns={"date":"日期", "MarginPurchaseBuy":"融資買進(萬元)", "MarginPurchaseSell":"融資賣出(萬元)", "MarginPurchaseCashRepayment":"融資現償(萬元)", "MarginPurchaseTodayBalance":"融資餘額(萬元)", "ShortSaleBuy":"融券買進(張)", "ShortSaleSell":"融券賣出(張)", "ShortSaleTodayBalance":"融券餘額(張)", "OffsetLoanAndShort":"資券相抵(張)"})
     if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns: df['融資增減(萬元)'] = df['融資餘額(萬元)'] - df['MarginPurchaseYesterdayBalance']
     if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns: df['融券增減(張)'] = df['融券餘額(張)'] - df['ShortSaleYesterdayBalance']
-    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
+    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買ِمض(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
     return df[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_inst(df):
@@ -925,13 +925,10 @@ def show_table(title, df, custom_class=""):
             except: return str(x)
             
         f_dict = {c: lambda x, col=c: fmt_auto(x, col) for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '週期', '屬性', '囤貨率(%)', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
-        right_cols = [c for c in df.columns if c not in left_cols]
-        styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
-        if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
+        styler = df.style.format(f_dict)
         try: styler = styler.hide(axis="index")
         except: styler = styler.hide_index()
-        html = styler.set_table_styles([dict(selector='th', props=[('text-align', 'center !important')]), dict(selector='table', props=[('width', '100%')])]).to_html()
+        html = styler.to_html()
         html = html.replace('&lt;', '<').replace('&gt;', '>').replace('&#x27;', "'").replace('&quot;', '"')
         if custom_class: html = html.replace('<table', f'<table class="{custom_class}"')
         st.markdown(f'<div class="table-responsive">{html}</div>', unsafe_allow_html=True)
