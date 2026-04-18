@@ -12,22 +12,24 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.5 全息量化系統 (極簡排版版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.6 全息量化系統 (絕對不斷行版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
+# 這次直接針對 .table-responsive 裡面的所有 table 進行暴力覆蓋，無視套件產生的內建樣式
 CSS = (
     "<style>"
     ".table-responsive { overflow-x: auto; width: 100%; display: block; margin-bottom: 20px; } "
-    "table.dataframe { border-collapse: collapse; width: max-content !important; min-width: 100%; max-width: none !important; } "
+    ".table-responsive table { table-layout: auto !important; width: max-content !important; min-width: 100%; max-width: none !important; border-collapse: collapse !important; } "
     # 表頭(欄位)：允許斷行、置中對齊
-    "table.dataframe th { white-space: normal !important; word-break: keep-all !important; text-align: center !important; padding: 10px 8px !important; min-width: 70px; vertical-align: middle; line-height: 1.3; background-color: #f1f3f5; color: #333; } "
-    # 資料內容：絕對不斷行、靠右對齊
-    "table.dataframe td { white-space: nowrap !important; word-break: keep-all !important; text-align: right !important; padding: 10px 15px !important; vertical-align: middle; } "
+    ".table-responsive table thead th { white-space: normal !important; word-break: keep-all !important; text-align: center !important; padding: 10px 8px !important; background-color: #f1f3f5 !important; color: #333 !important; line-height: 1.3 !important; min-width: 70px; } "
+    # 資料內容：絕對禁止斷行 (TMD 這次一定綁死)
+    ".table-responsive table tbody td, .table-responsive table tbody th { white-space: nowrap !important; word-break: keep-all !important; padding: 10px 15px !important; vertical-align: middle !important; } "
     # 第一欄(日期/名稱)：固定左側並置中
-    "table.dataframe th:first-child, table.dataframe td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 1; border-right: 2px solid #dee2e6; text-align: center !important; } "
+    ".table-responsive table tr th:first-child, .table-responsive table tr td:first-child { position: sticky !important; left: 0 !important; background-color: #f8f9fa !important; z-index: 2 !important; border-right: 2px solid #dee2e6 !important; text-align: center !important; } "
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; } "
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; } "
     ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; } "
+    ".loss-warning { color: #d9480f; font-weight: bold; } "
     "</style>"
 )
 st.markdown(CSS, unsafe_allow_html=True)
@@ -58,17 +60,17 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.5 終極全息量化系統 (極簡排版版)")
+st.title("📱 V48.6 終極全息量化系統 (絕對不斷行版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.5 升級：字體大小完全統一、表格欄位斷行優化、資料向右靠齊。{usage_text}")
+st.caption(f"🚀 V48.6 升級：強制封殺表格資料內容斷行，確保排版整齊清爽。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.5 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.6 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -847,7 +849,7 @@ def process_margin(df):
     df = df.rename(columns={"date":"日期", "MarginPurchaseBuy":"融資買進(萬元)", "MarginPurchaseSell":"融資賣出(萬元)", "MarginPurchaseCashRepayment":"融資現償(萬元)", "MarginPurchaseTodayBalance":"融資餘額(萬元)", "ShortSaleBuy":"融券買進(張)", "ShortSaleSell":"融券賣出(張)", "ShortSaleTodayBalance":"融券餘額(張)", "OffsetLoanAndShort":"資券相抵(張)"})
     if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns: df['融資增減(萬元)'] = df['融資餘額(萬元)'] - df['MarginPurchaseYesterdayBalance']
     if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns: df['融券增減(張)'] = df['融券餘額(張)'] - df['ShortSaleYesterdayBalance']
-    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買ِمض(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
+    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
     return df[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_inst(df):
@@ -946,7 +948,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.5 決策引擎 (排版優化中)..."):
+    with st.spinner(f"正在啟動 V48.6 決策引擎 (強制鎖定排版中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1048,9 +1050,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.5 頂層：AI 動態解析儀表板 (極簡原生排版)
+        # 🎨 V48.6 頂層：AI 動態解析儀表板 (極簡原生排版)
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.5 極簡排版版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.6 絕對不斷行版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1219,7 +1221,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.5 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.6 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
