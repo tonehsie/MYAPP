@@ -9,22 +9,30 @@ import urllib.request
 import ssl
 import urllib3
 from io import StringIO
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.8 全息量化系統 (終極排版版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.9 全息量化系統 (終極排版版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
+# 📖 遠端說明書網址
+GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
+
+# ==========================================
+# 🎨 核彈級 CSS 綁定：強制不斷行、靠左/靠右
+# ==========================================
 CSS = (
     "<style>"
-    ".table-responsive { overflow-x: auto; width: 100%; margin-bottom: 20px; } "
-    ".table-responsive table { table-layout: auto !important; width: max-content !important; max-width: none !important; border-collapse: collapse !important; } "
-    # 表頭(欄位)：允許斷行、置中對齊
-    ".table-responsive table thead th { white-space: normal !important; text-align: center !important; padding: 10px 15px !important; background-color: #f1f3f5 !important; color: #333 !important; line-height: 1.3 !important; } "
-    # 資料內容：強制不換行，靠外層與 Inline CSS 雙重綁定
-    ".table-responsive table tbody td, .table-responsive table tbody th { white-space: nowrap !important; padding: 10px 15px !important; vertical-align: middle !important; } "
-    # 第一欄(日期/名稱)：固定左側並強制置中對齊
-    ".table-responsive table tr th:first-child, .table-responsive table tr td:first-child { position: sticky !important; left: 0 !important; background-color: #f8f9fa !important; z-index: 2 !important; border-right: 2px solid #dee2e6 !important; text-align: center !important; } "
+    ".table-container { overflow-x: auto; width: 100%; margin-bottom: 20px; } "
+    ".table-container table { table-layout: auto !important; width: max-content !important; max-width: none !important; border-collapse: collapse !important; } "
+    # 表頭：置中、背景灰
+    ".table-container table thead th { text-align: center !important; padding: 10px 15px !important; background-color: #f1f3f5 !important; color: #333 !important; line-height: 1.3 !important; white-space: nowrap !important; word-break: keep-all !important; } "
+    # 資料內容：絕對禁止斷行 (加上 word-break: keep-all 鎖死中文字)
+    ".table-container table tbody td, .table-container table tbody th { white-space: nowrap !important; word-break: keep-all !important; padding: 10px 15px !important; vertical-align: middle !important; } "
+    # 凍結第一欄
+    ".table-container table tr th:first-child, .table-container table tr td:first-child { position: sticky !important; left: 0 !important; background-color: #f8f9fa !important; z-index: 2 !important; border-right: 2px solid #dee2e6 !important; text-align: center !important; } "
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; } "
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; } "
     ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; } "
@@ -32,6 +40,16 @@ CSS = (
     "</style>"
 )
 st.markdown(CSS, unsafe_allow_html=True)
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_github_manual(url):
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            r.encoding = 'utf-8'
+            return r.text
+        else: return "⚠️ 無法載入說明書，請確認 GitHub Raw 網址是否正確。"
+    except Exception as e: return f"⚠️ 說明書載入失敗: {e}"
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_api_usage(token):
@@ -59,17 +77,21 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.8 終極全息量化系統 (終極排版版)")
+st.title("📱 V48.9 終極全息量化系統 (終極除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.8 升級：徹底解決資料斷行問題，精準實現「文字靠左、數字靠右」。{usage_text}")
+st.caption(f"🚀 V48.9 升級：K線與成交量雙軸鎖定完美對齊、徹底消滅表格亂斷行、並加入 GitHub 說明書連動。{usage_text}")
+
+with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
+    manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
+    st.markdown(manual_text, unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.8 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.9 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -928,20 +950,17 @@ def show_table(title, df, custom_class=""):
             
         f_dict = {c: lambda x, col=c: fmt_auto(x, col) for c in df.columns}
         
-        # 精準分離純文字欄位與數值欄位
+        # 精準分離純文字欄位與數值欄位，純文字靠左、數值靠右
         left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '週期', '屬性', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         
         styler = df.style.format(f_dict)
         
-        # 終極核彈設定：利用 Pandas Styler 直接鎖死每一個 TD 絕對不准斷行 (white-space: nowrap)
-        styler = styler.set_properties(**{'white-space': 'nowrap !important'})
+        # Inline CSS 絕對鎖定：保證不管套件怎麼搞，都不會斷行
+        styler = styler.set_properties(**{'white-space': 'nowrap !important', 'word-break': 'keep-all !important'})
         
-        # 精準對齊設定
-        if right_cols:
-            styler = styler.set_properties(**{'text-align': 'right !important'}, subset=right_cols)
-        if left_cols:
-            styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
+        if right_cols: styler = styler.set_properties(**{'text-align': 'right !important'}, subset=right_cols)
+        if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
             
         try: styler = styler.hide(axis="index")
         except: styler = styler.hide_index()
@@ -949,7 +968,7 @@ def show_table(title, df, custom_class=""):
         html = styler.to_html()
         html = html.replace('&lt;', '<').replace('&gt;', '>').replace('&#x27;', "'").replace('&quot;', '"')
         if custom_class: html = html.replace('<table', f'<table class="{custom_class}"')
-        st.markdown(f'<div class="table-responsive">{html}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="table-container">{html}</div>', unsafe_allow_html=True)
 
 def format_to_csv_string(df, title):
     header = f"▼▼▼ {title} ▼▼▼\n"
@@ -964,7 +983,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.8 決策引擎 (排版鎖定中)..."):
+    with st.spinner(f"正在啟動 V48.9 決策引擎 (排版與圖表雙重鎖定中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1066,9 +1085,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.8 頂層：AI 動態解析儀表板 (極簡原生排版)
+        # 🎨 V48.9 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.8 終極排版版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.9 終極除錯版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1077,7 +1096,6 @@ if run_btn:
             
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         
-        # --- 精準階段判定邏輯 (台股專用門檻) ---
         if pure_vwap == 0:
             phase_title = "⚪ 籌碼中性 (自然換手)"
             phase_desc = "缺乏明顯波段主力介入，目前盤勢由一般市場力量主導，建議觀望技術面表態。"
@@ -1099,7 +1117,6 @@ if run_btn:
                 phase_title = "💀 主力套牢 / 棄守多殺多"
                 phase_desc = f"股價深度跌破防守價 (乖離 **{bias:.1f}%**)。波段主力已被嚴重套牢或直接停損棄守，極易引發多殺多恐慌賣壓，建議立刻避開。"
                 
-        # 使用 Streamlit 原生 Markdown 與 Columns 來呈現 (確保字體大小一致)
         st.markdown("---")
         st.markdown(f"### 🎯 【階段判定】: {phase_title}")
         st.markdown(f"> {phase_desc}")
@@ -1118,19 +1135,16 @@ if run_btn:
         st.caption(f"💡 備註：防守價已透過 AI 引擎自動 **{'排除' if filter_day_trade else '包含'}** 隔日沖與游擊客雜訊，反映最純淨的主力底單成本。")
         st.markdown("---")
         
-        # 鷹眼報告也改為原生 Markdown 輸出
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
         st.markdown("### 🦅 AI 鷹眼深度診斷報告")
         hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
         for alert in hawk_alerts: 
             st.markdown(alert)
-            # 整理出純文字版給 CSV 匯出使用
             clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
-            import plotly.graph_objects as go
             
             df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
@@ -1139,59 +1153,38 @@ if run_btn:
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 
-                fig_kline = go.Figure()
+                # V48.9 終極修復：使用 make_subplots 強制共享 X 軸，絕對對齊！
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
                 
-                # 1. 隱藏的收盤價線 (專門用來吸引十字線吸附，且完全不顯示任何提示框)
-                fig_kline.add_trace(go.Scatter(
-                    x=df_plot['日期'], y=df_plot['收盤價(元)'], mode='markers', 
-                    marker=dict(color='rgba(0,0,0,0)', size=2), 
-                    hoverinfo='none', showlegend=False 
-                ))
+                # 1. 隱藏的收盤價線 (吸引十字線吸附)
+                fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['收盤價(元)'], mode='markers', marker=dict(color='rgba(0,0,0,0)', size=2), hoverinfo='none', showlegend=False), row=1, col=1)
                 
-                # 2. 主 K 線 (跳過 hover 避免大黑框干擾，加深紅 K 顏色)
-                fig_kline.add_trace(go.Candlestick(
-                    x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
-                    name='K線', 
-                    increasing_line_color='#999999', increasing_line_width=1, increasing_fillcolor='#999999',
-                    decreasing_line_color='black', decreasing_line_width=1, decreasing_fillcolor='black',
-                    whiskerwidth=0, hoverinfo='skip'
-                ))
+                # 2. 主 K 線
+                fig.add_trace(go.Candlestick(x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], name='K線', increasing_line_color='#999999', increasing_fillcolor='#999999', decreasing_line_color='black', decreasing_fillcolor='black', whiskerwidth=0, hoverinfo='skip'), row=1, col=1)
                 
-                # 3. 均線 (跳過 hover 避免十字線被吸走)
-                if f'MA{ma_short}' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5), hoverinfo='skip'))
-                if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2), hoverinfo='skip'))
-                if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5), hoverinfo='skip'))
+                # 3. 均線
+                if f'MA{ma_short}' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5), hoverinfo='skip'), row=1, col=1)
+                if f'MA{ma_mid}(中線)' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2), hoverinfo='skip'), row=1, col=1)
+                if f'MA{ma_long}(長線)' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5), hoverinfo='skip'), row=1, col=1)
                 
-                fig_kline.update_layout(
-                    height=450, margin=dict(l=30, r=30, t=20, b=0), 
+                # 4. 成交量 (放置在 row=2)
+                vol_colors = ['#999999' if row['收盤價(元)'] >= row['開盤價(元)'] else 'black' for i, row in df_plot.iterrows()]
+                fig.add_trace(go.Bar(x=df_plot['日期'], y=df_plot['成交量(張)'], marker_color=vol_colors, showlegend=False, hoverinfo='skip'), row=2, col=1)
+                
+                fig.update_layout(
+                    height=650, margin=dict(l=30, r=30, t=20, b=0), 
                     xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', 
                     showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.01), 
-                    hovermode='x' # 改為標準單點對齊模式
+                    hovermode='x'
                 )
                 
-                # 開啟十字線，並強迫 Y 軸精準吸附資料點 (也就是我們隱藏的收盤價)
-                fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
-                fig_kline.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
+                fig.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, row=1, col=1, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
+                fig.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, row=1, col=1, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
                 
-                fig_vol = go.Figure()
-                for i, row in df_plot.iterrows():
-                    is_up = row['收盤價(元)'] >= row['開盤價(元)']
-                    vol_color = '#999999' if is_up else 'black'
-                    fig_vol.add_trace(go.Bar(
-                        x=[row['日期']], y=[row['成交量(張)']], 
-                        marker=dict(color=vol_color, line=dict(width=0)), 
-                        showlegend=False, hoverinfo='skip'
-                    ))
+                fig.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, row=2, col=1, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
+                fig.update_yaxes(showgrid=False, zeroline=False, row=2, col=1)
                 
-                fig_vol.update_layout(
-                    height=150, margin=dict(l=30, r=30, t=0, b=30), 
-                    bargap=0.1, plot_bgcolor='white', paper_bgcolor='white', hovermode='x unified'
-                )
-                fig_vol.update_xaxes(type='category', showgrid=False, zeroline=False, tickangle=45, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='cursor')
-                fig_vol.update_yaxes(showgrid=False, zeroline=False)
-                
-                st.plotly_chart(fig_kline, use_container_width=True, config={'displayModeBar': False})
-                st.plotly_chart(fig_vol, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
             else: st.warning("⚠️ 查無 K 線歷史資料可供繪製圖表。")
 
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
@@ -1237,7 +1230,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.8 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.9 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
