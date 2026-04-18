@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.10 全息量化系統 (淨留倉精算版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.11 全息量化系統 (頭部集中度精算版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
@@ -27,11 +27,8 @@ CSS = (
     "<style>"
     ".table-container { overflow-x: auto; width: 100%; margin-bottom: 20px; } "
     ".table-container table { table-layout: auto !important; width: max-content !important; max-width: none !important; border-collapse: collapse !important; } "
-    # 表頭：置中、背景灰
     ".table-container table thead th { text-align: center !important; padding: 10px 15px !important; background-color: #f1f3f5 !important; color: #333 !important; line-height: 1.3 !important; white-space: nowrap !important; word-break: keep-all !important; } "
-    # 資料內容：絕對禁止斷行 (加上 word-break: keep-all 鎖死中文字)
     ".table-container table tbody td, .table-container table tbody th { white-space: nowrap !important; word-break: keep-all !important; padding: 10px 15px !important; vertical-align: middle !important; } "
-    # 凍結第一欄
     ".table-container table tr th:first-child, .table-container table tr td:first-child { position: sticky !important; left: 0 !important; background-color: #f8f9fa !important; z-index: 2 !important; border-right: 2px solid #dee2e6 !important; text-align: center !important; } "
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; } "
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; } "
@@ -71,16 +68,16 @@ footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)",
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
 st.sidebar.markdown("### 🧠 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除隔日沖，計算「純淨均價」", value=True, help="開啟後，主力防守價將排除隔日沖與游擊客的虛假交易量，找出鐵板底單。")
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨均價」", value=True, help="開啟後，系統強制鎖定前 30 大核心主力分點，排除散戶與游擊客雜訊。")
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.10 終極全息量化系統 (淨留倉精算版)")
+st.title("📱 V48.11 終極全息量化系統 (頭部集中度版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.10 升級：校正波段大戶建倉量邏輯，改採「淨留倉」計算，呈現最真實底單水位。{usage_text}")
+st.caption(f"🚀 V48.11 升級：修正大戶建倉量膨脹問題，強制鎖定前 30 大核心分點精算真實底單與成本。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -91,7 +88,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.10 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.11 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -436,19 +433,27 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active):
     else: 
         valid_df = df
 
-    total_buy = valid_df['buy'].sum()
-    if total_buy == 0: return 0.0, 0, 0
+    if valid_df.empty: return 0.0, 0, 0
 
-    vwap = round((valid_df['buy'] * valid_df['price']).sum() / total_buy, 2)
-    
-    # 修正 V48.10：計算真正的「淨留倉」，而非累計買進量
+    # V48.11 核心修正：計算各分點的真正「淨留倉」
     g = valid_df.groupby('securities_trader')[['buy', 'sell']].sum()
     g['net'] = (g['buy'] - g['sell']) / 1000
     
-    # 只統計「淨買超」大於 0 的家數與總淨買超量
-    valid_buyers = g[g['net'] > 0]
-    net_accum = int(valid_buyers['net'].sum())
-    active_buyers = len(valid_buyers)
+    # 強制鎖定這段期間「淨買超排名前 30 大」的核心主力分點，徹底消除散戶總點的累積雜訊
+    top_buyers = g[g['net'] > 0].sort_values('net', ascending=False).head(30)
+    
+    if top_buyers.empty: return 0.0, 0, 0
+    
+    # 針對這 30 大核心分點，去反查他們真正的買進均價
+    top_branch_names = top_buyers.index.tolist()
+    main_force_df = valid_df[valid_df['securities_trader'].isin(top_branch_names)]
+
+    total_buy = main_force_df['buy'].sum()
+    if total_buy == 0: return 0.0, 0, 0
+
+    vwap = round((main_force_df['buy'] * main_force_df['price']).sum() / total_buy, 2)
+    net_accum = int(top_buyers['net'].sum())
+    active_buyers = len(top_buyers)
 
     return vwap, net_accum, active_buyers
 
@@ -812,7 +817,7 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')].copy()
+    df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差异數')].copy()
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     df['unit'] = (safe_to_num(df.get('unit', 0)) / 1000).round().astype(int)
     df['people'] = safe_to_num(df['people']).astype(int)
@@ -962,7 +967,16 @@ def show_table(title, df, custom_class=""):
             
         f_dict = {c: lambda x, col=c: fmt_auto(x, col) for c in df.columns}
         
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '週期', '屬性', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
+        right_cols = [c for c in df.columns if c not in left_cols]
+        
         styler = df.style.format(f_dict)
+        
+        styler = styler.set_properties(**{'white-space': 'nowrap !important', 'word-break': 'keep-all !important'})
+        
+        if right_cols: styler = styler.set_properties(**{'text-align': 'right !important'}, subset=right_cols)
+        if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
+            
         try: styler = styler.hide(axis="index")
         except: styler = styler.hide_index()
         
@@ -984,7 +998,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.10 決策引擎 (極致精算中)..."):
+    with st.spinner(f"正在啟動 V48.11 決策引擎 (頭部主力精算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1086,9 +1100,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.10 頂層：AI 動態解析儀表板
+        # 🎨 V48.11 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.10 淨留倉精算版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.11 頭部集中度精算版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1129,11 +1143,11 @@ if run_btn:
         with col2:
             st.metric("📏 主力成本乖離率", f"{bias:.1f}%", delta="⚠️ 過熱或破線" if bias > 50 or bias < -5 else "✅ 安全邊際", delta_color="inverse" if bias > 50 or bias < -5 else "normal")
         with col3:
-            st.metric("📊 波段大戶淨留倉", f"{main_force_vol:,} 張", f"共 {active_main_branches} 家")
+            st.metric("📊 波段大戶淨留倉", f"{main_force_vol:,} 張", f"前 {active_main_branches} 大核心分點")
         with col4:
             st.metric("💸 今日聰明錢動向", f"{today_smart_net:,} 張", delta=f"{today_smart_net:,} 張", delta_color="normal")
         
-        st.caption(f"💡 備註：防守價已透過 AI 引擎自動 **{'排除' if filter_day_trade else '包含'}** 隔日沖與游擊客雜訊，反映最純淨的主力底單成本。")
+        st.caption(f"💡 備註：防守價已透過 AI 引擎自動 **{'過濾隔日沖並鎖定前 30 大核心買超分點' if filter_day_trade else '包含所有分點'}**，反映最純淨的頭部主力底單成本與留倉量。")
         st.markdown("---")
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1230,7 +1244,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.10 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.11 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
