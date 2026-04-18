@@ -12,24 +12,24 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.3 全息量化系統 (精準解析版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.4 全息量化系統 (極致視覺版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 CSS = (
     "<style>"
-    ".table-responsive{overflow-x:auto;width:100%;display:block;margin-bottom:20px} "
-    "table.dataframe{border-collapse:collapse;width:100%} "
-    "table.dataframe th,table.dataframe td{white-space:nowrap!important;text-align:center!important;padding:8px 12px!important} "
-    "table.dataframe th:first-child,table.dataframe td:first-child{position:sticky;left:0;background-color:#f1f3f5;z-index:1;border-right:2px solid #dee2e6} "
-    ".radar-table td:last-child{text-align:left!important;color:#ff4b4b;font-weight:bold} "
-    ".daily-tracker td:last-child{text-align:left!important;color:#008080;font-weight:bold} "
-    ".info-box{background-color:#f0f2f6;padding:15px;border-radius:10px;margin-bottom:20px;border-left:5px solid #1e3a8a;font-size:16px;line-height:1.8} "
-    ".hawk-eye-box{background-color:#fff9db;padding:20px;border-radius:10px;margin-bottom:20px;border-left:6px solid #f59f00;font-size:15px;line-height:1.8} "
-    ".hawk-alert{color:#d9480f;font-weight:bold} "
-    ".hawk-safe{color:#2b8a3e;font-weight:bold} "
-    ".section-title{margin-top:35px;margin-bottom:15px;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:5px;font-size:1.3rem!important;font-weight:700!important} "
-    ".category-title{font-size:1.6rem!important;font-weight:900!important;margin-top:40px;color:#333} "
-    ".loss-warning{color:#d9480f;font-weight:bold} "
+    ".table-responsive { overflow-x: auto; width: 100%; display: block; margin-bottom: 20px; } "
+    "table.dataframe { border-collapse: collapse; width: max-content !important; min-width: 100%; max-width: none !important; } "
+    "table.dataframe th, table.dataframe td { white-space: nowrap !important; word-break: keep-all !important; text-align: center !important; padding: 10px 15px !important; } "
+    "table.dataframe th:first-child, table.dataframe td:first-child { position: sticky; left: 0; background-color: #f1f3f5; z-index: 1; border-right: 2px solid #dee2e6; } "
+    ".radar-table td:last-child { text-align: left !important; color: #ff4b4b; font-weight: bold; } "
+    ".daily-tracker td:last-child { text-align: left !important; color: #008080; font-weight: bold; } "
+    ".info-box { background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #1e3a8a; font-size: 16px; line-height: 1.8; } "
+    ".hawk-eye-box { background-color: #fff9db; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 6px solid #f59f00; font-size: 15px; line-height: 1.8; } "
+    ".hawk-alert { color: #d9480f; font-weight: bold; } "
+    ".hawk-safe { color: #2b8a3e; font-weight: bold; } "
+    ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; } "
+    ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; } "
+    ".loss-warning { color: #d9480f; font-weight: bold; } "
     "</style>"
 )
 st.markdown(CSS, unsafe_allow_html=True)
@@ -60,17 +60,17 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.3 終極全息量化系統 (精準解析版)")
+st.title("📱 V48.4 終極全息量化系統 (極致視覺版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.3 升級：優化 K 線十字標精準度、加深紅 K 顏色、並校正台股乖離率判定。{usage_text}")
+st.caption(f"🚀 V48.4 升級：解決圖表干擾框、強制完美單行表格、十字線精準吸附收盤價。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.3 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.4 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -225,7 +225,7 @@ def scrape_director_v46(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
@@ -946,7 +946,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.3 決策引擎 (資料解析運算中)..."):
+    with st.spinner(f"正在啟動 V48.4 決策引擎 (資料解析運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1048,9 +1048,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.3 頂層：AI 動態解析儀表板
+        # 🎨 V48.4 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.3 精準解析版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.4 極致視覺版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1136,28 +1136,37 @@ if run_btn:
                 
                 fig_kline = go.Figure()
                 
-                # V48.3: 加深紅 K 顏色至 #999999
+                # 1. 隱藏的收盤價線 (專門用來吸引十字線吸附，且完全不顯示任何提示框)
+                fig_kline.add_trace(go.Scatter(
+                    x=df_plot['日期'], y=df_plot['收盤價(元)'], mode='markers', 
+                    marker=dict(color='rgba(0,0,0,0)', size=2), 
+                    hoverinfo='none', showlegend=False 
+                ))
+                
+                # 2. 主 K 線 (跳過 hover 避免大黑框干擾，加深紅 K 顏色)
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
                     increasing_line_color='#999999', increasing_line_width=1, increasing_fillcolor='#999999',
                     decreasing_line_color='black', decreasing_line_width=1, decreasing_fillcolor='black',
-                    whiskerwidth=0
+                    whiskerwidth=0, hoverinfo='skip'
                 ))
                 
-                if f'MA{ma_short}' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5)))
-                if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2)))
-                if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5)))
+                # 3. 均線 (跳過 hover 避免十字線被吸走)
+                if f'MA{ma_short}' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5), hoverinfo='skip'))
+                if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2), hoverinfo='skip'))
+                if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5), hoverinfo='skip'))
                 
-                # 移除 hoverinfo='none'，讓十字標準確捕捉數值
                 fig_kline.update_layout(
                     height=450, margin=dict(l=30, r=30, t=20, b=0), 
                     xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', 
                     showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.01), 
-                    hovermode='x unified'
+                    hovermode='x' # 改為標準單點對齊模式
                 )
-                fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
-                fig_kline.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
+                
+                # 開啟十字線，並強迫 Y 軸精準吸附資料點 (也就是我們隱藏的收盤價)
+                fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
+                fig_kline.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333', spikesnap='data')
                 
                 fig_vol = go.Figure()
                 for i, row in df_plot.iterrows():
@@ -1223,7 +1232,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.3 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.4 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
