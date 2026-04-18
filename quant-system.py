@@ -12,7 +12,7 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.0 全息量化系統 (究極穩定版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.1 全息量化系統 (無框實心版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 CSS = (
@@ -65,17 +65,17 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.0 終極全息量化系統 (究極穩定版)")
+st.title("📱 V48.1 終極全息量化系統 (無框實心視覺版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度使用狀態: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.0 升級：全域邊界防護與運算效能壓榨，確保核心數據零誤差。{usage_text}")
+st.caption(f"🚀 V48.1 升級：採用無框淡灰/純黑的極簡視覺，徹底消除 K 線干擾。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.0 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.1 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -334,7 +334,7 @@ def scrape_fubon_pledge(df_pr, tid):
     return pd.DataFrame(sr), df_all
 
 # ==========================================
-# 🧠 V48.0 替換升級：三維動態行為大腦
+# 🧠 核心模組：三維動態行為大腦
 # ==========================================
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
@@ -380,7 +380,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 
         ld = pd.to_datetime(g['date']).max()
         stats_p = price_stats.get(ld, {'pos': 0.5, 'strength': 0})
-        pos, strn = stats_p['pos'], stats_p['strength']
+        pos = stats_p['pos']
 
         v60 = stats.loc[trader, 'net_60d'] if trader in stats.index else 0
         v20 = stats.loc[trader, 'net_20d'] if trader in stats.index else 0
@@ -405,7 +405,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
             "近60日淨買(張)": int(v60), "近20日淨買(張)": int(v20), "近5日淨買(張)": int(v5),
             "黏著度(%)": round(stickiness, 1), "囤貨率(%)": round(hoard_ratio, 1),
             "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(tb - ts),
-            "買均價": b_str, "賣均價": round(avg_s, 2), "收盤位階": round(pos, 2)
+            "買均價": b_str, "賣均價": round(avg_s, 2) if avg_s > 0 else "-", "收盤位階": round(pos, 2)
         })
 
     return tags, pd.DataFrame(d_rows).sort_values('近60日淨買(張)', ascending=False)
@@ -932,7 +932,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.0 決策引擎 (防呆保護載入中)..."):
+    with st.spinner(f"正在啟動 V48.1 決策引擎 (相容舊有功能載入中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1034,9 +1034,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address} ｜ 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.0 頂層：紅綠燈號決策看板
+        # 🎨 V48.1 頂層：紅綠燈號決策看板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.0 究極穩定版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.1 無框實心版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>📈 最新收盤價: <b>{curr_price} 元</b></div>", unsafe_allow_html=True)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1086,7 +1086,10 @@ if run_btn:
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 
+                # 第一部分：純粹的 K 線圖
                 fig_kline = go.Figure()
+                
+                # V48.1: 徹底無框化。收紅為淡灰實心 (#cccccc)，收黑為純黑實心
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
@@ -1109,9 +1112,11 @@ if run_btn:
                 fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
                 fig_kline.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
                 
+                # 第二部分：純粹的成交量圖
                 fig_vol = go.Figure()
                 for i, row in df_plot.iterrows():
                     is_up = row['收盤價(元)'] >= row['開盤價(元)']
+                    # V48.1: 收紅成交量改為淡灰 (#cccccc) 配合 K 線，全部無邊框
                     vol_color = '#cccccc' if is_up else 'black'
                     fig_vol.add_trace(go.Bar(
                         x=[row['日期']], y=[row['成交量(張)']], 
@@ -1173,7 +1178,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
