@@ -12,7 +12,7 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V47.1 全息量化系統 (動態大腦相容版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V47.2 全息量化系統 (動態大腦相容版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 將 CSS 改為單行字串拼接，避免 Streamlit 快取解析發生 TokenError
@@ -59,24 +59,24 @@ footprint_days = st.sidebar.slider("足跡動態追蹤天數", 3, 60, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
-st.sidebar.markdown("### 🧠 V47.1 淨化籌碼引擎")
+st.sidebar.markdown("### 🧠 V47.2 淨化籌碼引擎")
 filter_day_trade = st.sidebar.checkbox("剔除隔日沖，計算「純淨均價」", value=True, help="開啟後，主力防守價將排除隔日沖與游擊客的虛假交易量，找出鐵板底單。")
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V47.1 終極全息量化系統 (動態大腦相容版)")
+st.title("📱 V47.2 終極全息量化系統 (動態大腦相容版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度使用狀態: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V47.1 升級：黑白K線、董監事持股正名、數據Dump區塊。{usage_text}")
+st.caption(f"🚀 V47.2 升級：優化黑白K線粗細、凸顯董監事持股、正確Raw Data Dump。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V47.1 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V47.2 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -389,7 +389,7 @@ def scrape_fubon_pledge(df_pr, tid):
     return pd.DataFrame(sr), df_all
 
 # ==========================================
-# 🧠 V47.1 替換升級：三維動態行為大腦
+# 🧠 V47.2 替換升級：三維動態行為大腦
 # ==========================================
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: 
@@ -670,7 +670,7 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh):
         if firepower >= fire_thresh and concentration > 5: 
             diag.append(f"🔥 大戶火力壓制 ({fire_thresh}倍↑)")
         elif firepower < 0.7 and diff_count > 50: 
-            diag.append("💀 散戶螞蟻搬家 (主力倒貨)")
+            diag.append("💀 散戶螞搬家 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: 
             diag.append("⚠️ 籌碼極度發散 (熱門當沖雷區)")
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "🔵 中性換手"})
@@ -1119,7 +1119,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V47.1 決策引擎 (相容舊有功能載入中)..."):
+    with st.spinner(f"正在啟動 V47.2 決策引擎 (相容舊有功能載入中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1213,18 +1213,22 @@ if run_btn:
         else:
             df_cbas = pd.DataFrame()
 
-        # 公司基本資訊
+        # 公司基本資訊與董監事持股顯示
         market_cap_str = "計算中..."
         industry, address = get_company_profile(user_stock_id)
         if not df_price.empty and not df_s_wide.empty:
             market_cap_str = f"{(curr_price * df_s_wide['總張數'].iloc[0]) / 100000:,.2f} 億"
+            
+        # 取得最新董監事持股並格式化顯示
+        latest_director_holding, holding_src = get_dead_chip_info(dates[0], dead_chip_input, dynamic_dict, s_val, chip_eng)
+        director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無數據"
         
-        company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address}"
+        company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address} ｜ 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V47.1 頂層：紅綠燈號決策看板
+        # 🎨 V47.2 頂層：紅綠燈號決策看板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V47.1 動態大腦相容版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V47.2 動態大腦相容版)")
         st.markdown(f"<div class='info-box'>{company_info_text}<br>📈 最新收盤價: <b>{curr_price} 元</b></div>", unsafe_allow_html=True)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1282,12 +1286,12 @@ if run_btn:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 fig_kline = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
                 
-                # V47.1: 改為經典黑白 K 線 (實體黑棒為跌，空心白棒為漲)
+                # V47.2: 黑白 K 線，並強制設定線寬 increasing_line_width=1, decreasing_line_width=1 防止白棒變成實心黑棒
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
-                    increasing_line_color='black', increasing_fillcolor='white',
-                    decreasing_line_color='black', decreasing_fillcolor='black'
+                    increasing_line_color='black', increasing_line_width=1, increasing_fillcolor='white',
+                    decreasing_line_color='black', decreasing_line_width=1, decreasing_fillcolor='black'
                 ), row=1, col=1)
                 
                 if f'MA{ma_short}' in df_plot.columns: 
@@ -1297,7 +1301,6 @@ if run_btn:
                 if f'MA{ma_long}(長線)' in df_plot.columns: 
                     fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5)), row=1, col=1)
                 
-                # V47.1: 成交量同步黑白化 (黑框白底為漲，實心黑底為跌)
                 vol_colors = ['white' if row['收盤價(元)'] >= row['開盤價(元)'] else 'black' for i, row in df_plot.iterrows()]
                 fig_kline.add_trace(go.Bar(
                     x=df_plot['日期'], y=df_plot['成交量(張)'], 
@@ -1360,7 +1363,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V47.1 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V47.2 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1379,20 +1382,21 @@ if run_btn:
             p1 += format_to_csv_string(df_disp, "20. 處置有價證券狀態")
             p1 += format_to_csv_string(df_cbas, "21. CBAS 可轉債數據")
             st.code(p1, language="text")
-            
+
         # ==========================================
-        # 🔍 V47.1 新增：底層數據 Dump 區塊
+        # 🔍 V47.2 新增：底層數據 Raw Data Dump 驗證區
         # ==========================================
         st.divider()
-        st.markdown("<div class='category-title'>🔍 系統底層數據 Dump 驗證區</div>", unsafe_allow_html=True)
-        with st.expander("點此展開系統雙引擎原始擷取數據 (供除錯與肉眼驗證)", expanded=False):
-            st.write("### 1. 董監事持股雙引擎狀態")
-            st.write(f"- **系統目前判定之主來源:** `{chip_eng}`")
-            st.write(f"- **預設單一最新持股比例 (Fallback):** `{s_val}%`")
-            st.write("- **Goodinfo 歷史月份動態陣列 (JSON Dump):**")
-            st.json(dynamic_dict)
+        st.markdown("<div class='category-title'>🔍 系統底層數據 Raw Data Dump 驗證區</div>", unsafe_allow_html=True)
+        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
+            st.write("### 1. 股價原始數據 df_p_raw (前 5 筆)")
+            st.dataframe(df_p_raw.head(5) if not df_p_raw.empty else pd.DataFrame(), use_container_width=True)
             
-            st.write("### 2. 運算環境快照")
-            st.write(f"- **目標股號:** `{user_stock_id}`")
-            st.write(f"- **資料回溯天數:** `{max_len}` 天")
-            st.write(f"- **純淨防守價:** `{pure_vwap}` 元")
+            st.write("### 2. 集保股權分散原始數據 df_s_raw (前 15 筆)")
+            st.dataframe(df_s_raw.head(15) if not df_s_raw.empty else pd.DataFrame(), use_container_width=True)
+            
+            st.write("### 3. 分點進出原始數據 df_b_raw (前 15 筆)")
+            st.dataframe(df_b_raw.head(15) if not df_b_raw.empty else pd.DataFrame(), use_container_width=True)
+            
+            st.write("### 4. 董監事持股動態字典 (Goodinfo 抓取結果)")
+            st.json(dynamic_dict)
