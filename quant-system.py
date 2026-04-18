@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.9 全息量化系統 (終極排版版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.10 全息量化系統 (淨留倉精算版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
@@ -77,10 +77,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.9 終極全息量化系統 (終極除錯版)")
+st.title("📱 V48.10 終極全息量化系統 (淨留倉精算版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.9 升級：K線與成交量雙軸鎖定完美對齊、徹底消滅表格亂斷行、並加入 GitHub 說明書連動。{usage_text}")
+st.caption(f"🚀 V48.10 升級：校正波段大戶建倉量邏輯，改採「淨留倉」計算，呈現最真實底單水位。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -91,7 +91,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.9 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.10 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -430,15 +430,27 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active):
     if df_b_raw.empty: return 0.0, 0, 0
     df = df_b_raw.copy()
     df['tag'] = df['securities_trader'].map(tags).fillna("🔵 一般/游擊")
-    if is_filter_active: valid_df = df[~df['tag'].str.contains("隔日沖|游擊|空方", na=False)]
-    else: valid_df = df
+    
+    if is_filter_active: 
+        valid_df = df[~df['tag'].str.contains("隔日沖|游擊|空方", na=False)]
+    else: 
+        valid_df = df
 
     total_buy = valid_df['buy'].sum()
     if total_buy == 0: return 0.0, 0, 0
 
     vwap = round((valid_df['buy'] * valid_df['price']).sum() / total_buy, 2)
-    vol_k = round(total_buy / 1000)
-    return vwap, vol_k, valid_df['securities_trader'].nunique()
+    
+    # 修正 V48.10：計算真正的「淨留倉」，而非累計買進量
+    g = valid_df.groupby('securities_trader')[['buy', 'sell']].sum()
+    g['net'] = (g['buy'] - g['sell']) / 1000
+    
+    # 只統計「淨買超」大於 0 的家數與總淨買超量
+    valid_buyers = g[g['net'] > 0]
+    net_accum = int(valid_buyers['net'].sum())
+    active_buyers = len(valid_buyers)
+
+    return vwap, net_accum, active_buyers
 
 def process_footprint(df_raw, dynamic_dates, intel_tags, df_fingerprint, top_n, global_days):
     if df_raw.empty or not dynamic_dates: return pd.DataFrame(), pd.DataFrame()
@@ -950,18 +962,7 @@ def show_table(title, df, custom_class=""):
             
         f_dict = {c: lambda x, col=c: fmt_auto(x, col) for c in df.columns}
         
-        # 精準分離純文字欄位與數值欄位，純文字靠左、數值靠右
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '週期', '屬性', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
-        right_cols = [c for c in df.columns if c not in left_cols]
-        
         styler = df.style.format(f_dict)
-        
-        # Inline CSS 絕對鎖定：保證不管套件怎麼搞，都不會斷行
-        styler = styler.set_properties(**{'white-space': 'nowrap !important', 'word-break': 'keep-all !important'})
-        
-        if right_cols: styler = styler.set_properties(**{'text-align': 'right !important'}, subset=right_cols)
-        if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
-            
         try: styler = styler.hide(axis="index")
         except: styler = styler.hide_index()
         
@@ -983,7 +984,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.9 決策引擎 (排版與圖表雙重鎖定中)..."):
+    with st.spinner(f"正在啟動 V48.10 決策引擎 (極致精算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1085,9 +1086,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.9 頂層：AI 動態解析儀表板
+        # 🎨 V48.10 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.9 終極除錯版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.10 淨留倉精算版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1128,9 +1129,9 @@ if run_btn:
         with col2:
             st.metric("📏 主力成本乖離率", f"{bias:.1f}%", delta="⚠️ 過熱或破線" if bias > 50 or bias < -5 else "✅ 安全邊際", delta_color="inverse" if bias > 50 or bias < -5 else "normal")
         with col3:
-            st.metric("📊 大戶總建倉 (家數)", f"{main_force_vol} 張", f"{active_main_branches} 家")
+            st.metric("📊 波段大戶淨留倉", f"{main_force_vol:,} 張", f"共 {active_main_branches} 家")
         with col4:
-            st.metric("💸 今日聰明錢動向", f"{today_smart_net} 張", delta=f"{today_smart_net} 張", delta_color="normal")
+            st.metric("💸 今日聰明錢動向", f"{today_smart_net:,} 張", delta=f"{today_smart_net:,} 張", delta_color="normal")
         
         st.caption(f"💡 備註：防守價已透過 AI 引擎自動 **{'排除' if filter_day_trade else '包含'}** 隔日沖與游擊客雜訊，反映最純淨的主力底單成本。")
         st.markdown("---")
@@ -1153,7 +1154,6 @@ if run_btn:
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 
-                # V48.9 終極修復：使用 make_subplots 強制共享 X 軸，絕對對齊！
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
                 
                 # 1. 隱藏的收盤價線 (吸引十字線吸附)
@@ -1167,7 +1167,7 @@ if run_btn:
                 if f'MA{ma_mid}(中線)' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2), hoverinfo='skip'), row=1, col=1)
                 if f'MA{ma_long}(長線)' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5), hoverinfo='skip'), row=1, col=1)
                 
-                # 4. 成交量 (放置在 row=2)
+                # 4. 成交量
                 vol_colors = ['#999999' if row['收盤價(元)'] >= row['開盤價(元)'] else 'black' for i, row in df_plot.iterrows()]
                 fig.add_trace(go.Bar(x=df_plot['日期'], y=df_plot['成交量(張)'], marker_color=vol_colors, showlegend=False, hoverinfo='skip'), row=2, col=1)
                 
@@ -1230,7 +1230,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.9 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.10 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
