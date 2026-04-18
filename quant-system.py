@@ -12,7 +12,7 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.2 全息量化系統 (精準解析版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.3 全息量化系統 (精準解析版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 CSS = (
@@ -60,17 +60,17 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.2 終極全息量化系統 (精準解析版)")
+st.title("📱 V48.3 終極全息量化系統 (精準解析版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.2 升級：優化戰情報表介面，精準標示主力週期(短/中/長線)與吃貨出貨階段判定。{usage_text}")
+st.caption(f"🚀 V48.3 升級：優化 K 線十字標精準度、加深紅 K 顏色、並校正台股乖離率判定。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.2 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.3 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -946,7 +946,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.2 決策引擎 (資料解析運算中)..."):
+    with st.spinner(f"正在啟動 V48.3 決策引擎 (資料解析運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1048,19 +1048,18 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.2 頂層：AI 動態解析儀表板
+        # 🎨 V48.3 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.2 精準解析版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.3 精準解析版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
-        # 取得今日聰明錢淨流出入與乖離
         today_smart_net = 0
         if not df_daily_tracker.empty:
             today_smart_net = df_daily_tracker.iloc[0]['聰明錢淨流(張)']
             
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         
-        # --- 精準階段判定邏輯 ---
+        # --- 精準階段判定邏輯 (台股專用門檻) ---
         phase_title = ""
         phase_desc = ""
         phase_color = ""
@@ -1070,55 +1069,47 @@ if run_btn:
             phase_desc = "缺乏明顯波段主力介入，目前盤勢由一般市場力量主導，建議觀望技術面表態。"
             phase_color = "#757575"
         elif curr_price >= pure_vwap:
-            if bias <= 5:
-                phase_title = "🧱 主力吃貨中 (低檔建倉)"
-                phase_desc = f"最新收盤價 ({curr_price}元) 緊貼主力防守價，乖離率僅 <b>{bias:.1f}%</b>。主力正在安全邊際內默默吸籌，尚未發動，是風險報酬比極佳的潛伏期。"
-                phase_color = "#2b8a3e" # Green
-            elif 5 < bias <= 15:
-                phase_title = "🚀 開始拉抬 (波段起漲)"
-                phase_desc = f"股價已脫離成本區 (乖離率 <b>{bias:.1f}%</b>)，波段主力啟動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可順勢操作。"
-                phase_color = "#d9480f" # Red-orange
+            if bias <= 10:
+                phase_title = "🧱 主力吃貨中 (安全建倉區)"
+                phase_desc = f"最新收盤價 ({curr_price}元) 貼近主力成本，乖離率僅 <b>{bias:.1f}%</b>。主力正在安全邊際內默默吸籌，下檔具備鐵板支撐，是風險報酬比極佳的潛伏期。"
+                phase_color = "#2b8a3e"
+            elif 10 < bias <= 50:
+                phase_title = "🚀 趨勢推升 (波段多頭起漲)"
+                phase_desc = f"股價穩定脫離成本區 (乖離率 <b>{bias:.1f}%</b>)，波段主力已點火發動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可抱緊順勢操作。"
+                phase_color = "#d9480f"
             else:
-                phase_title = "⚠️ 高檔派發/出貨風險 (乖離過大)"
-                phase_desc = f"股價已大幅噴出，乖離率高達 <b>{bias:.1f}%</b>。主力帳面獲利豐厚，隨時可能啟動「收割倒貨」模式。若今日聰明錢呈現淨流出，則確認為出貨階段，嚴禁盲目追高！"
-                phase_color = "#f59f00" # Yellow
-        else: # curr_price < pure_vwap
+                phase_title = "⚠️ 高檔派發/過熱風險 (乖離破表)"
+                phase_desc = f"股價已呈極端噴出，乖離率高達 <b>{bias:.1f}%</b>，進入台股高危險過熱區。主力帳面獲利極大，隨時可能無情收割。若見聰明錢流出，請嚴格執行停利！"
+                phase_color = "#f59f00"
+        else:
             if bias >= -5:
                 phase_title = "🩹 主力防守戰 (跌破邊緣)"
                 phase_desc = f"股價微幅跌破主力成本 (乖離 <b>{bias:.1f}%</b>)。主力陷入帳面虧損，請密切觀察未來三日是否主動買超護盤，若無表態則防線隨時崩潰。"
                 phase_color = "#e67700"
             else:
                 phase_title = "💀 主力套牢 / 棄守多殺多"
-                phase_desc = f"股價深度跌破防守價 (乖離 <b>{bias:.1f}%</b>)。波段主力已被嚴重套牢或直接停損棄守，極易引發多殺多恐慌賣壓，建議避開。"
+                phase_desc = f"股價深度跌破防守價 (乖離 <b>{bias:.1f}%</b>)。波段主力已被嚴重套牢或直接停損棄守，極易引發多殺多恐慌賣壓，建議立刻避開。"
                 phase_color = "#c92a2a"
                 
-        # --- 繪製 AI 解析儀表板 ---
-        adv_html = f"""
-        <div style="background-color:#f8f9fa; border-radius:12px; padding:25px; border-left:8px solid {phase_color}; margin-bottom:25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <h3 style="margin-top:0; color:{phase_color}; font-weight:900; font-size:1.6rem; letter-spacing: 1px;">【階段判定】 {phase_title}</h3>
-            <p style="font-size:1.1rem; color:#444; line-height:1.6; margin-bottom:20px;">{phase_desc}</p>
-            
-            <div style="display:flex; gap:15px; flex-wrap:wrap; background-color:#ffffff; padding:20px; border-radius:8px; border:1px solid #e9ecef;">
-                <div style="flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;">
-                    <span style="font-size:0.95rem; color:#666;">🛡️ 主力鐵板防守價</span><br>
-                    <span style="font-size:1.4rem; font-weight:bold; color:#1e3a8a;">{pure_vwap} 元</span>
-                </div>
-                <div style="flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;">
-                    <span style="font-size:0.95rem; color:#666;">📏 主力成本乖離率</span><br>
-                    <span style="font-size:1.4rem; font-weight:bold; color:{'#e03131' if bias > 15 or bias < -5 else '#2b8a3e'};">{bias:.1f}%</span>
-                </div>
-                <div style="flex:1; min-width:160px; text-align:center; border-right: 1px solid #eee;">
-                    <span style="font-size:0.95rem; color:#666;">📊 計算基準 (大戶總建倉)</span><br>
-                    <span style="font-size:1.4rem; font-weight:bold; color:#333;">{main_force_vol} 張 ({active_main_branches} 家)</span>
-                </div>
-                <div style="flex:1; min-width:140px; text-align:center;">
-                    <span style="font-size:0.95rem; color:#666;">💸 今日聰明錢動向</span><br>
-                    <span style="font-size:1.4rem; font-weight:bold; color:{'#e03131' if today_smart_net < 0 else '#2b8a3e'};">{'+' if today_smart_net>0 else ''}{today_smart_net} 張</span>
-                </div>
-            </div>
-            <p style="font-size:0.9rem; color:#888; margin-top:12px; margin-bottom:0;">💡 備註：上述防守價已透過 AI 引擎自動 {'<b>排除</b>' if filter_day_trade else '<b>包含</b>'} 隔日沖與游擊客雜訊，反映出最純淨的主力底單成本。</p>
-        </div>
-        """
+        # --- 繪製 AI 解析儀表板 (已修正 HTML 排版) ---
+        adv_html = f"<div style='background-color:#f8f9fa; border-radius:12px; padding:25px; border-left:8px solid {phase_color}; margin-bottom:25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);'>"
+        adv_html += f"<h3 style='margin-top:0; color:{phase_color}; font-weight:900; font-size:1.6rem; letter-spacing: 1px;'>【階段判定】 {phase_title}</h3>"
+        adv_html += f"<p style='font-size:1.1rem; color:#444; line-height:1.6; margin-bottom:20px;'>{phase_desc}</p>"
+        adv_html += "<div style='display:flex; gap:15px; flex-wrap:wrap; background-color:#ffffff; padding:20px; border-radius:8px; border:1px solid #e9ecef;'>"
+        adv_html += "<div style='flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;'>"
+        adv_html += "<span style='font-size:0.95rem; color:#666;'>🛡️ 主力鐵板防守價</span><br>"
+        adv_html += f"<span style='font-size:1.4rem; font-weight:bold; color:#1e3a8a;'>{pure_vwap} 元</span></div>"
+        adv_html += "<div style='flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;'>"
+        adv_html += "<span style='font-size:0.95rem; color:#666;'>📏 主力成本乖離率</span><br>"
+        adv_html += f"<span style='font-size:1.4rem; font-weight:bold; color:{'#e03131' if bias > 50 or bias < -5 else '#2b8a3e'};'>{bias:.1f}%</span></div>"
+        adv_html += "<div style='flex:1; min-width:160px; text-align:center; border-right: 1px solid #eee;'>"
+        adv_html += "<span style='font-size:0.95rem; color:#666;'>📊 計算基準 (大戶總建倉)</span><br>"
+        adv_html += f"<span style='font-size:1.4rem; font-weight:bold; color:#333;'>{main_force_vol} 張 ({active_main_branches} 家)</span></div>"
+        adv_html += "<div style='flex:1; min-width:140px; text-align:center;'>"
+        adv_html += "<span style='font-size:0.95rem; color:#666;'>💸 今日聰明錢動向</span><br>"
+        adv_html += f"<span style='font-size:1.4rem; font-weight:bold; color:{'#e03131' if today_smart_net < 0 else '#2b8a3e'};'>{'+' if today_smart_net>0 else ''}{today_smart_net} 張</span></div></div>"
+        adv_html += f"<p style='font-size:0.9rem; color:#888; margin-top:12px; margin-bottom:0;'>💡 備註：上述防守價已透過 AI 引擎自動 <b>{'排除' if filter_day_trade else '包含'}</b> 隔日沖與游擊客雜訊，反映出最純淨的主力底單成本。</p></div>"
+        
         st.markdown(adv_html, unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
@@ -1132,7 +1123,6 @@ if run_btn:
         hawk_html_display += "</div>"
         st.markdown(hawk_html_display, unsafe_allow_html=True)
 
-        # 這裡移除了原有的 "00. 職業極簡技術大局觀" 標題，直接進入圖表
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             import plotly.graph_objects as go
@@ -1144,14 +1134,13 @@ if run_btn:
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 
-                # 第一部分：純粹的 K 線圖
                 fig_kline = go.Figure()
                 
-                # V48.2: 徹底無框化。收紅為淡灰實心 (#cccccc)，收黑為純黑實心
+                # V48.3: 加深紅 K 顏色至 #999999
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
-                    increasing_line_color='#cccccc', increasing_line_width=1, increasing_fillcolor='#cccccc',
+                    increasing_line_color='#999999', increasing_line_width=1, increasing_fillcolor='#999999',
                     decreasing_line_color='black', decreasing_line_width=1, decreasing_fillcolor='black',
                     whiskerwidth=0
                 ))
@@ -1160,7 +1149,7 @@ if run_btn:
                 if f'MA{ma_mid}(中線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_mid}(中線)'], mode='lines', name=f'MA{ma_mid}', line=dict(color='#29b6f6', width=2)))
                 if f'MA{ma_long}(長線)' in df_plot.columns: fig_kline.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_long}(長線)'], mode='lines', name=f'MA{ma_long}', line=dict(color='#ab47bc', width=2.5)))
                 
-                fig_kline.update_traces(hoverinfo='none', hovertemplate='') 
+                # 移除 hoverinfo='none'，讓十字標準確捕捉數值
                 fig_kline.update_layout(
                     height=450, margin=dict(l=30, r=30, t=20, b=0), 
                     xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', 
@@ -1170,11 +1159,10 @@ if run_btn:
                 fig_kline.update_xaxes(type='category', showgrid=False, zeroline=False, showticklabels=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
                 fig_kline.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikedash='dot', spikecolor='#333333')
                 
-                # 第二部分：純粹的成交量圖
                 fig_vol = go.Figure()
                 for i, row in df_plot.iterrows():
                     is_up = row['收盤價(元)'] >= row['開盤價(元)']
-                    vol_color = '#cccccc' if is_up else 'black'
+                    vol_color = '#999999' if is_up else 'black'
                     fig_vol.add_trace(go.Bar(
                         x=[row['日期']], y=[row['成交量(張)']], 
                         marker=dict(color=vol_color, line=dict(width=0)), 
@@ -1235,7 +1223,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.2 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.3 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
