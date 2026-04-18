@@ -12,7 +12,7 @@ from io import StringIO
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.1 全息量化系統 (無框實心版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.2 全息量化系統 (精準解析版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 CSS = (
@@ -23,18 +23,13 @@ CSS = (
     "table.dataframe th:first-child,table.dataframe td:first-child{position:sticky;left:0;background-color:#f1f3f5;z-index:1;border-right:2px solid #dee2e6} "
     ".radar-table td:last-child{text-align:left!important;color:#ff4b4b;font-weight:bold} "
     ".daily-tracker td:last-child{text-align:left!important;color:#008080;font-weight:bold} "
-    ".info-box{background-color:#f0f2f6;padding:15px;border-radius:10px;margin-bottom:20px;border-left:5px solid #ff4b4b;font-size:16px;line-height:1.8} "
+    ".info-box{background-color:#f0f2f6;padding:15px;border-radius:10px;margin-bottom:20px;border-left:5px solid #1e3a8a;font-size:16px;line-height:1.8} "
     ".hawk-eye-box{background-color:#fff9db;padding:20px;border-radius:10px;margin-bottom:20px;border-left:6px solid #f59f00;font-size:15px;line-height:1.8} "
     ".hawk-alert{color:#d9480f;font-weight:bold} "
     ".hawk-safe{color:#2b8a3e;font-weight:bold} "
     ".section-title{margin-top:35px;margin-bottom:15px;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:5px;font-size:1.3rem!important;font-weight:700!important} "
     ".category-title{font-size:1.6rem!important;font-weight:900!important;margin-top:40px;color:#333} "
     ".loss-warning{color:#d9480f;font-weight:bold} "
-    ".signal-box{padding:20px;border-radius:10px;margin-bottom:20px;font-size:18px;font-weight:bold;text-align:center;color:white;} "
-    ".signal-red{background-color:#d32f2f;border:2px solid #b71c1c;} "
-    ".signal-green{background-color:#2e7d32;border:2px solid #1b5e20;} "
-    ".signal-yellow{background-color:#fbc02d;border:2px solid #f57f17;color:#333;} "
-    ".signal-gray{background-color:#757575;border:2px solid #424242;} "
     "</style>"
 )
 st.markdown(CSS, unsafe_allow_html=True)
@@ -65,17 +60,17 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.1 終極全息量化系統 (無框實心視覺版)")
+st.title("📱 V48.2 終極全息量化系統 (精準解析版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
-usage_text = f" | 🔑 FinMind 額度使用狀態: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.1 升級：採用無框淡灰/純黑的極簡視覺，徹底消除 K 線干擾。{usage_text}")
+usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
+st.caption(f"🚀 V48.2 升級：優化戰情報表介面，精準標示主力週期(短/中/長線)與吃貨出貨階段判定。{usage_text}")
 
 col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.1 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.2 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): 
@@ -480,13 +475,32 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         if i < len(b): 
             b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}"
             if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0 and b.loc[i,'net'] > 0: b_str = f"⚠️(虧) {b_str}"
-            r["買超分點"] = f"{intel_tags.get(b.loc[i,'securities_trader'],'🔵')} {b.loc[i,'securities_trader']}"
-            r["黏著度(%)"] = f"{b.loc[i,'stick']}%"; r["買超(張)"] = int(b.loc[i,'net']); r["買均價"] = b_str; r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%" if tv > 0 else "-"
-        else: r["買超分點"], r["黏著度(%)"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", 0, "-", "-"
+            
+            raw_tag = intel_tags.get(b.loc[i,'securities_trader'],'🔵 一般')
+            attr = "🏃 短線" if any(x in raw_tag for x in ["隔日沖", "游擊"]) else "⚓ 中長線" if any(x in raw_tag for x in ["長駐", "潛伏", "官股"]) else "⚖️ 波段"
+            
+            r["買超分點"] = b.loc[i,'securities_trader']
+            r["買_標籤"] = raw_tag
+            r["買_週期"] = attr
+            r["黏著度(%)"] = f"{b.loc[i,'stick']}%"
+            r["買超(張)"] = int(b.loc[i,'net'])
+            r["買均價"] = b_str
+            r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%" if tv > 0 else "-"
+        else: r["買超分點"], r["買_標籤"], r["買_週期"], r["黏著度(%)"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", "-", "-", 0, "-", "-"
+        
         if i < len(s): 
-            r["賣超分點"] = f"{intel_tags.get(s.loc[i,'securities_trader'],'🔵')} {s.loc[i,'securities_trader']}"
-            r["黏著度(%)_"] = f"{s.loc[i,'stick']}%"; r["賣超(張)"] = abs(int(s.loc[i,'net'])); r["賣均價"] = round(s.loc[i,'avg_s'], 2); r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%" if tv > 0 else "-"
-        else: r["賣超分點"], r["黏著度(%)_"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", 0, "-", "-"
+            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'],'🔵 一般')
+            attr_s = "🏃 短線" if any(x in raw_tag_s for x in ["隔日沖", "游擊"]) else "⚓ 中長線" if any(x in raw_tag_s for x in ["長駐", "潛伏", "官股"]) else "⚖️ 波段"
+            
+            r["賣超分點"] = s.loc[i,'securities_trader']
+            r["賣_標籤"] = raw_tag_s
+            r["賣_週期"] = attr_s
+            r["黏著度(%)_"] = f"{s.loc[i,'stick']}%"
+            r["賣超(張)"] = abs(int(s.loc[i,'net']))
+            r["賣均價"] = round(s.loc[i,'avg_s'], 2)
+            r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%" if tv > 0 else "-"
+        else: r["賣超分點"], r["賣_標籤"], r["賣_週期"], r["黏著度(%)_"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", "-", "-", 0, "-", "-"
+        
         out.append(r)
     return pd.DataFrame(out)
 
@@ -908,7 +922,7 @@ def show_table(title, df, custom_class=""):
             except: return str(x)
             
         f_dict = {c: lambda x, col=c: fmt_auto(x, col) for c in df.columns}
-        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '囤貨率(%)', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
+        left_cols = [c for c in df.columns if any(kw in str(c) for kw in ['日期', '公告日期', '分點', '名稱', '姓名', '身份別', '質權人', '交易別', '診斷', '判定', '門檻', '條件', '措施', '契約', '代號', '來源', '標籤', '週期', '屬性', '囤貨率(%)', '單日微觀診斷', '專家雷達診斷', '鷹眼診斷', '技術面診斷', '綜合診斷', '終極籌碼診斷'])]
         right_cols = [c for c in df.columns if c not in left_cols]
         styler = df.style.format(f_dict).set_properties(**{'text-align': 'right !important'}, subset=right_cols)
         if left_cols: styler = styler.set_properties(**{'text-align': 'left !important'}, subset=left_cols)
@@ -932,7 +946,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.1 決策引擎 (相容舊有功能載入中)..."):
+    with st.spinner(f"正在啟動 V48.2 決策引擎 (資料解析運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1031,37 +1045,81 @@ if run_btn:
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], dead_chip_input, dynamic_dict, s_val, chip_eng)
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無數據"
         
-        company_info_text = f"🏢 **【產業】** {industry} ｜ 💰 **【市值】** {market_cap_str} ｜ 📍 **【公司地址】** {address} ｜ 🔒 **【董監事持股】** {director_holding_str}"
+        company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.1 頂層：紅綠燈號決策看板
+        # 🎨 V48.2 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.1 無框實心版)")
-        st.markdown(f"<div class='info-box'>{company_info_text}<br>📈 最新收盤價: <b>{curr_price} 元</b></div>", unsafe_allow_html=True)
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.2 精準解析版)")
+        st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
+        # 取得今日聰明錢淨流出入與乖離
+        today_smart_net = 0
+        if not df_daily_tracker.empty:
+            today_smart_net = df_daily_tracker.iloc[0]['聰明錢淨流(張)']
+            
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         
+        # --- 精準階段判定邏輯 ---
+        phase_title = ""
+        phase_desc = ""
+        phase_color = ""
+        
         if pure_vwap == 0:
-            sig_text, sig_class = "⚪ 數據不足", "signal-gray"
-            adv_text = "缺乏明顯波段主力介入，目前為自然換手盤整。"
-        elif curr_price >= pure_vwap and bias < 15:
-            sig_text, sig_class = "🟢 安全邊際 (守穩防線)", "signal-green"
-            adv_text = f"股價在主力成本之上，且乖離率僅 {bias:.1f}%，主力帳面獲利中，未見失控風險。"
-        elif curr_price >= pure_vwap and bias >= 15:
-            sig_text, sig_class = "🟡 乖離過大 (防範出貨)", "signal-yellow"
-            adv_text = f"股價大幅脫離主力成本 (乖離率 {bias:.1f}%)，隨時可能引發波段大戶獲利了結賣壓，請勿追高。"
-        else:
-            sig_text, sig_class = "🔴 跌破防線 (主力套牢/棄守)", "signal-red"
-            adv_text = f"股價已跌破主力區間買進均價，乖離率 {bias:.1f}%。若主力不表態護盤，極易引發多殺多停損潮！"
-
-        st.markdown(f"<div class='signal-box {sig_class}'>{sig_text}</div>", unsafe_allow_html=True)
-        
-        c1, c2, c3 = st.columns(3)
-        with c1: st.metric(label="🛡️ 主力鐵板防守價" if filter_day_trade else "📊 綜合大戶均價", value=f"{pure_vwap} 元" if pure_vwap>0 else "-", delta=f"目前股價: {curr_price}", delta_color="normal" if curr_price > pure_vwap else "inverse")
-        with c2: st.metric(label="📏 主力成本乖離率", value=f"{bias:.1f}%" if pure_vwap>0 else "-", delta="安全" if -5 <= bias <= 15 else "風險高", delta_color="normal" if -5 <= bias <= 15 else "inverse")
-        with c3: st.metric(label="💪 計算基準 (有效大戶)", value=f"{active_main_branches} 家", delta=f"建倉量: {main_force_vol} 張", delta_color="off")
-        
-        st.info(f"💡 **AI 策略解析：** {adv_text} (此防守價已透過引擎自動 {'**排除**' if filter_day_trade else '包含'} 隔日沖與游擊客雜訊)")
+            phase_title = "⚪ 籌碼中性 (自然換手)"
+            phase_desc = "缺乏明顯波段主力介入，目前盤勢由一般市場力量主導，建議觀望技術面表態。"
+            phase_color = "#757575"
+        elif curr_price >= pure_vwap:
+            if bias <= 5:
+                phase_title = "🧱 主力吃貨中 (低檔建倉)"
+                phase_desc = f"最新收盤價 ({curr_price}元) 緊貼主力防守價，乖離率僅 <b>{bias:.1f}%</b>。主力正在安全邊際內默默吸籌，尚未發動，是風險報酬比極佳的潛伏期。"
+                phase_color = "#2b8a3e" # Green
+            elif 5 < bias <= 15:
+                phase_title = "🚀 開始拉抬 (波段起漲)"
+                phase_desc = f"股價已脫離成本區 (乖離率 <b>{bias:.1f}%</b>)，波段主力啟動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可順勢操作。"
+                phase_color = "#d9480f" # Red-orange
+            else:
+                phase_title = "⚠️ 高檔派發/出貨風險 (乖離過大)"
+                phase_desc = f"股價已大幅噴出，乖離率高達 <b>{bias:.1f}%</b>。主力帳面獲利豐厚，隨時可能啟動「收割倒貨」模式。若今日聰明錢呈現淨流出，則確認為出貨階段，嚴禁盲目追高！"
+                phase_color = "#f59f00" # Yellow
+        else: # curr_price < pure_vwap
+            if bias >= -5:
+                phase_title = "🩹 主力防守戰 (跌破邊緣)"
+                phase_desc = f"股價微幅跌破主力成本 (乖離 <b>{bias:.1f}%</b>)。主力陷入帳面虧損，請密切觀察未來三日是否主動買超護盤，若無表態則防線隨時崩潰。"
+                phase_color = "#e67700"
+            else:
+                phase_title = "💀 主力套牢 / 棄守多殺多"
+                phase_desc = f"股價深度跌破防守價 (乖離 <b>{bias:.1f}%</b>)。波段主力已被嚴重套牢或直接停損棄守，極易引發多殺多恐慌賣壓，建議避開。"
+                phase_color = "#c92a2a"
+                
+        # --- 繪製 AI 解析儀表板 ---
+        adv_html = f"""
+        <div style="background-color:#f8f9fa; border-radius:12px; padding:25px; border-left:8px solid {phase_color}; margin-bottom:25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <h3 style="margin-top:0; color:{phase_color}; font-weight:900; font-size:1.6rem; letter-spacing: 1px;">【階段判定】 {phase_title}</h3>
+            <p style="font-size:1.1rem; color:#444; line-height:1.6; margin-bottom:20px;">{phase_desc}</p>
+            
+            <div style="display:flex; gap:15px; flex-wrap:wrap; background-color:#ffffff; padding:20px; border-radius:8px; border:1px solid #e9ecef;">
+                <div style="flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;">
+                    <span style="font-size:0.95rem; color:#666;">🛡️ 主力鐵板防守價</span><br>
+                    <span style="font-size:1.4rem; font-weight:bold; color:#1e3a8a;">{pure_vwap} 元</span>
+                </div>
+                <div style="flex:1; min-width:140px; text-align:center; border-right: 1px solid #eee;">
+                    <span style="font-size:0.95rem; color:#666;">📏 主力成本乖離率</span><br>
+                    <span style="font-size:1.4rem; font-weight:bold; color:{'#e03131' if bias > 15 or bias < -5 else '#2b8a3e'};">{bias:.1f}%</span>
+                </div>
+                <div style="flex:1; min-width:160px; text-align:center; border-right: 1px solid #eee;">
+                    <span style="font-size:0.95rem; color:#666;">📊 計算基準 (大戶總建倉)</span><br>
+                    <span style="font-size:1.4rem; font-weight:bold; color:#333;">{main_force_vol} 張 ({active_main_branches} 家)</span>
+                </div>
+                <div style="flex:1; min-width:140px; text-align:center;">
+                    <span style="font-size:0.95rem; color:#666;">💸 今日聰明錢動向</span><br>
+                    <span style="font-size:1.4rem; font-weight:bold; color:{'#e03131' if today_smart_net < 0 else '#2b8a3e'};">{'+' if today_smart_net>0 else ''}{today_smart_net} 張</span>
+                </div>
+            </div>
+            <p style="font-size:0.9rem; color:#888; margin-top:12px; margin-bottom:0;">💡 備註：上述防守價已透過 AI 引擎自動 {'<b>排除</b>' if filter_day_trade else '<b>包含</b>'} 隔日沖與游擊客雜訊，反映出最純淨的主力底單成本。</p>
+        </div>
+        """
+        st.markdown(adv_html, unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_v27_radar, df_debug_tags, df_b_diff, firepower_threshold)
         hawk_html_display = "<div class='hawk-eye-box'>"
@@ -1074,9 +1132,9 @@ if run_btn:
         hawk_html_display += "</div>"
         st.markdown(hawk_html_display, unsafe_allow_html=True)
 
-        st.markdown("<div class='category-title'>📈 00. 職業極簡技術大局觀</div>", unsafe_allow_html=True)
+        # 這裡移除了原有的 "00. 職業極簡技術大局觀" 標題，直接進入圖表
         if not df_ta_full.empty:
-            st.markdown(f"<div class='section-title'>📈 00. 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             import plotly.graph_objects as go
             
             df_p_plot = df_price[['日期', '開盤價(元)', '最高價(元)', '最低價(元)', '收盤價(元)', '成交量(張)']].head(kline_days).copy()
@@ -1089,7 +1147,7 @@ if run_btn:
                 # 第一部分：純粹的 K 線圖
                 fig_kline = go.Figure()
                 
-                # V48.1: 徹底無框化。收紅為淡灰實心 (#cccccc)，收黑為純黑實心
+                # V48.2: 徹底無框化。收紅為淡灰實心 (#cccccc)，收黑為純黑實心
                 fig_kline.add_trace(go.Candlestick(
                     x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], 
                     name='K線', 
@@ -1116,7 +1174,6 @@ if run_btn:
                 fig_vol = go.Figure()
                 for i, row in df_plot.iterrows():
                     is_up = row['收盤價(元)'] >= row['開盤價(元)']
-                    # V48.1: 收紅成交量改為淡灰 (#cccccc) 配合 K 線，全部無邊框
                     vol_color = '#cccccc' if is_up else 'black'
                     fig_vol.add_trace(go.Bar(
                         x=[row['日期']], y=[row['成交量(張)']], 
@@ -1139,7 +1196,7 @@ if run_btn:
         show_table("01. 平日戰情追蹤矩陣 (合併家數差與火力)", df_daily_tracker, "daily-tracker")
         show_table("02. 終極集保籌碼雷達 (大戶存量與流量雙解碼)", df_combined_display, "radar-table")
 
-        st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與動向</div>", unsafe_allow_html=True)
+        st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點指紋與屬性動向</div>", unsafe_allow_html=True)
         show_table(f"03A. 近 {actual_foot_days} 日主力足跡動態矩陣 (多單前{footprint_rows}大)", df_footprint_buy)
         show_table(f"03B. 近 {actual_foot_days} 日主力足跡動態矩陣 (空單前{footprint_rows}大)", df_footprint_sell)
         
@@ -1178,7 +1235,7 @@ if run_btn:
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
         
-        with st.expander(f"📋 給 Gemini 的 V48.1 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.2 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
@@ -1201,7 +1258,7 @@ if run_btn:
         st.divider()
         st.markdown("<div class='category-title'>🔍 系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
         with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
-            st.info("💡 這裡傾印了供你人工/AI 稽核 00 (技術面) 與 01 (主力戰情) 所需的近 60 天核心基礎資料。")
+            st.info("💡 這裡傾印了供你人工/AI 稽核技術面與主力戰情所需的近 60 天核心基礎資料。")
             dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
             
             df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
