@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.07版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.08版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.07 集保雷達基準校正版)")
+st.title("📱 全息量化系統 (V60.08 診斷指標正名與防呆版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.07：嚴格校正集保雷達動態門檻「同基準比較」邏輯，修正隔日沖越界防呆。{usage_text}")
+st.caption(f"🚀 V60.08：徹底校正 C_Value 與核心分點控盤率之名詞錯置，強化 AI 鷹眼數值解析容錯。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.07 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.08 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -697,7 +697,6 @@ def calculate_dynamic_large_holder_pct(row, threshold):
             if pd.notna(val): total += val
     return total
 
-# V60.07 修正：雷達圖 Apples-to-Apples 同基準大戶變動率校正
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df_wide.sort_values('日期', ascending=True).copy()
@@ -737,7 +736,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             f_impact = 0.0
             adv = ["⚪ 初始化 (基準建立)"]
         else:
-            # V60.07 邏輯防呆：強制以「本週」的門檻 (ct) 去回推「上週」的大戶比例，保證基準一致
             prev_large_pct_adj = calculate_dynamic_large_holder_pct(prev_row, ct)
             raw_chg = round(current_large_pct - prev_large_pct_adj, 2)
             
@@ -748,7 +746,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             if len(valid_trading_dates) > 0:
                 last_trading_date = max(valid_trading_dates)
                 
-                # V60.07 修正：確認分點日期與集保日期的落差在 7 天內，避免回溯過深吃到幽靈資料
                 days_diff = (pd.to_datetime(d_str) - pd.to_datetime(last_trading_date)).days
                 if days_diff <= 7:
                     df_f = df_branch_raw[df_branch_raw['date'] == last_trading_date].copy()
@@ -1154,82 +1151,93 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+# V60.08: 強化 Try-Except 字串處理防呆，杜絕 API 髒數據造成當機
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
     alerts = []
-    try:
-        if not df_daily.empty and len(df_daily) >= 1:
-            today_d = df_daily.iloc[0]
-            alerts.append("#### 📌 1. 矩陣金流剖析 (聰明錢與成本底牌)")
-            smart_net = today_d.get('聰明錢淨流(張)', 0)
-            flow_str = f"今日聰明錢淨流入 **{smart_net} 張**。"
-            gap_val_raw = today_d.get('均價落差', "-")
-            gap_valid = pd.notna(gap_val_raw) and str(gap_val_raw).strip() != "-"
-            
-            if gap_valid:
-                try:
-                    gap_val = float(str(gap_val_raw).replace(',', '').strip())
-                    chg_raw = today_d.get('漲跌(元)', 0)
-                    chg_val = float(str(chg_raw).replace(',', '').strip()) if str(chg_raw) not in ["-", ""] else 0.0
-                    
-                    smart_net_val = float(smart_net)
-                    if gap_val > 0 and smart_net_val > 0: alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力具備強勢推升意願。")
-                    elif gap_val < 0 and smart_net_val > 0: alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，易引發停損賣壓！")
-                    elif smart_net_val < -100 and chg_val > 0: alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退。主力逢高倒貨，追高風險大。")
-                    elif smart_net_val < -100: alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退。長線防守線可能崩潰。")
-                    else: alerts.append(f"> ⚪ {flow_str} 今日大戶動向溫和，無極端偏離。")
-                except: alerts.append(f"> ⚪ {flow_str} 聰明錢數值解析中性。")
-            else:
-                try:
-                    if float(smart_net) > 0:
-                        alerts.append(f"> 🟢 {flow_str} 雖無明顯成本落差，但主力籌碼呈淨流入，下檔具備保護力。")
-                    elif float(smart_net) < 0:
-                        alerts.append(f"> 🔴 {flow_str} 聰明錢淨流出，需留意上方潛在倒貨賣壓。")
-                    else:
-                        alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
-                except:
-                    alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
-
-        if not df_diff.empty and len(df_diff) >= 1:
-            today_diff = df_diff.iloc[0]
-            alerts.append("#### 📌 2. 短線買賣力道與籌碼集中度")
-            fp = today_diff.get('買方火力(倍)', 1.0)
-            diff_cnt = today_diff.get('買賣家數差', 0)
-            conc = today_diff.get('籌碼集中度(%)', 0)
-            diag = today_diff.get('鷹眼診斷', '🔵 中性換手')
-            
-            alerts.append(f"> 📊 **【火力與集中度】** 今日買方火力為 **{fp} 倍**，買賣家數差為 **{diff_cnt}** 家，籌碼集中度 **{conc}%**。")
-            try:
-                if float(fp) >= float(fire_thresh):
-                    alerts.append(f"> 🔥 **【火力壓制】** 買方火力大於設定門檻 ({fire_thresh}倍)，特定大戶積極吃貨，籌碼往少數人集中。")
-                elif float(fp) < 0.8 and float(diff_cnt) > 0:
-                    alerts.append(f"> 💀 **【散戶接刀】** 買方火力偏弱且買方家數多於賣方家數，顯示主力倒貨給散戶(螞蟻搬家)，籌碼發散。")
-            except: pass
-            alerts.append(f"> 👁️ **【系統判定】** {diag}")
-
-        if not df_radar.empty and len(df_radar) >= 1:
-            today_radar = df_radar.iloc[0]
-            alerts.append("#### 📌 3. 波段活籌碼與大戶動能 (每週集保)")
-            c_val = today_radar.get('純淨活大戶C_Value(%)', "-")
-            big_chg = today_radar.get('純淨大戶變動(%)', "-")
-            radar_diag = today_radar.get('終極籌碼診斷', '')
-            
-            try:
-                if str(c_val) != "-" and float(c_val) > 0:
-                    alerts.append(f"> 🎯 **【真實鎖碼率】** 主力吸納了約 **{c_val}%** 的市場自由流通籌碼。數值越高控盤力越強。")
-            except: pass
-            
-            try:
-                if str(big_chg) != "-" and float(big_chg) != 0:
-                    dir_str = "增加" if float(big_chg) > 0 else "減少"
-                    alerts.append(f"> 📈 **【純淨大戶變動】** 排除隔日沖雜訊後，波段大戶實質持股 {dir_str} **{abs(float(big_chg))}%**。")
-            except: pass
-            
-            if radar_diag and str(radar_diag).strip() != "" and str(radar_diag).strip() != "nan":
-                alerts.append(f"> 💡 **【大戶雷達解析】** {radar_diag}")
-                
-    except Exception as e:
-        alerts.append(f"> ⚠️ 鷹眼系統解析異常，部分數值目前無資料。")
+    
+    alerts.append("#### 📌 1. 矩陣金流剖析 (聰明錢與成本底牌)")
+    if not df_daily.empty and len(df_daily) >= 1:
+        today_d = df_daily.iloc[0]
+        smart_net = today_d.get('聰明錢淨流(張)', 0)
+        flow_str = f"今日聰明錢淨流入 **{smart_net} 張**。"
+        gap_val_raw = today_d.get('均價落差', "-")
         
+        if pd.notna(gap_val_raw) and str(gap_val_raw).strip() != "-":
+            try:
+                gap_val = float(str(gap_val_raw).replace('+', '').replace(',', '').strip())
+                chg_raw = today_d.get('漲跌(元)', 0)
+                chg_val = float(str(chg_raw).replace('+', '').replace(',', '').strip()) if str(chg_raw) not in ["-", ""] else 0.0
+                
+                smart_net_val = float(smart_net)
+                if gap_val > 0 and smart_net_val > 0: 
+                    alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力具備強勢推升意願。")
+                elif gap_val < 0 and smart_net_val > 0: 
+                    alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，易引發停損賣壓！")
+                elif smart_net_val < -100 and chg_val > 0: 
+                    alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退。主力逢高倒貨，追高風險大。")
+                elif smart_net_val < -100: 
+                    alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退。長線防守線可能崩潰。")
+                else: 
+                    alerts.append(f"> ⚪ {flow_str} 今日大戶動向溫和，無極端偏離。")
+            except:
+                alerts.append(f"> ⚪ {flow_str} 聰明錢數值解析中性。")
+        else:
+            try:
+                if float(smart_net) > 0:
+                    alerts.append(f"> 🟢 {flow_str} 雖無明顯成本落差，但主力籌碼呈淨流入，下檔具備保護力。")
+                elif float(smart_net) < 0:
+                    alerts.append(f"> 🔴 {flow_str} 聰明錢淨流出，需留意上方潛在倒貨賣壓。")
+                else:
+                    alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
+            except:
+                alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
+    else:
+        alerts.append("> ⚪ 今日無聰明錢資料。")
+
+    alerts.append("#### 📌 2. 短線買賣力道與籌碼集中度")
+    if not df_diff.empty and len(df_diff) >= 1:
+        today_diff = df_diff.iloc[0]
+        fp = today_diff.get('買方火力(倍)', 1.0)
+        diff_cnt = today_diff.get('買賣家數差', 0)
+        conc = today_diff.get('籌碼集中度(%)', 0)
+        diag = today_diff.get('鷹眼診斷', '🔵 中性換手')
+        
+        alerts.append(f"> 📊 **【火力與集中度】** 今日買方火力為 **{fp} 倍**，買賣家數差為 **{diff_cnt}** 家，籌碼集中度 **{conc}%**。")
+        try:
+            if float(fp) >= float(fire_thresh):
+                alerts.append(f"> 🔥 **【火力壓制】** 買方火力大於設定門檻 ({fire_thresh}倍)，特定大戶積極吃貨，籌碼往少數人集中。")
+            elif float(fp) < 0.8 and float(diff_cnt) > 0:
+                alerts.append(f"> 💀 **【散戶接刀】** 買方火力偏弱且買方家數多於賣方家數，顯示主力倒貨給散戶(螞蟻搬家)，籌碼發散。")
+        except: pass
+        alerts.append(f"> 👁️ **【系統判定】** {diag}")
+    else:
+        alerts.append("> ⚪ 今日無買賣力道資料。")
+
+    alerts.append("#### 📌 3. 波段活籌碼與大戶動能 (每週集保)")
+    if not df_radar.empty and len(df_radar) >= 1:
+        today_radar = df_radar.iloc[0]
+        c_val = today_radar.get('純淨活大戶C_Value(%)', "-")
+        big_chg = today_radar.get('純淨大戶變動(%)', "-")
+        radar_diag = today_radar.get('終極籌碼診斷', '')
+        
+        try:
+            c_val_float = float(str(c_val).replace('+', '').replace(',', '').replace('%', ''))
+            if c_val_float > 0:
+                alerts.append(f"> 🎯 **【純淨大戶鎖碼率】** 主力吸納了約 **{c_val_float}%** 的市場自由流通籌碼。數值越高控盤力越強。")
+        except: pass
+        
+        try:
+            big_chg_float = float(str(big_chg).replace('+', '').replace(',', '').replace('%', ''))
+            if big_chg_float != 0:
+                dir_str = "增加" if big_chg_float > 0 else "減少"
+                alerts.append(f"> 📈 **【純淨大戶變動】** 排除隔日沖雜訊後，波段大戶實質持股 {dir_str} **{abs(big_chg_float)}%**。")
+        except: pass
+        
+        if radar_diag and str(radar_diag).strip() != "" and str(radar_diag).strip() != "nan":
+            alerts.append(f"> 💡 **【大戶雷達解析】** {radar_diag}")
+    else:
+        alerts.append("> ⚪ 本週無集保大戶資料。")
+            
     return alerts
 
 def render_clean_html_table(df, title=""):
@@ -1291,7 +1299,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.07 決策引擎 (集保雷達邏輯與防呆修復中)..."):
+    with st.spinner(f"正在啟動 V60.08 決策引擎 (核心防守價與鷹眼名詞深度正名中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1407,7 +1415,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.07)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.08)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1529,12 +1537,14 @@ if run_btn:
         st.markdown(f"#### 🎯 【階段判定】: {phase_title}")
         st.markdown(f"> {phase_desc}")
         st.markdown("<br>", unsafe_allow_html=True)
-                
+        
+        # V60.08 格式化防守價，並正名核心分點控盤率
+        vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
         adv_html = f"""
         <div style='display:flex; gap:15px; flex-wrap:wrap; background-color:#ffffff; padding:20px; border-radius:8px; border:1px solid #e9ecef; margin-bottom:15px;'>
             <div style='flex:1; min-width:140px; border-right: 1px solid #eee; display: flex; flex-direction: column; justify-content: center;'>
                 <span style='font-size:0.95rem; color:#666;'>🛡️ 淨留倉加權防守價 (Net VWAP)</span>
-                <span style='font-size:1.5rem; font-weight:bold; color:#1e3a8a;'>{pure_vwap} 元</span>
+                <span style='font-size:1.5rem; font-weight:bold; color:#1e3a8a;'>{vwap_str} 元</span>
                 <span style='font-size:0.85rem; color:#888; margin-top:5px;'>前 {dynamic_n} 大核心 ({radar_reason})</span>
             </div>
             <div style='flex:1; min-width:140px; border-right: 1px solid #eee; display: flex; flex-direction: column; justify-content: center;'>
@@ -1550,7 +1560,7 @@ if run_btn:
                     近 60 日：<span style='color:{net60_color}; font-weight:bold;'>{net_60:+,} 張</span>
                 </div>
                 <div style='margin-top:8px; padding-top:8px; border-top:1px dashed #ccc; font-size:0.9rem; color:#444;'>
-                    🎯 真實鎖碼率(C_Value): <span style='color:{c_color}; font-weight:900; font-size:1.1rem;'>{core_c_value}%</span>
+                    🎯 核心分點控盤率: <span style='color:{c_color}; font-weight:900; font-size:1.1rem;'>{core_c_value}%</span>
                 </div>
             </div>
             <div style='flex:1.5; min-width:200px; display: flex; flex-direction: column; justify-content: center;'>
@@ -1561,7 +1571,7 @@ if run_btn:
         </div>
         """
         st.markdown(adv_html, unsafe_allow_html=True)
-        st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。加權防守價已排除高頻刷量誤差。C_Value 為主力吸納自由流通活籌碼之百分比。")
+        st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。加權防守價已排除高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 為大戶整體鎖碼率。")
         st.markdown("<br>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_combined_display, pd.DataFrame(), df_b_diff, firepower_threshold)
@@ -1631,7 +1641,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.07 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.08 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -1643,7 +1653,8 @@ if run_btn:
             
             p1 += hawk_csv_text + "\n"
             p1 += f"【系統算出之純淨主力加權防守價 (Net VWAP)】: {pure_vwap} 元\n"
-            p1 += f"【主力活籌碼真實鎖碼率 (C_Value)】: {core_c_value}%\n\n"
+            # V60.08 正名
+            p1 += f"【核心分點控盤率 (相對於自由流通籌碼)】: {core_c_value}%\n\n"
             p1 += f"【核心主力3日淨留倉】: {net_3} 張\n"
             p1 += f"【核心主力10日淨留倉】: {net_10} 張\n"
             p1 += f"【核心主力60日淨留倉】: {net_60} 張\n\n"
