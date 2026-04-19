@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V50.00版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V50.01版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.00版)")
+st.title("📱 全息量化系統 (V50.01版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.00 絕對防禦版：根除死籌碼溢位崩潰、無價日矩陣幻覺，數學邊界 100% 剛性保護。{usage_text}")
+st.caption(f"🚀 V50.01 鈦合金版：根除連假錯位、解決新上市股 NaN 崩潰、Socket 記憶體釋放，無懈可擊。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V50.00 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V50.01 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -124,17 +124,18 @@ def fetch_finmind_v46(ds, sd, tid=None, ed=None):
 def fetch_branch_data_v46(dl, tid):
     if not dl: return pd.DataFrame()
     all_d = []
-    session = requests.Session()
-    session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
-    def fs(d):
-        try: 
-            r = session.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, timeout=15)
-            if r.status_code == 200: return r.json().get("data", [])
-        except: pass
-        return []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
-        for r in ex.map(fs, dl):
-            if r: all_d.extend(r)
+    # 網路連線池防禦：確保 Session 在平行抓取後被徹底釋放
+    with requests.Session() as session:
+        session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
+        def fs(d):
+            try: 
+                r = session.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, timeout=15)
+                if r.status_code == 200: return r.json().get("data", [])
+            except: pass
+            return []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
+            for r in ex.map(fs, dl):
+                if r: all_d.extend(r)
     df = pd.DataFrame(all_d)
     if not df.empty:
         for c in ['buy', 'sell', 'price']:
@@ -148,28 +149,28 @@ def fetch_branch_data_v46(dl, tid):
 def scrape_block_v46(tid, ad):
     if not ad: return pd.DataFrame(), []
     td, bd, dl = ad[:3], [], []
-    session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0"})
-    def fd(d):
-        dtw = d.replace("-", "")
-        dtp = f"{int(d.split('-')[0])-1911}/{d.split('-')[1]}/{d.split('-')[2]}"
-        rl = []
-        try:
-            r = session.get(f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={dtw}&response=json", timeout=5, verify=False)
-            if r.status_code == 200 and "data" in r.json():
-                for ro in r.json().get("data", []):
-                    if tid in str(ro): rl.append([d, "TWSE", ro])
-        except: pass
-        try:
-            r = session.get(f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={dtp}&id=&response=json", timeout=5, verify=False)
-            if r.status_code == 200 and "tables" in r.json() and r.json()["tables"]:
-                for ro in r.json()["tables"][0].get("data", []):
-                    if tid in str(ro): rl.append([d, "TPEx", ro])
-        except: pass
-        return rl
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-        for data in ex.map(fd, td):
-            if data: bd.extend(data)
+    with requests.Session() as session:
+        session.headers.update({"User-Agent": "Mozilla/5.0"})
+        def fd(d):
+            dtw = d.replace("-", "")
+            dtp = f"{int(d.split('-')[0])-1911}/{d.split('-')[1]}/{d.split('-')[2]}"
+            rl = []
+            try:
+                r = session.get(f"https://www.twse.com.tw/rwd/zh/block/BFIAUU?date={dtw}&response=json", timeout=5, verify=False)
+                if r.status_code == 200 and "data" in r.json():
+                    for ro in r.json().get("data", []):
+                        if tid in str(ro): rl.append([d, "TWSE", ro])
+            except: pass
+            try:
+                r = session.get(f"https://www.tpex.org.tw/www/zh-tw/blockTrade/quote?date={dtp}&id=&response=json", timeout=5, verify=False)
+                if r.status_code == 200 and "tables" in r.json() and r.json()["tables"]:
+                    for ro in r.json()["tables"][0].get("data", []):
+                        if tid in str(ro): rl.append([d, "TPEx", ro])
+            except: pass
+            return rl
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            for data in ex.map(fd, td):
+                if data: bd.extend(data)
     if not bd: return pd.DataFrame(), list(set(dl))
     p = []
     for i in bd:
@@ -360,6 +361,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
     range_diff = df_p['max'] - df_p['min']
+    # 數學防呆：如果漲停/跌停鎖死 (最高=最低)，避免除以零，賦予位階 0.5 或依據常理設定
     df_p['pos'] = np.where(range_diff == 0, 0.5, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
     price_stats = df_p.set_index('date')[['pos']].to_dict('index')
     latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0] if not df_p.empty else 0
@@ -380,7 +382,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     stats = pd.DataFrame({'net_5d': g5, 'net_20d': g20, 'net_60d': g60}).fillna(0)
 
     tags, d_rows = {}, []
-    gov_list = ["台銀", "土銀", "彰銀", "第一", "兆生", "兆豐", "華南", "合庫", "台企銀"]
+    gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
 
     for trader, g in df.groupby('securities_trader'):
         tb_shares = g['buy'].sum()
@@ -512,7 +514,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     
     c_value = 0.0
     if total_lots > 0:
-        # 絕對防禦：防止外部污染的死籌碼超過 100% 導致除以零或負數浮點錯誤
         safe_dead_ratio = min(99.9, float(dead_chip_ratio))
         free_float_ratio = (100.0 - safe_dead_ratio) / 100.0
         free_float_lots = total_lots * free_float_ratio
@@ -565,7 +566,6 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
             }
             
             for i, d in enumerate(display_dates):
-                # 絕對防禦：雙向檢驗保護，避免 Pivot Table 因完全無交易導致整欄消失觸發 KeyError
                 v = p.loc[trader, d] if trader in p.index and d in p.columns else 0
                 row_dict[f"T-{i}" if i > 0 else "今日(T)"] = f"+{v}" if v > 0 else str(v)
             out.append(row_dict)
@@ -653,7 +653,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     df['dt_end'] = pd.to_datetime(df['日期'])
     if not df_price.empty:
         df_p = df_price.copy(); df_p['dt'] = pd.to_datetime(df_p['日期'])
-        df_p = df_p.sort_values('dt'); df_p['ma20'] = df_p['收盤價(元)'].rolling(20).mean()
+        df_p = df_p.sort_values('dt'); df_p['ma20'] = df_p['收盤價(元)'].rolling(20, min_periods=1).mean()
         df = pd.merge_asof(df.sort_values('dt_end'), df_p[['dt', '收盤價(元)', 'ma20']], left_on='dt_end', right_on='dt', direction='backward')
     else: df['收盤價(元)'], df['ma20'] = 0, 0
         
@@ -664,11 +664,12 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     
     for i, row in df.iterrows():
         d_str = row['日期']
-        p = row['收盤價(元)']
+        p = row.get('收盤價(元)', 0)
         total_lots = row.get('總張數', 0)
         
         if pd.isna(p) or p <= 0 or total_lots <= 0: 
             out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化/數據不全"})
+            prev_large_pct = 0
             continue
             
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
@@ -703,7 +704,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                     for _, fr in fake_branches.iterrows():
                         d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
                         
-            f_impact = (f_vol_exact / total_lots) * 100 if total_lots > 0 else 0
+            f_impact = (f_vol_exact / max(1, total_lots)) * 100 
             p_chg = round(raw_chg - f_impact, 2)
             d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
             
@@ -803,7 +804,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         else:
             smart_avg_cost = 0
             
-        # 絕對防禦：若 API 無價格資料(cp=0)，強制跳過落差警報，避免誤判
         gap = cp - smart_avg_cost if smart_avg_cost > 0 and cp > 0 else 0
         
         adv = []
@@ -874,9 +874,9 @@ def process_price(df):
 def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     if df_price.empty or len(df_price) < 30: return pd.DataFrame()
     df_ta = df_price.sort_values('日期', ascending=True).copy()
-    df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma).mean().round(2)
-    df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma).mean().round(2)
-    df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma).mean().round(2)
+    df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
     
     df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
     
@@ -920,7 +920,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     out = []
     for _, row in df_m.iterrows():
         p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p == 0: continue
+        if pd.isna(p) or p <= 0: continue
         cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
         total_lots = row.get('總張數', 0)
         cap = total_lots / 10000
@@ -1136,7 +1136,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V50.00 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V50.01 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1250,7 +1250,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.00版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.01版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1264,7 +1264,7 @@ if run_btn:
                     phase_title = "🟢 主力吃貨中 (安全建倉區)"
                     phase_desc = f"最新收盤價 ({curr_price}元) 貼近主力成本，乖離率僅 **{bias:.1f}%**。主力正在安全邊際內默默吸籌，下檔具備鐵板支撐，是風險報酬比極佳的潛伏期。"
                 elif 10.0 < bias <= 50.0:
-                    phase_title = "🔥 趨勢推升 (波段多頭起漲)"
+                    phase_title = "🔥 趨推推升 (波段多頭起漲)"
                     phase_desc = f"股價穩定脫離成本區 (乖離率 **{bias:.1f}%**)，波段主力已點火發動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可抱緊順勢操作。"
                 else:
                     phase_title = "⚠️ 嚴重過熱 (乖離破表)"
@@ -1470,7 +1470,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V50.00 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V50.01 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
