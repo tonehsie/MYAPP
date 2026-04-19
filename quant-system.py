@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.03版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.04版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.03 AI整合與重新排序版)")
+st.title("📱 全息量化系統 (V60.04 K線頂置與AI擴充版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.03：K線頂置(單十字線)、AI 報告整合、表格順序全面重編。{usage_text}")
+st.caption(f"🚀 V60.04：K線圖移至頂端並加入完整十字線、AI 鷹眼深度擴充並無縫整合。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.03 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.04 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -1132,11 +1132,13 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+# V60.04 全面擴充 AI 鷹眼深度診斷，並匯入 df_diff 與 df_radar 的進階戰況
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
     alerts = []
+    
     if not df_daily.empty and len(df_daily) >= 1:
         today_d = df_daily.iloc[0]
-        alerts.append("#### 🦅 鷹眼矩陣金流剖析 (聰明錢與成本底牌)")
+        alerts.append("#### 📌 1. 矩陣金流剖析 (聰明錢與成本底牌)")
         flow_str = f"今日聰明錢淨流入 **{today_d['聰明錢淨流(張)']} 張**。"
         gap_valid = pd.notna(today_d['均價落差']) and str(today_d['均價落差']).strip() != "-"
         
@@ -1157,6 +1159,39 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thres
                 alerts.append(f"> 🔴 {flow_str} 聰明錢淨流出，需留意上方潛在倒貨賣壓。")
             else:
                 alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
+
+    if not df_diff.empty and len(df_diff) >= 1:
+        today_diff = df_diff.iloc[0]
+        alerts.append("#### 📌 2. 短線買賣力道與籌碼集中度")
+        fp = today_diff.get('買方火力(倍)', 1.0)
+        diff_cnt = today_diff.get('買賣家數差', 0)
+        conc = today_diff.get('籌碼集中度(%)', 0)
+        diag = today_diff.get('鷹眼診斷', '🔵 中性換手')
+        
+        alerts.append(f"> 📊 **【火力與集中度】** 今日買方火力為 **{fp} 倍**，買賣家數差為 **{diff_cnt}** 家，籌碼集中度 **{conc}%**。")
+        if fp >= fire_thresh:
+            alerts.append(f"> 🔥 **【火力壓制】** 買方火力大於設定門檻 ({fire_thresh}倍)，特定大戶積極吃貨，籌碼往少數人集中。")
+        elif fp < 0.8 and diff_cnt > 0:
+            alerts.append(f"> 💀 **【散戶接刀】** 買方火力偏弱且買方家數多於賣方家數，顯示主力倒貨給散戶(螞蟻搬家)，籌碼發散。")
+        alerts.append(f"> 👁️ **【系統判定】** {diag}")
+
+    if not df_radar.empty and len(df_radar) >= 1:
+        today_radar = df_radar.iloc[0]
+        alerts.append("#### 📌 3. 波段活籌碼與大戶動能 (每週集保)")
+        c_val = today_radar.get('純淨活大戶C_Value(%)', 0)
+        big_chg = today_radar.get('純淨大戶變動(%)', 0)
+        radar_diag = today_radar.get('專家雷達診斷', '')
+        
+        if str(c_val) != "-" and float(c_val) > 0:
+            alerts.append(f"> 🎯 **【真實鎖碼率】** 主力吸納了約 **{c_val}%** 的市場自由流通籌碼。數值越高控盤力越強。")
+        
+        if str(big_chg) != "-" and float(big_chg) != 0:
+            dir_str = "增加" if float(big_chg) > 0 else "減少"
+            alerts.append(f"> 📈 **【純淨大戶變動】** 排除隔日沖雜訊後，波段大戶實質持股 {dir_str} **{abs(float(big_chg))}%**。")
+        
+        if radar_diag and str(radar_diag).strip() != "":
+            alerts.append(f"> 💡 **【大戶雷達解析】** {radar_diag}")
+
     return alerts
 
 def render_clean_html_table(df, title=""):
@@ -1218,7 +1253,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.03 決策引擎 (K線頂置、AI報告整合與重新排序)..."):
+    with st.spinner(f"正在啟動 V60.04 決策引擎 (K線頂置、AI報告整合與重新排序)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1334,11 +1369,11 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.03)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.04)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         # ---------------------------------------------------------
-        # K線移至最頂端，並修改為只有直線(無橫線)的十字線
+        # K線移至最頂端，並修改為完整十字線(包含水平與垂直)
         # ---------------------------------------------------------
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
@@ -1362,16 +1397,16 @@ if run_btn:
                 
                 fig.update_layout(height=650, margin=dict(l=30, r=30, t=20, b=20), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', hovermode='x unified', showlegend=False)
                 
-                # 設定只顯示垂直線的十字游標
-                fig.update_xaxes(showgrid=False, zeroline=False, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', row=1, col=1)
-                fig.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=False, row=1, col=1)
-                fig.update_xaxes(showgrid=False, zeroline=False, tickangle=45, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', row=2, col=1)
+                # V60.04 設定完整的垂直與水平十字線
+                fig.update_xaxes(showgrid=False, zeroline=False, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=1, col=1)
+                fig.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=1, col=1)
+                fig.update_xaxes(showgrid=False, zeroline=False, tickangle=45, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=2, col=1)
                 fig.update_yaxes(showgrid=False, zeroline=False, showspikes=False, row=2, col=1)
                 
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
         # ---------------------------------------------------------
-        # AI 診斷報告整合 (跨週期共振 + 鷹眼深度診斷)
+        # AI 診斷報告整合 (跨週期共振 + 鷹眼深度診斷 結合)
         # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振與鷹眼深度診斷報告</div>", unsafe_allow_html=True)
             
@@ -1497,12 +1532,13 @@ if run_btn:
         """
         st.markdown(adv_html, unsafe_allow_html=True)
         st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。加權防守價已排除高頻刷量誤差。C_Value 為主力吸納自由流通活籌碼之百分比。")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_combined_display, pd.DataFrame(), df_b_diff, firepower_threshold)
         hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
         for alert in hawk_alerts: 
             st.markdown(alert)
-            clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').strip()
+            clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').replace('📊', '').replace('🔥', '').replace('👁️', '').replace('🎯', '').replace('📈', '').replace('💡', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
         # ---------------------------------------------------------
@@ -1571,7 +1607,7 @@ if run_btn:
         # ---------------------------------------------------------
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.03 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.04 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
