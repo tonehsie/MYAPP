@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.06版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.07版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.06 戰情矩陣精準校正版)")
+st.title("📱 全息量化系統 (V60.07 集保雷達基準校正版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.06：嚴格校正平日戰情追蹤矩陣的賣壓邏輯、漲跌防呆與診斷參數。{usage_text}")
+st.caption(f"🚀 V60.07：嚴格校正集保雷達動態門檻「同基準比較」邏輯，修正隔日沖越界防呆。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.06 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.07 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -697,6 +697,7 @@ def calculate_dynamic_large_holder_pct(row, threshold):
             if pd.notna(val): total += val
     return total
 
+# V60.07 修正：雷達圖 Apples-to-Apples 同基準大戶變動率校正
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df_wide.sort_values('日期', ascending=True).copy()
@@ -712,7 +713,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     df['總人數變率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
     
     out, d_math, d_fri = [], [], []
-    prev_large_pct = None
+    prev_row = None
     
     for i, row in df.iterrows():
         d_str = row['日期']
@@ -721,6 +722,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         if pd.isna(p) or p <= 0 or total_lots <= 0: 
             out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化/數據不全"})
+            prev_row = row
             continue
             
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
@@ -729,33 +731,42 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         current_large_pct = calculate_dynamic_large_holder_pct(row, ct)
         
-        if prev_large_pct is None:
+        if prev_row is None:
             raw_chg = 0.0
             p_chg = 0.0
             f_impact = 0.0
             adv = ["⚪ 初始化 (基準建立)"]
         else:
-            raw_chg = round(current_large_pct - prev_large_pct, 2)
+            # V60.07 邏輯防呆：強制以「本週」的門檻 (ct) 去回推「上週」的大戶比例，保證基準一致
+            prev_large_pct_adj = calculate_dynamic_large_holder_pct(prev_row, ct)
+            raw_chg = round(current_large_pct - prev_large_pct_adj, 2)
+            
             valid_trading_dates = df_branch_raw[df_branch_raw['date'] <= d_str]['date'].unique()
             f_vol_exact = 0
+            f_impact = 0.0
             
             if len(valid_trading_dates) > 0:
                 last_trading_date = max(valid_trading_dates)
-                df_f = df_branch_raw[df_branch_raw['date'] == last_trading_date].copy()
                 
-                if not df_f.empty:
-                    df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
-                    df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
-                    fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
-                    fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
+                # V60.07 修正：確認分點日期與集保日期的落差在 7 天內，避免回溯過深吃到幽靈資料
+                days_diff = (pd.to_datetime(d_str) - pd.to_datetime(last_trading_date)).days
+                if days_diff <= 7:
+                    df_f = df_branch_raw[df_branch_raw['date'] == last_trading_date].copy()
                     
-                    fake_branches = fn[fn['net_buy_exact'] >= ct]
-                    f_vol_exact = fake_branches['net_buy_exact'].sum()
-                    
-                    for _, fr in fake_branches.iterrows():
-                        d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
+                    if not df_f.empty:
+                        df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
+                        df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
+                        fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
+                        fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
                         
-            f_impact = (f_vol_exact / max(1, total_lots)) * 100 
+                        fake_branches = fn[fn['net_buy_exact'] >= ct]
+                        f_vol_exact = fake_branches['net_buy_exact'].sum()
+                        
+                        for _, fr in fake_branches.iterrows():
+                            d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
+                            
+                    f_impact = (f_vol_exact / max(1, total_lots)) * 100 
+                    
             p_chg = round(raw_chg - f_impact, 2)
             d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
             
@@ -768,7 +779,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 elif p_chg < -1.0: adv.append(f"📉 [主力撤退] 大戶實質流出{abs(p_chg)}%")
                 if f_impact > 1.2: adv.append(f"⚡ [隔日沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
                 
-        prev_large_pct = current_large_pct
+        prev_row = row
         out.append({"日期": d_str, "大戶原持股(%)": round(current_large_pct, 2), "原始大戶變動(%)": raw_chg, "純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
         
     ddf = pd.DataFrame(out)
@@ -792,10 +803,9 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         if df_d.empty: continue
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
         
-        # V60.06 校正: 買賣家數與籌碼集中度的精準計算
         buy_count = buy_branches['securities_trader'].nunique()
         sell_count = sell_branches['securities_trader'].nunique()
-        diff_count = buy_count - sell_count  # 買家數-賣家數。正值代表籌碼發散(散戶買)，負值代表籌碼集中(大戶買)
+        diff_count = buy_count - sell_count
         
         active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
         concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
@@ -828,7 +838,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         lp = pr_row['最低價(元)'].iloc[0] if not pr_row.empty else 0
         sp_raw = pr_row['漲跌(元)'].iloc[0] if not pr_row.empty else 0
         
-        # V60.06 防呆: 強制轉換漲跌為 float，避免 API 字串報錯
         try:
             sp_num = float(str(sp_raw).replace('+', '').replace(',', '').strip())
         except:
@@ -859,8 +868,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
                 if r['net_vol'] != 0: audit_smart_money.append({"日期": d, "分點": r['securities_trader'], "標籤": r['tag'], "淨買超(張)": r['net_vol']})
         
         smart_net = smart_grouped['net_vol'].sum()
-        
-        # V60.06 修正: 潛在賣壓只統計「今日淨買超 > 0」的短線客，賣掉的不能算成明天的賣壓
         short_trap = short_grouped[short_grouped['net_vol'] > 0]['net_vol'].sum() if not short_grouped.empty else 0
         
         s_ret = smart_grouped[smart_grouped['bs'] > smart_grouped['ss']].copy()
@@ -884,7 +891,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             if day_range > 0 and (lower_shadow / day_range) > 0.5 and smart_net > 0: adv.append("🛡️ 探底洗盤成功，主力護盤")
             if smart_net > 50 and gap > 0: adv.append("🔥 主動鎖碼/強勢推升")
             elif smart_net > 50 and gap < 0: adv.append("🩹 大戶接刀/弱勢護盤")
-            # V60.06 修正: 統一使用 sp_num 判斷
             elif smart_net < -100 and sp_num > 0: adv.append("📉 拉高派發/撤退")
             elif smart_net < -100 and sp_num <= 0: adv.append("💀 波段棄守/多殺多")
             
@@ -1285,7 +1291,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.06 決策引擎 (戰情矩陣嚴格校正版)..."):
+    with st.spinner(f"正在啟動 V60.07 決策引擎 (集保雷達邏輯與防呆修復中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1401,7 +1407,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.06)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.07)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1625,7 +1631,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.06 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.07 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
