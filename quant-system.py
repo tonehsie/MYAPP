@@ -81,7 +81,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("📱 V48.29 終極全息量化系統 (數學重構超神版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：深度重構主力淨留倉 VWAP 權重公式、大戶門檻 1500 萬活籌碼模型。{usage_text}")
+st.caption(f"🚀 V48.29 升級：深度重構每日聰明錢矩陣之 VWAP 權重公式、強化 MA 技術面邊界防禦。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -471,7 +471,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k
 
     if valid_df.empty: return 0.0, 0, 0, 0.0
     
-    # 數學重構：利用「淨留倉」加權計算真正的防禦成本 (Net-Weighted VWAP)
     def calc_broker(x):
         b_v = x['buy'].sum()
         s_v = x['sell'].sum()
@@ -485,7 +484,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k
     
     if top_buyers.empty: return 0.0, 0, 0, 0.0
     
-    # 計算各分點買進均價，再根據其「淨留下來的部位」計算整體主力防守均價，完全排除高頻當沖刷量干擾
     top_buyers['avg_buy_price'] = top_buyers['buy_amt'] / top_buyers['buy_vol'].replace(0, np.nan)
     total_net_vol = top_buyers['net_vol'].sum()
     
@@ -525,7 +523,6 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     df_disp['net'] = ((df_disp['buy'] - df_disp['sell']) / 1000).round().astype(int)
     
     p = df_disp.groupby(['securities_trader', 'date'])['net'].sum().reset_index()
-    # 防呆修正：避免有些日期完全無資料，補上 0
     p = p.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     
     fp_dict = {}
@@ -602,20 +599,12 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
 
 def get_smart_threshold(price, capital_bn, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
-    
-    # 重構：真實市場大戶門檻數學模型 (以持有 1500 萬台幣為基準大戶)
     base_lots = 15000 / price
-    
-    # 結合自由流通籌碼：找出 1% 活籌碼張數，若股本極小則門檻自動下降
     total_lots = capital_bn * 10000 
     free_float_ratio = max(0.05, (100 - dead_float) / 100) 
     float_1pct_lots = total_lots * free_float_ratio * 0.01
-    
-    # 取兩者較小值，並將極端防呆限制在 TDCC 合理區間 (100~1000)
     raw_threshold = min(base_lots, float_1pct_lots)
     raw_threshold = max(100, min(1000, raw_threshold))
-    
-    # 吸附到最接近的 TDCC 分級
     levels = [100, 200, 400, 600, 800, 1000]
     al = min(levels, key=lambda x: abs(x - raw_threshold))
     return al
@@ -714,8 +703,8 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         eye_diag = diff_row['鷹眼診斷'].iloc[0] if not diff_row.empty and '鷹眼診斷' in diff_row.columns else ""
 
         day_b = df_b[df_b['date'] == d]
-        smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)]
-        short_b = day_b[day_b['tag'].str.contains('隔日沖大戶|被套牢|游擊過客', na=False)]
+        smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)].copy()
+        short_b = day_b[day_b['tag'].str.contains('隔日沖大戶|被套牢|游擊過客', na=False)].copy()
         
         smart_grouped = smart_b.groupby(['securities_trader', 'tag'])[['bs', 'ss']].sum().reset_index()
         smart_grouped['net_vol'] = ((smart_grouped['bs'] - smart_grouped['ss']) / 1000).round().astype(int)
@@ -726,9 +715,22 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             for _, r in smart_grouped.iterrows():
                 if r['net_vol'] != 0: audit_smart_money.append({"日期": d, "分點": r['securities_trader'], "標籤": r['tag'], "淨買超(張)": r['net_vol']})
         
-        smart_net, short_trap = smart_grouped['net_vol'].sum(), short_grouped['net_vol'].sum()
-        smart_buy_vol = smart_b['bs'].sum()
-        smart_avg_cost = (smart_b['bs'] * smart_b['pr']).sum() / smart_buy_vol if smart_buy_vol > 0 else 0
+        smart_net = smart_grouped['net_vol'].sum()
+        short_trap = short_grouped['net_vol'].sum()
+        
+        # 數學重構：每日聰明錢矩陣導入「淨留倉加權均價 (Net VWAP)」，排除當沖刷量污染
+        smart_b['amt'] = smart_b['bs'] * smart_b['pr']
+        s_grp = smart_b.groupby('securities_trader').agg(bs=('bs','sum'), ss=('ss','sum'), amt=('amt','sum'))
+        s_grp['net'] = s_grp['bs'] - s_grp['ss']
+        s_ret = s_grp[s_grp['net'] > 0].copy()
+        
+        if not s_ret.empty:
+            s_ret['avg_p'] = s_ret['amt'] / s_ret['bs'].replace(0, np.nan)
+            total_n = s_ret['net'].sum()
+            smart_avg_cost = (s_ret['avg_p'] * s_ret['net']).sum() / total_n if total_n > 0 else 0
+        else:
+            smart_avg_cost = 0
+            
         gap = cp - smart_avg_cost if smart_avg_cost > 0 else 0
         
         adv = []
@@ -796,7 +798,10 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma).mean().round(2)
     df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma).mean().round(2)
     df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma).mean().round(2)
-    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'] * 100).round(2)
+    
+    # 防呆重構：避免新上市股或資料斷層導致均線為 0 時的除以零錯誤
+    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
+    
     cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
     cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
@@ -823,7 +828,7 @@ def process_tdcc(df):
     df_t['總人數(人)'] = p_p[lvls].sum(axis=1)
     df_w = df_t.copy()
     for l in lvls: 
-        df_w[f"{l}_張數"], df_w[f"{l}_人數"], df_w[f"{l}_比例(%)"] = p_u[l], p_p[l], (p_u[l] / df_t['總張數'] * 100).fillna(0).round(2)
+        df_w[f"{l}_張數"], df_w[f"{l}_人數"], df_w[f"{l}_比例(%)"] = p_u[l], p_p[l], (p_u[l] / df_t['總張數'].replace(0, np.nan) * 100).fillna(0).round(2)
     df_w = df_w.rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
     df_unit = pd.merge(df_t[['date', '總張數']], p_u[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
     df_ppl = pd.merge(df_t[['date', '總人數(人)']], p_p[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
