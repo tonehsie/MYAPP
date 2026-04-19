@@ -14,12 +14,11 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.01版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.02版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
-# V60.01 修改 CSS: 將 table width 從 100% 改為 max-content，依照欄位多寡自動調整寬度
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -79,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.01 表格自適應與AI串接版)")
+st.title("📱 全息量化系統 (V60.02 資券校正版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.01：新增股本計算、表格寬度自動適應、AI 共振診斷串聯 CSV 包。{usage_text}")
+st.caption(f"🚀 V60.02：退回原版正確的融資(萬元)/融券(張)單位，保留自適應表格與股本運算。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -93,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.01 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.02 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -1015,16 +1014,15 @@ def process_day_trading(df):
 def process_margin(df):
     if df.empty: return pd.DataFrame()
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
-        if c in df.columns: 
-            val = safe_to_num(df[c])
-            df[c] = np.where(val > 10000, val / 1000, val).round().astype(int)
-            
+        if c in df.columns: df[c] = safe_to_num(df[c]).round().astype(int)
+
+    # V60.02 絕對遵守原版設定：融資單位本身即為「萬元」，融券為「張」，絕不亂除！
     df = df.rename(columns={
         "date": "日期", 
-        "MarginPurchaseBuy": "融資買進(張)", 
-        "MarginPurchaseSell": "融資賣出(張)", 
-        "MarginPurchaseCashRepayment": "融資現償(張)", 
-        "MarginPurchaseTodayBalance": "融資餘額(張)", 
+        "MarginPurchaseBuy": "融資買進(萬元)", 
+        "MarginPurchaseSell": "融資賣出(萬元)", 
+        "MarginPurchaseCashRepayment": "融資現償(萬元)", 
+        "MarginPurchaseTodayBalance": "融資餘額(萬元)", 
         "ShortSaleBuy": "融券買進(張)", 
         "ShortSaleSell": "融券賣出(張)", 
         "ShortSaleTodayBalance": "融券餘額(張)", 
@@ -1032,17 +1030,15 @@ def process_margin(df):
     })
     df = df.loc[:, ~df.columns.duplicated()]
     
-    if '融資餘額(張)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
-        prev_val = safe_to_num(df['MarginPurchaseYesterdayBalance'])
-        prev_margin = np.where(prev_val > 10000, prev_val / 1000, prev_val).round().astype(int)
-        df['融資增減(張)'] = df['融資餘額(張)'] - prev_margin
+    if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
+        prev_margin = safe_to_num(df['MarginPurchaseYesterdayBalance']).round().astype(int)
+        df['融資增減(萬元)'] = df['融資餘額(萬元)'] - prev_margin
         
     if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns:
-        prev_val = safe_to_num(df['ShortSaleYesterdayBalance'])
-        prev_short = np.where(prev_val > 10000, prev_val / 1000, prev_val).round().astype(int)
+        prev_short = safe_to_num(df['ShortSaleYesterdayBalance']).round().astype(int)
         df['融券增減(張)'] = df['融券餘額(張)'] - prev_short
         
-    cols = [c for c in ['日期','融資買進(張)','融資賣出(張)','融資現償(張)','融資餘額(張)','融資增減(張)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
+    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
     return df[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_inst(df):
@@ -1137,7 +1133,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# V60.01 強化 AI 鷹眼，不論有沒有價格落差，強制顯示聰明錢動向，杜絕 "怎沒資料"
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
     alerts = []
     if not df_daily.empty and len(df_daily) >= 1:
@@ -1224,7 +1219,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.01 決策引擎 (表單與 AI 模組自適應載入中)..."):
+    with st.spinner(f"正在啟動 V60.02 決策引擎 (表單自適應載入中，資券已退回原始版)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1260,7 +1255,6 @@ if run_btn:
         df_s_raw = fetch_finmind_v50("TaiwanStockHoldingSharesPer", d_end, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
-        # V60.01 新增精準股本運算 (總張數 / 10000 即為億)
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
         capital_str = f"{current_total_shares / 10000:.2f} 億" if current_total_shares > 0 else "計算中..."
         
@@ -1341,7 +1335,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.01 表格自適應版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.02 表格自適應版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1569,11 +1563,10 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.01 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.02 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
-            # V60.01 將跨週期共振也加入餵給 AI 的資料中
             p1 += f"▼▼▼ AI 跨週期共振研判與診斷 ▼▼▼\n"
             p1 += f"【階段判定】: {phase_title}\n"
             p1 += f"【階段說明】: {phase_desc}\n"
