@@ -17,12 +17,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 st.set_page_config(page_title="V48.29 全息量化系統 (終極超神版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-# 遠端說明書網址
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
-# ==========================================
-# 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭
-# ==========================================
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -76,16 +72,16 @@ footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)",
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
 st.sidebar.markdown("### 🧠 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨均價」", value=True)
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨加權均價」", value=True)
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.29 終極全息量化系統 (終極超神版)")
+st.title("📱 V48.29 終極全息量化系統 (數學重構超神版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：深度重構囤/出貨率與隔日沖虛胖邏輯，防呆機制全面強化。{usage_text}")
+st.caption(f"🚀 V48.29 升級：深度重構主力淨留倉 VWAP 權重公式、大戶門檻 1500 萬活籌碼模型。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -389,7 +385,6 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         active_days = g['date_dt'].nunique()
         stickiness = (active_days / global_days) * 100
         
-        # 修正：精準拆分囤貨率與出貨率邏輯
         net_t = tb - ts
         if net_t > 0:
             hoard_ratio = (net_t / tb * 100) if tb > 0 else 0
@@ -476,16 +471,26 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k
 
     if valid_df.empty: return 0.0, 0, 0, 0.0
     
-    g = valid_df.groupby('securities_trader')[['buy', 'sell']].sum()
-    g['net'] = (g['buy'] - g['sell']) / 1000
-    top_buyers = g[g['net'] > 0].sort_values('net', ascending=False).head(dynamic_n)
+    # 數學重構：利用「淨留倉」加權計算真正的防禦成本 (Net-Weighted VWAP)
+    def calc_broker(x):
+        b_v = x['buy'].sum()
+        s_v = x['sell'].sum()
+        b_a = (x['buy'] * x['price']).sum()
+        return pd.Series({'buy_vol': b_v, 'sell_vol': s_v, 'buy_amt': b_a})
+        
+    broker_stats = valid_df.groupby('securities_trader').apply(calc_broker)
+    broker_stats['net_vol'] = broker_stats['buy_vol'] - broker_stats['sell_vol']
+    
+    top_buyers = broker_stats[broker_stats['net_vol'] > 0].sort_values('net_vol', ascending=False).head(dynamic_n)
     
     if top_buyers.empty: return 0.0, 0, 0, 0.0
     
-    main_force_df = valid_df[valid_df['securities_trader'].isin(top_buyers.index)]
-    total_buy = main_force_df['buy'].sum()
-    vwap = round((main_force_df['buy'] * main_force_df['price']).sum() / total_buy, 2) if total_buy > 0 else 0.0
-    net_accum = int(top_buyers['net'].sum())
+    # 計算各分點買進均價，再根據其「淨留下來的部位」計算整體主力防守均價，完全排除高頻當沖刷量干擾
+    top_buyers['avg_buy_price'] = top_buyers['buy_amt'] / top_buyers['buy_vol'].replace(0, np.nan)
+    total_net_vol = top_buyers['net_vol'].sum()
+    
+    vwap = round((top_buyers['avg_buy_price'] * top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
+    net_accum = int(total_net_vol / 1000)
     active_buyers = len(top_buyers)
     
     c_value = 0.0
@@ -520,6 +525,7 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     df_disp['net'] = ((df_disp['buy'] - df_disp['sell']) / 1000).round().astype(int)
     
     p = df_disp.groupby(['securities_trader', 'date'])['net'].sum().reset_index()
+    # 防呆修正：避免有些日期完全無資料，補上 0
     p = p.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     
     fp_dict = {}
@@ -596,9 +602,23 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
 
 def get_smart_threshold(price, capital_bn, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
-    rt = max((max(3000, capital_bn * 500) * 10000) / (price * 1000), (capital_bn * 10000) * (max(0.1, 0.5 * (100 - dead_float) / 100) / 100))
-    al = min([100, 200, 400, 600, 800, 1000], key=lambda x: abs(x - rt))
-    return min(al, 400) if price < 30 else al
+    
+    # 重構：真實市場大戶門檻數學模型 (以持有 1500 萬台幣為基準大戶)
+    base_lots = 15000 / price
+    
+    # 結合自由流通籌碼：找出 1% 活籌碼張數，若股本極小則門檻自動下降
+    total_lots = capital_bn * 10000 
+    free_float_ratio = max(0.05, (100 - dead_float) / 100) 
+    float_1pct_lots = total_lots * free_float_ratio * 0.01
+    
+    # 取兩者較小值，並將極端防呆限制在 TDCC 合理區間 (100~1000)
+    raw_threshold = min(base_lots, float_1pct_lots)
+    raw_threshold = max(100, min(1000, raw_threshold))
+    
+    # 吸附到最接近的 TDCC 分級
+    levels = [100, 200, 400, 600, 800, 1000]
+    al = min(levels, key=lambda x: abs(x - raw_threshold))
+    return al
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -623,7 +643,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             df_f = df_f.copy()
             df_f['tag'] = df_f['securities_trader'].map(intel_tags).fillna("")
             fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
-            # 修正：精準計算週五當日淨買超，避免當沖量膨脹
             fn['net_buy'] = fn['buy'] - fn['sell']
             f_vol = round(fn[fn['net_buy'] > 0]['net_buy'].sum() / 1000)
             
@@ -1076,7 +1095,6 @@ if run_btn:
 
         df_combined_display = pd.DataFrame()
         if not df_v27_radar.empty and not df_s_dyn.empty:
-            # 修正：強制只使用 '日期' 作為合併鍵，避免收盤價浮點數微小差異導致合併失敗
             df_combined_radar = pd.merge(df_s_dyn, df_v27_radar, on=['日期'], how='inner', suffixes=('', '_y'))
             if '收盤價(元)_y' in df_combined_radar.columns:
                 df_combined_radar = df_combined_radar.drop(columns=['收盤價(元)_y'])
@@ -1134,9 +1152,6 @@ if run_btn:
         st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.29 終極超神版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # 🎨 AI 動態解析儀表板
-        # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
             
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1150,7 +1165,7 @@ if run_btn:
                 elif 10.0 < bias <= 50.0:
                     phase_title = "🔥 趨勢推升 (波段多頭起漲)"
                     phase_desc = f"股價穩定脫離成本區 (乖離率 **{bias:.1f}%**)，波段主力已點火發動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可抱緊順勢操作。"
-                else: # bias > 50.0
+                else:
                     phase_title = "⚠️ 嚴重過熱 (乖離破表)"
                     phase_desc = f"股價已呈極端噴出，乖離率高達 **{bias:.1f}%**，進入台股高危險過熱區。主力帳面獲利極大，隨時可能無情收割。若見聰明錢流出，請嚴格執行停利！"
             else:
@@ -1160,7 +1175,7 @@ if run_btn:
                 elif bias >= -30.0:
                     phase_title = "💀 主力套牢 / 棄守多殺多"
                     phase_desc = f"股價深度跌破防守價 (乖離 **{bias:.1f}%**)。波段主力已被嚴重套牢或直接停損棄守，極易引發多殺多恐慌賣壓，建議立刻避開。"
-                else: # bias < -30.0
+                else:
                     phase_title = "🩸 嚴重超跌 (乖離極大)"
                     phase_desc = f"股價崩跌遠低於主力成本 (乖離 **{bias:.1f}%**)。恐慌性拋售已達極致，籌碼徹底洗牌，隨時可能出現報復性死貓反彈。"
 
@@ -1232,7 +1247,7 @@ if run_btn:
         adv_html = f"""
         <div style='display:flex; gap:15px; flex-wrap:wrap; background-color:#ffffff; padding:20px; border-radius:8px; border:1px solid #e9ecef; margin-bottom:15px;'>
             <div style='flex:1; min-width:140px; border-right: 1px solid #eee; display: flex; flex-direction: column; justify-content: center;'>
-                <span style='font-size:0.95rem; color:#666;'>🛡️ 主力鐵板防守價</span>
+                <span style='font-size:0.95rem; color:#666;'>🛡️ 淨留倉加權防守價 (Net VWAP)</span>
                 <span style='font-size:1.5rem; font-weight:bold; color:#1e3a8a;'>{pure_vwap} 元</span>
                 <span style='font-size:0.85rem; color:#888; margin-top:5px;'>前 {dynamic_n} 大核心 ({radar_reason})</span>
             </div>
@@ -1261,7 +1276,7 @@ if run_btn:
         """
         st.markdown(adv_html, unsafe_allow_html=True)
         
-        st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。C_Value 為主力吸納自由流通活籌碼之百分比。")
+        st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。加權防守價已排除高頻刷量誤差。C_Value 為主力吸納自由流通活籌碼之百分比。")
         st.markdown("---")
         
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_combined_display, pd.DataFrame(), df_b_diff, firepower_threshold)
@@ -1272,9 +1287,6 @@ if run_btn:
             clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
-        # ---------------------------------------------------------
-        # 📈 K 線圖渲染
-        # ---------------------------------------------------------
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
@@ -1303,9 +1315,6 @@ if run_btn:
                 
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-        # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.29 主力分點全息透視區 (集中 + 折疊)
-        # ---------------------------------------------------------
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
         
@@ -1338,9 +1347,6 @@ if run_btn:
         with st.expander("07. 主力分點圖鑑 (三維動態檢驗)"):
             render_clean_html_table(df_debug_tags)
 
-        # ---------------------------------------------------------
-        # 其他總覽表格渲染
-        # ---------------------------------------------------------
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
         render_clean_html_table(df_daily_tracker, "01. 平日戰情追蹤矩陣 (合併家數差與火力)")
         render_clean_html_table(df_combined_display, "02. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
@@ -1367,7 +1373,7 @@ if run_btn:
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
-            p1 += f"【系統算出之純淨主力鐵板防守價】: {pure_vwap} 元\n"
+            p1 += f"【系統算出之純淨主力加權防守價 (Net VWAP)】: {pure_vwap} 元\n"
             p1 += f"【主力活籌碼真實鎖碼率 (C_Value)】: {core_c_value}%\n\n"
             p1 += f"【主力3日淨留倉】: {net_3} 張\n"
             p1 += f"【主力10日淨留倉】: {net_10} 張\n"
