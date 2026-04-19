@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V50.05版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V50.06版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.05 絕對防禦版)")
+st.title("📱 全息量化系統 (V50.06 數學矩陣零誤差版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.05 升級：徹底根除 VWAP 零價稀釋黑洞、確保加權池 100% 數學剛性對齊。{usage_text}")
+st.caption(f"🚀 V50.06 絕對重構：全面導入 Pandas 底層向量化運算，修復漲跌停位階崩潰、杜絕迴圈累積誤差。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V50.05 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V50.06 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -358,21 +358,29 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 
     df_p = df_p_raw.copy()
     df_p['date'] = pd.to_datetime(df_p['date'])
-    df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
+    df_p['spread'] = pd.to_numeric(df_p.get('spread', 0), errors='coerce').fillna(0)
     range_diff = df_p['max'] - df_p['min']
-    df_p['pos'] = np.where(range_diff == 0, 0.5, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
+    
+    # V50.06 絕對重構：漲跌停極端價差的數學位階還原，不再一律賦予 0.5 盲點
+    df_p['pos'] = np.where(range_diff == 0, 
+                           np.where(df_p['spread'] > 0, 1.0, 
+                                    np.where(df_p['spread'] < 0, 0.0, 0.5)), 
+                           (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
+    
     price_stats = df_p.set_index('date')[['pos']].to_dict('index')
     latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0] if not df_p.empty else 0
 
     df = df_b_raw.copy()
     df['date_dt'] = pd.to_datetime(df['date'])
-    df['buy_amt'] = df['buy'] * df['price']
-    df['sell_amt'] = df['sell'] * df['price']
+    df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
+    df['valid_sell'] = np.where(df['price'] > 0, df['sell'], 0)
+    df['buy_amt'] = df['valid_buy'] * df['price']
+    df['sell_amt'] = df['valid_sell'] * df['price']
     df['net_shares'] = df['buy'] - df['sell']
 
     d5 = dates_list[:5]
-    d20 = dates_list[:20] if len(dates_list) >= 20 else dates_list
-    d60 = dates_list[:60] if len(dates_list) >= 60 else dates_list
+    d20 = dates_list[:20]
+    d60 = dates_list[:60]
 
     g5_shares = df[df['date'].isin(d5)].groupby('securities_trader')['net_shares'].sum()
     g20_shares = df[df['date'].isin(d20)].groupby('securities_trader')['net_shares'].sum()
@@ -384,63 +392,72 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         'net_60d': (g60_shares / 1000).round()
     }).fillna(0).astype(int)
 
-    tags, d_rows = {}, []
+    # V50.06 絕對重構：全面拔除緩慢的 iterrows 迴圈，採用底層 Pandas 向量化聚合運算
+    g = df.groupby('securities_trader').agg(
+        tb_shares=('buy', 'sum'),
+        ts_shares=('sell', 'sum'),
+        net_shares=('net_shares', 'sum'),
+        buy_amt=('buy_amt', 'sum'),
+        sell_amt=('sell_amt', 'sum'),
+        valid_b_shares=('valid_buy', 'sum'),
+        valid_s_shares=('valid_sell', 'sum'),
+        active_days=('date_dt', 'nunique'),
+        last_date=('date_dt', 'max')
+    )
+    
+    g['stickiness'] = (g['active_days'] / actual_global_days) * 100
+    
+    g['hoard_ratio'] = np.where(g['net_shares'] > 0,
+                                (g['net_shares'] / g['tb_shares'].replace(0, np.nan) * 100),
+                                (g['net_shares'].abs() / g['ts_shares'].replace(0, np.nan) * 100))
+    g['hoard_ratio'] = g['hoard_ratio'].fillna(0)
+    
+    g['avg_b'] = (g['buy_amt'] / g['valid_b_shares'].replace(0, np.nan)).fillna(0)
+    g['avg_s'] = (g['sell_amt'] / g['valid_s_shares'].replace(0, np.nan)).fillna(0)
+    
+    g = g.join(stats).fillna(0)
+    
+    g['tb'] = (g['tb_shares'] / 1000).round().astype(int)
+    g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
+    g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
+
     gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
-
-    for trader, g in df.groupby('securities_trader'):
-        tb_shares = g['buy'].sum()
-        ts_shares = g['sell'].sum()
-        tv_shares = tb_shares + ts_shares
+    
+    def assign_tag(row):
+        t = row.name
+        v60, v20, v5 = row['net_60d'], row['net_20d'], row['net_5d']
+        stick = row['stickiness']
+        if any(x in t for x in gov_list): return "🏦 [影子官股]"
+        if -200 <= v60 <= 200 and -200 <= v20 <= 200 and v5 >= 300: return "⚠️ [隔日沖大戶]"
+        if v60 >= 300 and v20 >= 100 and v5 <= -100: return "💀 [大戶出貨]"
+        if v60 >= 200 and v20 >= 100 and v5 >= 50: return "🔥 [長駐波段主]"
+        if v60 <= -200 and v20 <= -100 and v5 <= -100: return "📉 [趨勢空方]"
+        if v60 <= -100 and v5 >= 200: return "🩹 [被套牢]"
+        if stick >= stick_thresh: return "🥷 [潛伏造市者]"
+        if stick < 10.0 and abs(v5) > 50: return "🏃 [游擊過客]"
+        return "🔵 一般/游擊"
         
-        if tv_shares == 0: continue
+    g['tag'] = g.apply(assign_tag, axis=1)
 
-        active_days = g['date_dt'].nunique()
-        stickiness = (active_days / actual_global_days) * 100
+    d_rows = []
+    for trader, row in g.iterrows():
+        if row['tb_shares'] + row['ts_shares'] == 0: continue
         
-        net_t_shares = tb_shares - ts_shares
-        if net_t_shares > 0:
-            hoard_ratio = (net_t_shares / tb_shares * 100) if tb_shares > 0 else 0
-        else:
-            hoard_ratio = (abs(net_t_shares) / ts_shares * 100) if ts_shares > 0 else 0
-
-        tb, ts = round(tb_shares / 1000), round(ts_shares / 1000)
-
-        valid_buys = g[g['price'] > 0]
-        valid_b_shares = valid_buys['buy'].sum()
-        avg_b = (valid_buys['buy'] * valid_buys['price']).sum() / valid_b_shares if valid_b_shares > 0 else 0
-        
-        valid_sells = g[g['price'] > 0]
-        valid_s_shares = valid_sells['sell'].sum()
-        avg_s = (valid_sells['sell'] * valid_sells['price']).sum() / valid_s_shares if valid_s_shares > 0 else 0
-
-        ld = pd.to_datetime(g['date']).max()
-        pos = price_stats.get(ld, {'pos': 0.5})['pos']
-
-        v60 = stats.loc[trader, 'net_60d'] if trader in stats.index else 0
-        v20 = stats.loc[trader, 'net_20d'] if trader in stats.index else 0
-        v5  = stats.loc[trader, 'net_5d'] if trader in stats.index else 0
-
-        if any(x in trader for x in gov_list): tag = "🏦 [影子官股]"
-        elif -200 <= v60 <= 200 and -200 <= v20 <= 200 and v5 >= 300: tag = "⚠️ [隔日沖大戶]"
-        elif v60 >= 300 and v20 >= 100 and v5 <= -100: tag = "💀 [大戶出貨]"
-        elif v60 >= 200 and v20 >= 100 and v5 >= 50: tag = "🔥 [長駐波段主]"
-        elif v60 <= -200 and v20 <= -100 and v5 <= -100: tag = "📉 [趨勢空方]"
-        elif v60 <= -100 and v5 >= 200: tag = "🩹 [被套牢]"
-        elif stickiness >= stick_thresh: tag = "🥷 [潛伏造市者]"
-        elif stickiness < 10.0 and abs(v5) > 50: tag = "🏃 [游擊過客]"
-        else: tag = "🔵 一般/游擊"
-
-        tags[trader] = tag
+        pos = price_stats.get(row['last_date'], {'pos': 0.5})['pos']
+        avg_b = row['avg_b']
         b_str = f"{round(avg_b, 2):,.2f}"
-        if avg_b > latest_close and avg_b > 0 and (tb-ts) > 0: b_str = f"⚠️(虧) {b_str}"
+        if avg_b > latest_close and avg_b > 0 and row['net_shares'] > 0: 
+            b_str = f"⚠️(虧) {b_str}"
 
         d_rows.append({
-            "分點名稱": trader, "最終標籤": tag,
-            "近60日淨買(張)": int(v60), "近20日淨買(張)": int(v20), "近5日淨買(張)": int(v5),
-            "黏著度(%)": round(stickiness, 1), "囤出貨率(%)": round(hoard_ratio, 1),
-            "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(tb - ts),
-            "買均價": b_str, "賣均價": round(avg_s, 2) if avg_s > 0 else "-", "收盤位階": round(pos, 2)
+            "分點名稱": trader, "最終標籤": row['tag'],
+            "近60日淨買(張)": int(row['net_60d']), "近20日淨買(張)": int(row['net_20d']), "近5日淨買(張)": int(row['net_5d']),
+            "黏著度(%)": round(row['stickiness'], 1), "囤出貨率(%)": round(row['hoard_ratio'], 1),
+            "總買(張)": row['tb'], "總賣(張)": row['ts'], "淨留倉": row['net_lots'],
+            "買均價": b_str, "賣均價": round(row['avg_s'], 2) if row['avg_s'] > 0 else "-", "收盤位階": round(pos, 2)
         })
+        
+    tags = g['tag'].to_dict()
     return tags, pd.DataFrame(d_rows).sort_values('近60日淨買(張)', ascending=False)
 
 def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
@@ -491,17 +508,18 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
 
     if valid_df.empty: return 0.0, 0, 0, 0.0, []
     
-    def calc_broker(x):
-        b_v = x['buy'].sum()
-        s_v = x['sell'].sum()
-        valid_b = x[x['price'] > 0]
-        b_a = (valid_b['buy'] * valid_b['price']).sum()
-        valid_b_v = valid_b['buy'].sum()
-        return pd.Series({'buy_vol': b_v, 'sell_vol': s_v, 'buy_amt': b_a, 'valid_buy_vol': valid_b_v})
-        
-    broker_stats = valid_df.groupby('securities_trader').apply(calc_broker)
-    broker_stats['net_vol'] = broker_stats['buy_vol'] - broker_stats['sell_vol']
+    # V50.06 絕對重構：捨棄緩慢的 apply，全面升級為向量化加權，保障 100% 數學剛性對齊
+    valid_df['valid_buy_amt'] = np.where(valid_df['price'] > 0, valid_df['buy'] * valid_df['price'], 0)
+    valid_df['valid_buy_vol'] = np.where(valid_df['price'] > 0, valid_df['buy'], 0)
     
+    broker_stats = valid_df.groupby('securities_trader').agg(
+        buy_vol=('buy', 'sum'),
+        sell_vol=('sell', 'sum'),
+        buy_amt=('valid_buy_amt', 'sum'),
+        valid_buy_vol=('valid_buy_vol', 'sum')
+    )
+    
+    broker_stats['net_vol'] = broker_stats['buy_vol'] - broker_stats['sell_vol']
     top_buyers = broker_stats[broker_stats['net_vol'] > 0].sort_values('net_vol', ascending=False).head(dynamic_n)
     
     if top_buyers.empty: return 0.0, 0, 0, 0.0, []
@@ -509,14 +527,11 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     core_branch_names = top_buyers.index.tolist()
     
     top_buyers['avg_buy_price'] = (top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0)
-    
-    # V50.05 絕對防禦：拔除 0 元均價的無效大戶，確保 VWAP 分母不被黑洞稀釋
     valid_top_buyers = top_buyers[top_buyers['avg_buy_price'] > 0]
     total_net_vol = valid_top_buyers['net_vol'].sum()
     
     vwap = round((valid_top_buyers['avg_buy_price'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
     
-    # C_Value 的計算使用全部上榜大戶的量
     full_net_accum = int(top_buyers['net_vol'].sum() / 1000)
     active_buyers = len(top_buyers)
     
@@ -823,7 +838,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             s_ret['avg_p'] = (s_ret['amt'] / s_ret['valid_bs'].replace(0, np.nan)).fillna(0)
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
             
-            # V50.05 數學重構：絕對排除均價為 0 的無效交易者，保證 VWAP 母體純淨
             s_ret_valid = s_ret[s_ret['avg_p'] > 0]
             total_n = s_ret_valid['net_shares'].sum()
             smart_avg_cost = (s_ret_valid['avg_p'] * s_ret_valid['net_shares']).sum() / total_n if total_n > 0 else 0
@@ -1169,7 +1183,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V50.05 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V50.06 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1282,7 +1296,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.05版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.06版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1502,7 +1516,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V50.05 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V50.06 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
