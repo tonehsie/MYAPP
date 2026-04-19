@@ -14,37 +14,32 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.28 全息量化系統 (終極無錯版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.25 全息量化系統 (終極無錯定案版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 # ==========================================
-# 🎨 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭
+# 🎨 終極乾淨 CSS：用 Class 精準控制
 # ==========================================
-CSS = """
-<style>
-.table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-.table-container table { width: 100% !important; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
-.table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
-.table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
-.table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
-.table-container thead th:first-child { z-index: 5; }
-
-.text-left { text-align: left !important; }
-.text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
-.loss-warning { color: #d9480f; font-weight: bold; }
-.highlight-red { color: #d32f2f; font-weight: bold; }
-.highlight-green { color: #2e7d32; font-weight: bold; }
-.info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }
-.section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }
-.category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }
-.stTabs [data-baseweb='tab-list'] { gap: 10px; }
-.stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }
-.stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }
-</style>
-"""
+CSS = (
+    "<style>"
+    ".table-container { overflow-x: auto; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }"
+    ".table-container table { width: 100% !important; border-collapse: collapse !important; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }"
+    ".table-container th { white-space: normal !important; word-break: keep-all !important; text-align: center !important; padding: 12px 10px !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; border: 1px solid #dee2e6; line-height: 1.4; vertical-align: middle; }"
+    ".table-container td { white-space: nowrap !important; padding: 10px 12px !important; border: 1px solid #dee2e6; vertical-align: middle; }"
+    ".text-left { text-align: left !important; }"
+    ".text-right { text-align: right !important; font-variant-numeric: tabular-nums; }"
+    ".table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 2; font-weight: bold; text-align: center !important; border-right: 2px solid #ced4da; }"
+    ".loss-warning { color: #d9480f; font-weight: bold; }"
+    ".highlight-red { color: #d32f2f; font-weight: bold; }"
+    ".highlight-green { color: #2e7d32; font-weight: bold; }"
+    ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }"
+    ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }"
+    ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }"
+    "</style>"
+)
 st.markdown(CSS, unsafe_allow_html=True)
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -72,20 +67,19 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 60, 20, 1)
-footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 st.sidebar.divider()
 st.sidebar.markdown("### 🧠 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨均價」", value=True)
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨均價」", value=True, help="開啟後，系統強制鎖定核心主力分點，排除散戶與游擊客雜訊。")
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.28 終極全息量化系統 (滿血無錯版)")
+st.title("📱 V48.25 終極全息量化系統 (滿血定案版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.28 升級：徹底補齊缺失之底層運算函式，確保全模組平穩運行無報錯。{usage_text}")
+st.caption(f"🚀 V48.25 升級：變數錯誤修復。結合 AI 動態雷達深度、C_Value 鎖碼率及雙維度趨勢診斷。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -96,7 +90,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.28 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.25 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -587,9 +581,7 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         out.append(r)
     return pd.DataFrame(out)
 
-# 🚀 V48.28 補回：遺失的最關鍵演算法！
 def get_smart_threshold(price, capital_bn, dead_float):
-    """根據股價、股本、死籌碼，動態判定大戶的精算門檻 (100張 ~ 1000張)"""
     if pd.isna(price) or price <= 0: return 1000 
     rt = max((max(3000, capital_bn * 500) * 10000) / (price * 1000), (capital_bn * 10000) * (max(0.1, 0.5 * (100 - dead_float) / 100) / 100))
     al = min([100, 200, 400, 600, 800, 1000], key=lambda x: abs(x - rt))
@@ -952,16 +944,15 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thres
         else: alerts.append("> ⚪ 今日大戶無明顯動作，成本線無法精算。")
     return alerts
 
-def render_clean_html_table(df, title=""):
+def render_clean_html_table(df, title):
     if df is None or df.empty:
-        if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
         st.warning("此區塊查無數據。")
         return
 
     text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號']
     
-    html = ""
-    if title: html += f"<div class='section-title'>{title}</div>"
+    html = f"<div class='section-title'>{title}</div>"
     html += "<div class='table-container'><table>"
     
     html += "<thead><tr>"
@@ -1011,7 +1002,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.28 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V48.25 決策引擎 (雙維度與動態雷達運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1037,18 +1028,22 @@ if run_btn:
         df_b_raw = fetch_branch_data_v46(dates[:max_len], user_stock_id)
         tags, df_debug_tags = get_v47_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         
+        # 1. 先去抓最新發行張數與死籌碼
         df_s_raw = fetch_finmind_v46("TaiwanStockHoldingSharesPer", d_end, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], dead_chip_input, dynamic_dict, s_val, chip_eng)
         
+        # 📌 V48.25 補回關鍵：定義董監事持股顯示字串
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無數據"
 
+        # 2. 動態雷達 N 值與防守價 C_Value 精算
         dynamic_n, radar_reason = calculate_dynamic_radar_depth(df_b_raw, dates, current_total_shares, df_price)
         pure_vwap, main_force_vol, active_main_branches, core_c_value = calculate_pure_defense_line(
             df_b_raw, tags, filter_day_trade, current_total_shares, latest_director_holding, dynamic_n
         )
         
+        # 3. 取得精準的各週期動態 N 對標淨額
         net_3 = get_period_net_topN(df_b_raw, dates[:3], dynamic_n)
         net_10 = get_period_net_topN(df_b_raw, dates[:10], dynamic_n)
         net_60 = get_period_net_topN(df_b_raw, dates[:60] if len(dates)>=60 else dates, dynamic_n)
@@ -1115,11 +1110,31 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.28 滿血無錯版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.25 終極定案版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
-
+        
         # ---------------------------------------------------------
-        # 🎨 AI 動態解析儀表板
+        # 🕵️‍♂️ V48.25 短中長全景足跡矩陣 (AI 動態 N 鎖定)
+        # ---------------------------------------------------------
+        actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
+        display_dates = dates[:actual_foot_days]
+        
+        st.markdown(f"<div class='category-title'>🕵️‍♂️ 跨週期主力足跡動態矩陣 <span style='font-size:1.1rem; color:#1e3a8a;'>(AI 動態鎖定前 {dynamic_n} 大)</span></div>", unsafe_allow_html=True)
+        
+        df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, dynamic_n)
+        render_clean_html_table(df_fb_3, f"🔥 【近 3 日急單動向】 買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        render_clean_html_table(df_fs_3, f"🔥 【近 3 日急單動向】 賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        
+        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, dynamic_n)
+        render_clean_html_table(df_fb_10, f"📈 【近 10 日波段動向】 買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        render_clean_html_table(df_fs_10, f"📈 【近 10 日波段動向】 賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        
+        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:60], tags, df_debug_tags, dynamic_n)
+        render_clean_html_table(df_fb_60, f"⚓ 【近 60 日長線動向】 買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        render_clean_html_table(df_fs_60, f"⚓ 【近 60 日長線動向】 賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        
+        # ---------------------------------------------------------
+        # 🎨 AI 動態解析儀表板 (還原詳盡說明與二維診斷)
         # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
             
@@ -1213,7 +1228,7 @@ if run_btn:
                 <span style='font-size:0.85rem; color:{bias_color}; margin-top:5px;'>{bias_desc}</span>
             </div>
             <div style='flex:1.2; min-width:180px; border-right: 1px solid #eee; display: flex; flex-direction: column; justify-content: center;'>
-                <span style='font-size:0.95rem; color:#666;'>📊 核心前 {dynamic_n} 大 (實篩 {active_main_branches} 家) 多空淨留倉</span>
+                <span style='font-size:0.95rem; color:#666;'>📊 核心前 {dynamic_n} 大多空淨留倉</span>
                 <div style='font-size:0.95rem; margin-top:3px; line-height: 1.5;'>
                     近 &nbsp;3 日：<span style='color:{net3_color}; font-weight:bold;'>{net_3:+,} 張</span><br>
                     近 10 日：<span style='color:{net10_color}; font-weight:bold;'>{net_10:+,} 張</span><br>
@@ -1275,48 +1290,21 @@ if run_btn:
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
         # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.28 主力分點全息透視區 (集中 + 折疊)
-        # ---------------------------------------------------------
-        actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
-        display_dates = dates[:actual_foot_days]
-        
-        st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點全息透視區 (全維度折疊展開)</div>", unsafe_allow_html=True)
-        st.info("💡 所有分點足跡與明細已集中於此，點擊展開即可查看。表格支援上下左右雙向滑動，直向顯示約 10 行以維持版面整潔。")
-        
-        # 1. 跨週期足跡
-        df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"🔥 【近 3 日急單動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_3, f"買超前 {dynamic_n} 大")
-            render_clean_html_table(df_fs_3, f"賣超前 {dynamic_n} 大")
-            
-        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"📈 【近 10 日波段動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_10, f"買超前 {dynamic_n} 大")
-            render_clean_html_table(df_fs_10, f"賣超前 {dynamic_n} 大")
-            
-        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:60], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"⚓ 【近 60 日長線動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_60, f"買超前 {dynamic_n} 大")
-            render_clean_html_table(df_fs_60, f"賣超前 {dynamic_n} 大")
-
-        # 2. 單日與過渡期分點
-        with st.expander(f"04. 主力分點 - 今日 ({dates[0]})"):
-            render_clean_html_table(df_b_today)
-        with st.expander(f"05. 主力分點 - 前一日"):
-            render_clean_html_table(df_b_prev1)
-        with st.expander("06. 點此展開過渡期分點 (近3日 / 10日 / 60日總和)"):
-            render_clean_html_table(df_b_3, "主力分點 - 近 3 日")
-            render_clean_html_table(df_b_10, "主力分點 - 近 10 日")
-            render_clean_html_table(df_b_60, f"主力分點 - 近 {max_len} 日")
-        with st.expander("07. 主力分點圖鑑 (三維動態檢驗)"):
-            render_clean_html_table(df_debug_tags)
-
-        # ---------------------------------------------------------
-        # 其他總覽表格渲染
+        # 其他表格渲染
         # ---------------------------------------------------------
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
         render_clean_html_table(df_daily_tracker, "01. 平日戰情追蹤矩陣 (合併家數差與火力)")
         render_clean_html_table(df_combined_display, "02. 終極集保籌碼雷達 (大戶存量與流量雙解碼)")
+        
+        render_clean_html_table(df_b_today, f"04. 主力分點 - 今日 ({dates[0]})")
+        render_clean_html_table(df_b_prev1, f"05. 主力分點 - 前一日")
+        
+        with st.expander(f"📂 06. 點此展開過渡期分點", expanded=False):
+            render_clean_html_table(df_b_3, "06-1. 主力分點 - 近 3 日")
+            render_clean_html_table(df_b_10, "06-2. 主力分點 - 近 10 日")
+            render_clean_html_table(df_b_60, f"06-3. 主力分點 - 近 {max_len} 日")
+
+        with st.expander(f"📂 07. 點此展開主力分點圖鑑 (三維動態檢驗)", expanded=False): render_clean_html_table(df_debug_tags, "主力分點圖鑑")
 
         st.markdown("<div class='category-title'>🏦 法人與資券變化</div>", unsafe_allow_html=True)
         render_clean_html_table(df_gov, "08. 影子官股進出 (今日)")
@@ -1336,7 +1324,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V48.28 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.25 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
