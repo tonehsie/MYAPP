@@ -14,42 +14,42 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.26 全息量化系統 (UI 終極進化版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.27 全息量化系統 (UI 終極進化版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 # ==========================================
-# 🎨 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭
+# 🎨 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭 (改用三引號避免語法錯誤)
 # ==========================================
-CSS = (
-    "<style>"
-    /* 表格容器：開啟雙向卷軸，限制高度約10行 (480px) */
-    ".table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }"
-    /* 改用 separate 解決 collapse 在某些瀏覽器導致 sticky 失效的問題 */
-    ".table-container table { width: 100% !important; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }"
-    ".table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }"
-    /* 頂部表頭凍結 */
-    ".table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }"
-    /* 首列凍結 */
-    ".table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }"
-    /* 左上角第一格最高層級，避免被蓋住 */
-    ".table-container thead th:first-child { z-index: 5; }"
-    
-    ".text-left { text-align: left !important; }"
-    ".text-right { text-align: right !important; font-variant-numeric: tabular-nums; }"
-    ".loss-warning { color: #d9480f; font-weight: bold; }"
-    ".highlight-red { color: #d32f2f; font-weight: bold; }"
-    ".highlight-green { color: #2e7d32; font-weight: bold; }"
-    ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }"
-    ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }"
-    ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }"
-    ".stTabs [data-baseweb='tab-list'] { gap: 10px; }"
-    ".stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }"
-    ".stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }"
-    "</style>"
-)
+CSS = """
+<style>
+/* 表格容器：開啟雙向卷軸，限制高度約10行 (480px) */
+.table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+/* 改用 separate 解決 collapse 在某些瀏覽器導致 sticky 失效的問題 */
+.table-container table { width: 100% !important; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
+.table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
+/* 頂部表頭凍結 */
+.table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
+/* 首列凍結 */
+.table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
+/* 左上角第一格最高層級，避免被蓋住 */
+.table-container thead th:first-child { z-index: 5; }
+
+.text-left { text-align: left !important; }
+.text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
+.loss-warning { color: #d9480f; font-weight: bold; }
+.highlight-red { color: #d32f2f; font-weight: bold; }
+.highlight-green { color: #2e7d32; font-weight: bold; }
+.info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }
+.section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }
+.category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }
+.stTabs [data-baseweb='tab-list'] { gap: 10px; }
+.stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }
+.stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }
+</style>
+"""
 st.markdown(CSS, unsafe_allow_html=True)
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -87,10 +87,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.26 終極全息量化系統 (UI 卷軸折疊版)")
+st.title("📱 V48.27 終極全息量化系統 (UI 卷軸折疊版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.26 升級：雙向卷軸(限高10行)、雙向表頭凍結、分點明細集中折疊收納，版面極致清爽。{usage_text}")
+st.caption(f"🚀 V48.27 升級：雙向卷軸(限高10行)、雙向表頭凍結、分點明細集中折疊收納，版面極致清爽。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -101,7 +101,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.26 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.27 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -253,7 +253,7 @@ def scrape_director_v46(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手 পিছিয়ে手動)", []
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
@@ -356,6 +356,9 @@ def scrape_fubon_pledge(df_pr, tid):
     sr = [{"身份別": d["title"], "姓名": n, "目前剩餘質設(張)": d["balance"], "最後設質收盤價(元)": d["p"], "估算斷頭價(0.78)": d["mc"]} for n, d in sm.items() if d["balance"] > 0]
     return pd.DataFrame(sr), df_all
 
+# ==========================================
+# 🧠 核心模組：三維動態行為大腦
+# ==========================================
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
     if global_days <= 0: global_days = 1
@@ -504,6 +507,9 @@ def get_period_net_topN(df_raw, rank_dates, top_n):
     top_s = rank_sum[rank_sum < 0].nsmallest(top_n).sum()
     return int(top_b + top_s)
 
+# ==========================================
+# 🚀 跨週期足跡矩陣
+# ==========================================
 def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
     if df_raw.empty or not display_dates or not rank_dates: return pd.DataFrame(), pd.DataFrame()
     
@@ -591,12 +597,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         else: r["賣超分點"], r["賣_標籤"], r["賣_週期"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", "-", 0, "-", "-"
         out.append(r)
     return pd.DataFrame(out)
-
-def get_smart_threshold(price, capital_bn, dead_float):
-    if pd.isna(price) or price <= 0: return 1000 
-    rt = max((max(3000, capital_bn * 500) * 10000) / (price * 1000), (capital_bn * 10000) * (max(0.1, 0.5 * (100 - dead_float) / 100) / 100))
-    al = min([100, 200, 400, 600, 800, 1000], key=lambda x: abs(x - rt))
-    return min(al, 400) if price < 30 else al
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1014,7 +1014,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.26 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V48.27 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1118,7 +1118,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.26 UI 卷軸折疊版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.27 UI 卷軸折疊版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         # ---------------------------------------------------------
@@ -1278,7 +1278,7 @@ if run_btn:
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
         # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.26 主力分點全息透視區 (集中 + 折疊)
+        # 🕵️‍♂️ V48.27 主力分點全息透視區 (集中 + 折疊)
         # ---------------------------------------------------------
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1339,7 +1339,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V48.26 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.27 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
