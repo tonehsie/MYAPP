@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.29 終極全息量化系統 (數學重構超神版)")
+st.title("📱 V48.29 終極全息量化系統 (數學引擎純淨版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：深度重構每日聰明錢矩陣之 VWAP 權重公式、強化 MA 技術面邊界防禦。{usage_text}")
+st.caption(f"🚀 V48.29 升級：深度修正大戶門檻矩陣對齊、隔日沖虛胖動態級距過濾，確保資料零污染。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -423,17 +423,17 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         })
     return tags, pd.DataFrame(d_rows).sort_values('近60日淨買(張)', ascending=False)
 
-def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_shares_k, df_price):
-    if total_shares_k <= 0 or df_b_raw.empty: return 15, "基本預設 (缺股本資料)"
-    if total_shares_k < 300000: base_n, cap_desc = 10, "微型股本"
-    elif total_shares_k < 1000000: base_n, cap_desc = 15, "中小型股"
-    elif total_shares_k < 5000000: base_n, cap_desc = 30, "中大型股"
+def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
+    if total_lots <= 0 or df_b_raw.empty: return 15, "基本預設 (缺股本資料)"
+    if total_lots < 300000: base_n, cap_desc = 10, "微型股本"
+    elif total_lots < 1000000: base_n, cap_desc = 15, "中小型股"
+    elif total_lots < 5000000: base_n, cap_desc = 30, "中大型股"
     else: base_n, cap_desc = 50, "大型權值"
 
     recent_dates = dates_list[:5]
     recent_pr = df_price[df_price['日期'].isin(recent_dates)]
     avg_vol = recent_pr['成交量(張)'].mean() if not recent_pr.empty else 0
-    turnover_5d = (avg_vol / total_shares_k) * 100 if total_shares_k > 0 else 0
+    turnover_5d = (avg_vol / total_lots) * 100 if total_lots > 0 else 0
 
     turn_desc = ""
     final_n = base_n
@@ -459,7 +459,7 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_shares_k, df_price
     final_n = max(5, min(final_n, 50))
     return final_n, f"{cap_desc}{turn_desc}"
 
-def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k, dead_chip_ratio, dynamic_n):
+def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if df_b_raw.empty: return 0.0, 0, 0, 0.0
     df = df_b_raw.copy()
     df['tag'] = df['securities_trader'].map(tags).fillna("🔵 一般/游擊")
@@ -492,11 +492,11 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k
     active_buyers = len(top_buyers)
     
     c_value = 0.0
-    if total_shares_k > 0:
+    if total_lots > 0:
         free_float_ratio = (100.0 - float(dead_chip_ratio)) / 100.0
-        free_float_shares_k = total_shares_k * free_float_ratio
-        if free_float_shares_k > 0:
-            c_value = round((net_accum / free_float_shares_k) * 100, 2)
+        free_float_lots = total_lots * free_float_ratio
+        if free_float_lots > 0:
+            c_value = round((net_accum / free_float_lots) * 100, 2)
 
     return vwap, net_accum, active_buyers, c_value
 
@@ -597,17 +597,35 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         out.append(r)
     return pd.DataFrame(out)
 
-def get_smart_threshold(price, capital_bn, dead_float):
+def get_smart_threshold(price, total_lots, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
+    
+    # 數學重構：絕對真實張數作為唯一基準
     base_lots = 15000 / price
-    total_lots = capital_bn * 10000 
     free_float_ratio = max(0.05, (100 - dead_float) / 100) 
     float_1pct_lots = total_lots * free_float_ratio * 0.01
+    
     raw_threshold = min(base_lots, float_1pct_lots)
     raw_threshold = max(100, min(1000, raw_threshold))
+    
     levels = [100, 200, 400, 600, 800, 1000]
     al = min(levels, key=lambda x: abs(x - raw_threshold))
     return al
+
+def calculate_dynamic_large_holder_pct(row, threshold):
+    levels_dict = {
+        100: '100-200張_比例(%)',
+        200: '200-400張_比例(%)',
+        400: '400-600張_比例(%)',
+        600: '600-800張_比例(%)',
+        800: '800-1000張_比例(%)',
+        1000: '1000張以上_比例(%)'
+    }
+    total = 0.0
+    for k, v in levels_dict.items():
+        if k >= threshold and v in row:
+            total += pd.to_numeric(row.get(v, 0), errors='coerce')
+    return total
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -619,31 +637,54 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df = pd.merge_asof(df.sort_values('dt_end'), df_p[['dt', '收盤價(元)', 'ma20']], left_on='dt_end', right_on='dt', direction='backward')
     else: df['收盤價(元)'], df['ma20'] = 0, 0
         
-    df['原始大戶變動(%)'] = df['1000張以上_比例(%)'].diff().round(2)
     df['總人數變動率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
+    
     out, d_math, d_fri = [], [], []
+    prev_large_pct = None
+    
     for i, row in df.iterrows():
-        if pd.isna(row['原始大戶變動(%)']): 
-            out.append({"純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化"}); continue
         d_str = row['日期']
+        p = row['收盤價(元)']
+        total_lots = row.get('總張數', 0)
+        
+        if pd.isna(p) or p == 0 or total_lots == 0: 
+            out.append({"大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化"})
+            prev_large_pct = 0
+            continue
+            
+        cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
+        ct = get_smart_threshold(p, total_lots, cur_dead)
+        
+        # 數學重構：動態精算符合當下門檻的大戶持股總和
+        current_large_pct = calculate_dynamic_large_holder_pct(row, ct)
+        
+        if prev_large_pct is None:
+            raw_chg = 0.0
+        else:
+            raw_chg = round(current_large_pct - prev_large_pct, 2)
+            
+        prev_large_pct = current_large_pct
+
         df_f = df_branch_raw[df_branch_raw['date'] == d_str]
         f_vol = 0
         if not df_f.empty:
             df_f = df_f.copy()
             df_f['tag'] = df_f['securities_trader'].map(intel_tags).fillna("")
             fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
-            fn['net_buy'] = fn['buy'] - fn['sell']
-            f_vol = round(fn[fn['net_buy'] > 0]['net_buy'].sum() / 1000)
+            fn['net_buy'] = (fn['buy'] - fn['sell']) / 1000
             
-            for _, fr in fn[fn['net_buy'] > 0].iterrows():
-                buy_vol = fr['net_buy']
-                if buy_vol > 0: d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(buy_vol/1000)})
+            # 數學重構：絕對防禦誤殺，只針對「淨買超真的大於等於大戶門檻」的隔日沖分點才視為虛胖
+            fake_branches = fn[fn['net_buy'] >= ct]
+            f_vol = round(fake_branches['net_buy'].sum())
+            
+            for _, fr in fake_branches.iterrows():
+                d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy'])})
                 
-        f_impact = (f_vol / row['總張數']) * 100 if row['總張數'] > 0 else 0
-        p_chg = round(row['原始大戶變動(%)'] - f_impact, 2)
-        d_math.append({"日期": d_str, "原始變動": row['原始大戶變動(%)'], "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
-        dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
-        lev = 100 / (100 - dead) if 0 < dead < 100 else 1
+        f_impact = (f_vol / total_lots) * 100 if total_lots > 0 else 0
+        p_chg = round(raw_chg - f_impact, 2)
+        d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
+        
+        lev = 100 / (100 - cur_dead) if 0 < cur_dead < 100 else 1
         adv = []
         if row['總人數變動率(%)'] > 2.0 and p_chg < 0: adv.append(f"💀 [逃命] 散戶增{row['總人數變動率(%)']}%，大戶實質倒貨{abs(p_chg)}%")
         else:
@@ -651,11 +692,13 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"🧱 [底位建倉] 跌破月線但主力吃貨{p_chg}%")
             elif p_chg < -1.0: adv.append(f"📉 [主力撤退] 大戶實質流出{abs(p_chg)}%")
             if f_impact > 1.2: adv.append(f"⚡ [隔日沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
-        out.append({"純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
+            
+        out.append({"大戶原持股(%)": round(current_large_pct, 2), "原始大戶變動(%)": raw_chg, "純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "🔵 盤整"})
         
     ddf = pd.DataFrame(out)
-    df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['專家雷達診斷'] = ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
-    return df[['日期', '收盤價(元)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)[df['專家雷達診斷'] != '⚪ 初始化'], pd.DataFrame(d_math), pd.DataFrame(d_fri)
+    df['大戶原持股(%)'], df['原始大戶變動(%)'], df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['專家雷達診斷'] = ddf['大戶原持股(%)'], ddf['原始大戶變動(%)'], ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
+    
+    return df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)[df['專家雷達診斷'] != '⚪ 初始化'], pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
 def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
@@ -718,7 +761,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_net = smart_grouped['net_vol'].sum()
         short_trap = short_grouped['net_vol'].sum()
         
-        # 數學重構：每日聰明錢矩陣導入「淨留倉加權均價 (Net VWAP)」，排除當沖刷量污染
         smart_b['amt'] = smart_b['bs'] * smart_b['pr']
         s_grp = smart_b.groupby('securities_trader').agg(bs=('bs','sum'), ss=('ss','sum'), amt=('amt','sum'))
         s_grp['net'] = s_grp['bs'] - s_grp['ss']
@@ -799,7 +841,6 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma).mean().round(2)
     df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma).mean().round(2)
     
-    # 防呆重構：避免新上市股或資料斷層導致均線為 0 時的除以零錯誤
     df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
     
     cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
@@ -844,15 +885,12 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         p = row.get('收盤價(元)', 0)
         if pd.isna(p) or p == 0: continue
         cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
-        cap = row.get('總張數', 0) / 10000
-        ct = get_smart_threshold(p, cap, cur_dead)
-        lvls = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-        if ct > 100: lvls = lvls[1:]
-        if ct > 200: lvls = lvls[1:]
-        if ct > 400: lvls = lvls[1:]
-        if ct > 600: lvls = lvls[1:]
-        if ct > 800: lvls = lvls[1:]
-        lp = sum([pd.to_numeric(row.get(c, 0), errors='coerce') for c in lvls if not pd.isna(row.get(c, 0))])
+        total_lots = row.get('總張數', 0)
+        cap = total_lots / 10000
+        ct = get_smart_threshold(p, total_lots, cur_dead)
+        
+        lp = calculate_dynamic_large_holder_pct(row, ct)
+        
         cd, st_val = "-", "無董監事持股數據"
         if 0 < cur_dead < 100:
             cv = max(0, (lp - cur_dead) / (100.0 - cur_dead))
