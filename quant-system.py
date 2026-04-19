@@ -85,7 +85,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("📱 V48.29 終極全息量化系統 (終極超神版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：移除預設避開產業、加強死籌碼定義顯示、強化變數邏輯。{usage_text}")
+st.caption(f"🚀 V48.29 升級：深度重構囤/出貨率與隔日沖虛胖邏輯，防呆機制全面強化。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -359,7 +359,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
     range_diff = df_p['max'] - df_p['min']
-    df_p['pos'] = np.where(range_diff == 0, 1.0, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
+    df_p['pos'] = np.where(range_diff == 0, 0.5, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
     price_stats = df_p.set_index('date')[['pos']].to_dict('index')
     latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0] if not df_p.empty else 0
 
@@ -388,7 +388,14 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 
         active_days = g['date_dt'].nunique()
         stickiness = (active_days / global_days) * 100
-        hoard_ratio = (abs(tb - ts) / tv * 100) if tv > 0 else 0
+        
+        # 修正：精準拆分囤貨率與出貨率邏輯
+        net_t = tb - ts
+        if net_t > 0:
+            hoard_ratio = (net_t / tb * 100) if tb > 0 else 0
+        else:
+            hoard_ratio = (abs(net_t) / ts * 100) if ts > 0 else 0
+
         avg_b = g['buy_amt'].sum() / g['buy'].sum() if g['buy'].sum() > 0 else 0
         avg_s = g['sell_amt'].sum() / g['sell'].sum() if g['sell'].sum() > 0 else 0
         ld = pd.to_datetime(g['date']).max()
@@ -415,7 +422,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         d_rows.append({
             "分點名稱": trader, "最終標籤": tag,
             "近60日淨買(張)": int(v60), "近20日淨買(張)": int(v20), "近5日淨買(張)": int(v5),
-            "黏著度(%)": round(stickiness, 1), "囤貨率(%)": round(hoard_ratio, 1),
+            "黏著度(%)": round(stickiness, 1), "囤出貨率(%)": round(hoard_ratio, 1),
             "總買(張)": tb, "總賣(張)": ts, "淨留倉": int(tb - ts),
             "買均價": b_str, "賣均價": round(avg_s, 2) if avg_s > 0 else "-", "收盤位階": round(pos, 2)
         })
@@ -517,14 +524,14 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     
     fp_dict = {}
     if not df_fingerprint.empty:
-        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤貨率(%)']].to_dict('index')
+        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
     
     def build_df(trader_list, is_sell_side=False):
         out = []
         for trader in trader_list:
             st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
             hr_name = "出貨率(%)" if is_sell_side else "囤貨率(%)"
-            hr_val = fp_dict.get(trader, {}).get('囤貨率(%)', "-")
+            hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
             total_val = rank_sum.get(trader, 0)
             
             row_dict = {
@@ -613,12 +620,17 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df_f = df_branch_raw[df_branch_raw['date'] == d_str]
         f_vol = 0
         if not df_f.empty:
-            df_f = df_f.copy(); df_f['tag'] = df_f['securities_trader'].map(intel_tags)
-            fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)] 
-            f_vol = round(fn['buy'].sum() / 1000)
-            for _, fr in fn.iterrows():
-                buy_vol = fr['buy']
-                if buy_vol and buy_vol > 0: d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(buy_vol/1000)})
+            df_f = df_f.copy()
+            df_f['tag'] = df_f['securities_trader'].map(intel_tags).fillna("")
+            fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
+            # 修正：精準計算週五當日淨買超，避免當沖量膨脹
+            fn['net_buy'] = fn['buy'] - fn['sell']
+            f_vol = round(fn[fn['net_buy'] > 0]['net_buy'].sum() / 1000)
+            
+            for _, fr in fn[fn['net_buy'] > 0].iterrows():
+                buy_vol = fr['net_buy']
+                if buy_vol > 0: d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(buy_vol/1000)})
+                
         f_impact = (f_vol / row['總張數']) * 100 if row['總張數'] > 0 else 0
         p_chg = round(row['原始大戶變動(%)'] - f_impact, 2)
         d_math.append({"日期": d_str, "原始變動": row['原始大戶變動(%)'], "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
@@ -1064,7 +1076,11 @@ if run_btn:
 
         df_combined_display = pd.DataFrame()
         if not df_v27_radar.empty and not df_s_dyn.empty:
-            df_combined_radar = pd.merge(df_s_dyn, df_v27_radar, on=['日期', '收盤價(元)'], how='inner')
+            # 修正：強制只使用 '日期' 作為合併鍵，避免收盤價浮點數微小差異導致合併失敗
+            df_combined_radar = pd.merge(df_s_dyn, df_v27_radar, on=['日期'], how='inner', suffixes=('', '_y'))
+            if '收盤價(元)_y' in df_combined_radar.columns:
+                df_combined_radar = df_combined_radar.drop(columns=['收盤價(元)_y'])
+                
             if not df_combined_radar.empty:
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變動率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
@@ -1190,7 +1206,6 @@ if run_btn:
                 trend_icon, trend_title = "⚡", "高檔換手 (多空交戰)"
                 trend_desc = "股價高檔噴出後震盪，多空分點激烈交戰中。一旦跌破短線均線支撐，極易引發獲利了結賣壓。"
 
-        # 根據定義的 50% / -30% 調整儀表板標籤顏色
         if bias > 50.0:
             bias_color, bias_desc = "#d32f2f", "⚠️ 嚴重過熱 (>50%)"
         elif bias > 10.0:
@@ -1297,7 +1312,6 @@ if run_btn:
         st.markdown("<div class='category-title'>🕵️‍♂️ 主力分點全息透視區 (全維度折疊展開)</div>", unsafe_allow_html=True)
         st.info("💡 所有分點足跡與明細已集中於此，點擊展開即可查看。表格支援上下左右雙向滑動，直向顯示約 10 行以維持版面整潔。")
         
-        # 1. 跨週期足跡 (標題修正)
         df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, dynamic_n)
         with st.expander(f"🔥 【近 3 日急單動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
             render_clean_html_table(df_fb_3, f"🔥 【近 3 日急單動向】 近 3 日買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
@@ -1313,7 +1327,6 @@ if run_btn:
             render_clean_html_table(df_fb_60, f"⚓ 【近 60 日長線動向】 近 60 日買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
             render_clean_html_table(df_fs_60, f"⚓ 【近 60 日長線動向】 近 60 日賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
 
-        # 2. 單日與過渡期分點
         with st.expander(f"04. 主力分點 - 今日 ({dates[0]})"):
             render_clean_html_table(df_b_today)
         with st.expander(f"05. 主力分點 - 前一日"):
