@@ -81,7 +81,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("📱 全息量化系統 (V50.00版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.00 升級：深核數學引擎重構！修復動態雷達時間序列錯位Bug、API雙重欄位崩潰防護。{usage_text}")
+st.caption(f"🚀 V50.00 重構：修復核心主力跨週期追蹤錯位、API資料碎片化聚合聚合修正、絕對過濾零價污染。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -137,7 +137,6 @@ def fetch_branch_data_v46(dl, tid):
             if r: all_d.extend(r)
     df = pd.DataFrame(all_d)
     if not df.empty:
-        # 防呆修復：確保 price 等欄位必定存在，避免 API 缺漏引發計算崩潰
         for c in ['buy', 'sell', 'price']:
             if c in df.columns: 
                 df[c] = safe_to_num(df[c])
@@ -401,8 +400,14 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 
         tb, ts = round(tb_shares / 1000), round(ts_shares / 1000)
 
-        avg_b = g['buy_amt'].sum() / tb_shares if tb_shares > 0 else 0
-        avg_s = g['sell_amt'].sum() / ts_shares if ts_shares > 0 else 0
+        valid_buys = g[g['price'] > 0]
+        valid_b_shares = valid_buys['buy'].sum()
+        avg_b = (valid_buys['buy'] * valid_buys['price']).sum() / valid_b_shares if valid_b_shares > 0 else 0
+        
+        valid_sells = g[g['price'] > 0]
+        valid_s_shares = valid_sells['sell'].sum()
+        avg_s = (valid_sells['sell'] * valid_sells['price']).sum() / valid_s_shares if valid_s_shares > 0 else 0
+
         ld = pd.to_datetime(g['date']).max()
         pos = price_stats.get(ld, {'pos': 0.5})['pos']
 
@@ -470,7 +475,7 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     return final_n, f"{cap_desc}{turn_desc}"
 
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
-    if df_b_raw.empty: return 0.0, 0, 0, 0.0
+    if df_b_raw.empty: return 0.0, 0, 0, 0.0, []
     df = df_b_raw.copy()
     df['tag'] = df['securities_trader'].map(tags).fillna("🔵 一般/游擊")
     
@@ -479,22 +484,27 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     else: 
         valid_df = df
 
-    if valid_df.empty: return 0.0, 0, 0, 0.0
+    if valid_df.empty: return 0.0, 0, 0, 0.0, []
     
     def calc_broker(x):
         b_v = x['buy'].sum()
         s_v = x['sell'].sum()
-        b_a = (x['buy'] * x['price']).sum()
-        return pd.Series({'buy_vol': b_v, 'sell_vol': s_v, 'buy_amt': b_a})
+        # 數學重構：絕對過濾 price 為 0 的幽靈部位，避免 VWAP 失真
+        valid_b = x[x['price'] > 0]
+        b_a = (valid_b['buy'] * valid_b['price']).sum()
+        valid_b_v = valid_b['buy'].sum()
+        return pd.Series({'buy_vol': b_v, 'sell_vol': s_v, 'buy_amt': b_a, 'valid_buy_vol': valid_b_v})
         
     broker_stats = valid_df.groupby('securities_trader').apply(calc_broker)
     broker_stats['net_vol'] = broker_stats['buy_vol'] - broker_stats['sell_vol']
     
     top_buyers = broker_stats[broker_stats['net_vol'] > 0].sort_values('net_vol', ascending=False).head(dynamic_n)
     
-    if top_buyers.empty: return 0.0, 0, 0, 0.0
+    if top_buyers.empty: return 0.0, 0, 0, 0.0, []
     
-    top_buyers['avg_buy_price'] = top_buyers['buy_amt'] / top_buyers['buy_vol'].replace(0, np.nan)
+    core_branch_names = top_buyers.index.tolist()
+    
+    top_buyers['avg_buy_price'] = top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)
     total_net_vol = top_buyers['net_vol'].sum()
     
     vwap = round((top_buyers['avg_buy_price'] * top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
@@ -508,16 +518,15 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
         if free_float_lots > 0:
             c_value = round((net_accum / free_float_lots) * 100, 2)
 
-    return vwap, net_accum, active_buyers, c_value
+    return vwap, net_accum, active_buyers, c_value, core_branch_names
 
-def get_period_net_topN(df_raw, rank_dates, top_n):
-    if df_raw.empty or not rank_dates: return 0
+# 數學重構：精準萃取「核心名單」的多空淨留倉，而非每日動態重建排名
+def get_core_period_net(df_raw, rank_dates, core_names):
+    if df_raw.empty or not rank_dates or not core_names: return 0
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
-    df_rank['net'] = ((df_rank['buy'] - df_rank['sell']) / 1000).round().astype(int)
-    rank_sum = df_rank.groupby('securities_trader')['net'].sum()
-    top_b = rank_sum[rank_sum > 0].nlargest(top_n).sum()
-    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).sum()
-    return int(top_b + top_s)
+    df_rank = df_rank[df_rank['securities_trader'].isin(core_names)]
+    net_vol = (df_rank['buy'].sum() - df_rank['sell'].sum()) / 1000
+    return int(round(net_vol))
 
 def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
     if df_raw.empty or not display_dates or not rank_dates: return pd.DataFrame(), pd.DataFrame()
@@ -651,7 +660,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     out, d_math, d_fri = [], [], []
     prev_large_pct = None
     
-    # 數學防呆重構 1：依時間軸遞迴攜帶真實數據，徹底根除 Pandas diff 的序列錯位 Bug
     for i, row in df.iterrows():
         d_str = row['日期']
         p = row['收盤價(元)']
@@ -672,14 +680,16 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             f_impact = 0.0
             adv = ["⚪ 初始化 (基準建立)"]
         else:
+            # 數學重構：時序對齊，真實計算 WoW 的動態大戶差值
             raw_chg = round(current_large_pct - prev_large_pct, 2)
 
             df_f = df_branch_raw[df_branch_raw['date'] == d_str]
             f_vol_exact = 0
             if not df_f.empty:
-                df_f = df_f.copy()
-                df_f['tag'] = df_f['securities_trader'].map(intel_tags).fillna("")
-                fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
+                # 數學重構：API 多重切片防禦 (Groupby daily branch total before filtering tags)
+                df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
+                df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
+                fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
                 fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
                 
                 fake_branches = fn[fn['net_buy_exact'] >= ct]
@@ -762,11 +772,14 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         eye_diag = diff_row['鷹眼診斷'].iloc[0] if not diff_row.empty and '鷹眼診斷' in diff_row.columns else ""
 
         day_b = df_b[df_b['date'] == d]
-        smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)].copy()
-        short_b = day_b[day_b['tag'].str.contains('隔日沖大戶|被套牢|游擊過客', na=False)].copy()
         
-        smart_grouped = smart_b.groupby(['securities_trader', 'tag'])[['bs', 'ss']].sum().reset_index()
+        # 數學重構：API 多重切片防禦 (確保分點合併) 與 絕對淨留倉加權均價 (排除當沖量污染)
+        smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)].copy()
+        smart_b['amt'] = smart_b['bs'] * smart_b['pr']
+        smart_grouped = smart_b.groupby(['securities_trader', 'tag']).agg(bs=('bs','sum'), ss=('ss','sum'), amt=('amt','sum')).reset_index()
         smart_grouped['net_vol'] = ((smart_grouped['bs'] - smart_grouped['ss']) / 1000).round().astype(int)
+        
+        short_b = day_b[day_b['tag'].str.contains('隔日沖大戶|被套牢|游擊過客', na=False)].copy()
         short_grouped = short_b.groupby('securities_trader')[['bs', 'ss']].sum().reset_index()
         short_grouped['net_vol'] = ((short_grouped['bs'] - short_grouped['ss']) / 1000).round().astype(int)
         
@@ -777,15 +790,12 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_net = smart_grouped['net_vol'].sum()
         short_trap = short_grouped['net_vol'].sum()
         
-        smart_b['amt'] = smart_b['bs'] * smart_b['pr']
-        s_grp = smart_b.groupby('securities_trader').agg(bs=('bs','sum'), ss=('ss','sum'), amt=('amt','sum'))
-        s_grp['net'] = s_grp['bs'] - s_grp['ss']
-        s_ret = s_grp[s_grp['net'] > 0].copy()
-        
+        s_ret = smart_grouped[smart_grouped['bs'] > smart_grouped['ss']].copy()
         if not s_ret.empty:
             s_ret['avg_p'] = s_ret['amt'] / s_ret['bs'].replace(0, np.nan)
-            total_n = s_ret['net'].sum()
-            smart_avg_cost = (s_ret['avg_p'] * s_ret['net']).sum() / total_n if total_n > 0 else 0
+            s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
+            total_n = s_ret['net_shares'].sum()
+            smart_avg_cost = (s_ret['avg_p'] * s_ret['net_shares']).sum() / total_n if total_n > 0 else 0
         else:
             smart_avg_cost = 0
             
@@ -842,13 +852,12 @@ def process_price(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
     
-    # 防呆修復：處理 API 可能會回傳的變形欄位名稱，統一重新指向
     if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_Volume']) / 1000).round().astype(int)
     elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_volume']) / 1000).round().astype(int)
     else: df_out['成交量(張)'] = 0
         
     df_out = df_out.rename(columns={"date":"日期","close":"收盤價(元)","spread":"漲跌(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)"})
-    df_out = df_out.loc[:, ~df_out.columns.duplicated()] # 強制剃除重複合併欄位
+    df_out = df_out.loc[:, ~df_out.columns.duplicated()]
     
     df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
@@ -924,7 +933,6 @@ def process_day_trading(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
     
-    # 防呆修復：避免重複映射產生資料錯亂
     if 'DayTradingVolume' in df_out.columns: df_out['當沖總股數'] = df_out['DayTradingVolume']
     elif 'Volume' in df_out.columns: df_out['當沖總股數'] = df_out['Volume']
         
@@ -1156,13 +1164,13 @@ if run_btn:
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無數據"
 
         dynamic_n, radar_reason = calculate_dynamic_radar_depth(df_b_raw, dates, current_total_shares, df_price)
-        pure_vwap, main_force_vol, active_main_branches, core_c_value = calculate_pure_defense_line(
+        pure_vwap, main_force_vol, active_main_branches, core_c_value, core_branch_names = calculate_pure_defense_line(
             df_b_raw, tags, filter_day_trade, current_total_shares, latest_director_holding, dynamic_n
         )
         
-        net_3 = get_period_net_topN(df_b_raw, dates[:3], dynamic_n)
-        net_10 = get_period_net_topN(df_b_raw, dates[:10], dynamic_n)
-        net_60 = get_period_net_topN(df_b_raw, dates[:60] if len(dates)>=60 else dates, dynamic_n)
+        net_3 = get_core_period_net(df_b_raw, dates[:3], core_branch_names)
+        net_10 = get_core_period_net(df_b_raw, dates[:10], core_branch_names)
+        net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
         df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=10)
         df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
