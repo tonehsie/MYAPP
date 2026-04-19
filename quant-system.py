@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V50.09版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.00版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.09 資券單位精確校正版)")
+st.title("📱 全息量化系統 (V60.00 核心邏輯重構版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.09：修正融資(萬元)/融券(張)單位與數學計算邏輯，杜絕除數錯位。{usage_text}")
+st.caption(f"🚀 V60.00：徹底修正底層資券單位(股轉張)與數學運算除錯，排除錯位雜訊。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -91,12 +91,14 @@ col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
-    dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V50.09 決策引擎", use_container_width=True, key="run_engine")
+    dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
+run_btn = st.button("🚀 啟動 V60.00 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
-    if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
-    return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
+    try:
+        return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
+    except:
+        return pd.Series([fill_val] * len(series))
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name_v50(tid):
@@ -250,7 +252,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
@@ -877,7 +879,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
-            "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
+            "活躍家數": active_cnt, "買賣家數差": bsd, "籌集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
@@ -1011,16 +1013,19 @@ def process_day_trading(df):
 
 def process_margin(df):
     if df.empty: return pd.DataFrame()
+    # V60.00 絕對校正：個股融資券單位為「股」，必須除以 1000 轉為「張」，絕非「萬元」！
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
-        if c in df.columns: df[c] = safe_to_num(df[c]).round().astype(int)
-        
-    # V50.09 絕對校正：融資單位本身即為「萬元」，不再執行除以 1000 的錯誤運算
+        if c in df.columns: 
+            # 防呆：若數值過大代表是股，除以1000轉為張
+            val = safe_to_num(df[c])
+            df[c] = np.where(val > 10000, val / 1000, val).round().astype(int)
+            
     df = df.rename(columns={
         "date": "日期", 
-        "MarginPurchaseBuy": "融資買進(萬元)", 
-        "MarginPurchaseSell": "融資賣出(萬元)", 
-        "MarginPurchaseCashRepayment": "融資現償(萬元)", 
-        "MarginPurchaseTodayBalance": "融資餘額(萬元)", 
+        "MarginPurchaseBuy": "融資買進(張)", 
+        "MarginPurchaseSell": "融資賣出(張)", 
+        "MarginPurchaseCashRepayment": "融資現償(張)", 
+        "MarginPurchaseTodayBalance": "融資餘額(張)", 
         "ShortSaleBuy": "融券買進(張)", 
         "ShortSaleSell": "融券賣出(張)", 
         "ShortSaleTodayBalance": "融券餘額(張)", 
@@ -1028,15 +1033,17 @@ def process_margin(df):
     })
     df = df.loc[:, ~df.columns.duplicated()]
     
-    if '融資餘額(萬元)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
-        prev_margin = safe_to_num(df['MarginPurchaseYesterdayBalance']).round().astype(int)
-        df['融資增減(萬元)'] = df['融資餘額(萬元)'] - prev_margin
+    if '融資餘額(張)' in df.columns and 'MarginPurchaseYesterdayBalance' in df.columns:
+        prev_val = safe_to_num(df['MarginPurchaseYesterdayBalance'])
+        prev_margin = np.where(prev_val > 10000, prev_val / 1000, prev_val).round().astype(int)
+        df['融資增減(張)'] = df['融資餘額(張)'] - prev_margin
         
     if '融券餘額(張)' in df.columns and 'ShortSaleYesterdayBalance' in df.columns:
-        prev_short = safe_to_num(df['ShortSaleYesterdayBalance']).round().astype(int)
+        prev_val = safe_to_num(df['ShortSaleYesterdayBalance'])
+        prev_short = np.where(prev_val > 10000, prev_val / 1000, prev_val).round().astype(int)
         df['融券增減(張)'] = df['融券餘額(張)'] - prev_short
         
-    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
+    cols = [c for c in ['日期','融資買進(張)','融資賣出(張)','融資現償(張)','融資餘額(張)','融資增減(張)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
     return df[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_inst(df):
@@ -1209,7 +1216,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V50.09 決策引擎 (資券單位與數學底層稽核完畢)..."):
+    with st.spinner(f"正在啟動 V60.00 決策引擎 (資券單位與數學底層稽核完畢)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1322,7 +1329,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.09 資券精確版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.00 資券精確版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1550,7 +1557,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V50.09 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.00 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
