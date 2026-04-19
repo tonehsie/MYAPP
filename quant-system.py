@@ -14,8 +14,9 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V50.04版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V50.05版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
+
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 CSS = """
@@ -26,6 +27,7 @@ CSS = """
 .table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
 .table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .table-container thead th:first-child { z-index: 5; }
+
 .text-left { text-align: left !important; }
 .text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
 .loss-warning { color: #d9480f; font-weight: bold; }
@@ -76,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.04 數學極致對齊版)")
+st.title("📱 全息量化系統 (V50.05 數學核心零死角版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.04 升級：修復微觀聚合抹零漏洞、精準校正資券單位、完善運算優先級，無懼極端盤勢。{usage_text}")
+st.caption(f"🚀 V50.05 終極數學重構：修復分點抹零漏洞、阻斷雷達時序污染、剔除零價均價坍塌。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -90,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V50.04 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V50.05 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -527,8 +529,9 @@ def get_core_period_net(df_raw, rank_dates, core_names):
     if df_raw.empty or not rank_dates or not core_names: return 0
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank = df_rank[df_rank['securities_trader'].isin(core_names)]
-    net_vol = (df_rank['buy'].sum() - df_rank['sell'].sum()) / 1000
-    return int(round(net_vol))
+    # V50.05 數學重構：先在股數的絕對維度進行無損總和，最後才四捨五入轉換成張
+    net_shares = df_rank['buy'].sum() - df_rank['sell'].sum()
+    return int(round(net_shares / 1000))
 
 def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
     if df_raw.empty or not display_dates or not rank_dates: return pd.DataFrame(), pd.DataFrame()
@@ -584,11 +587,21 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
     if df.empty: return pd.DataFrame()
     
-    df['ba'] = df['buy'] * df['price']; df['sa'] = df['sell'] * df['price']
-    g = df.groupby('securities_trader').agg(bv=('buy', 'sum'), sv=('sell', 'sum'), ba=('ba', 'sum'), sa=('sa', 'sum')).reset_index()
+    # V50.05 數學重構：單日/多日榜單也必須套用 0 元防護，避免 API 缺漏污染排行均價
+    df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
+    df['valid_sell'] = np.where(df['price'] > 0, df['sell'], 0)
+    df['ba'] = df['valid_buy'] * df['price']
+    df['sa'] = df['valid_sell'] * df['price']
+    
+    g = df.groupby('securities_trader').agg(
+        bv=('buy', 'sum'), sv=('sell', 'sum'), 
+        vbv=('valid_buy', 'sum'), vsv=('valid_sell', 'sum'),
+        ba=('ba', 'sum'), sa=('sa', 'sum')
+    ).reset_index()
+    
     g['net'] = round((g['bv'] - g['sv']) / 1000).astype(int)
-    g['avg_b'] = (g['ba'] / g['bv'].replace(0, np.nan)).fillna(0)
-    g['avg_s'] = (g['sa'] / g['sv'].replace(0, np.nan)).fillna(0)
+    g['avg_b'] = (g['ba'] / g['vbv'].replace(0, np.nan)).fillna(0)
+    g['avg_s'] = (g['sa'] / g['vsv'].replace(0, np.nan)).fillna(0)
     
     b = g[g['net'] > 0].sort_values('net', ascending=False).head(15).reset_index(drop=True)
     s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
@@ -675,7 +688,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         if pd.isna(p) or p <= 0 or total_lots <= 0: 
             out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化/數據不全"})
-            prev_large_pct = 0
+            # V50.05 數學防呆：遇到無效日絕對不可覆寫前值，確保 WoW 變動序列的剛性！
             continue
             
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
@@ -883,14 +896,15 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     if df_price.empty or len(df_price) < 30: return pd.DataFrame()
     df_ta = df_price.sort_values('日期', ascending=True).copy()
     df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{m_ma}'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{l_ma}'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
     
-    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
+    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}']) / df_ta[f'MA{m_ma}'].replace(0, np.nan) * 100).round(2)
     
-    cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
-    cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
+    cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}']
+    cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}']
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
+    df_ta.rename(columns={f'MA{m_ma}': f'MA{m_ma}(中線)', f'MA{l_ma}': f'MA{l_ma}(長線)'}, inplace=True)
     return df_ta.sort_values('日期', ascending=False)
 
 def process_tdcc(df):
@@ -928,7 +942,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     out = []
     for _, row in df_m.iterrows():
         p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p == 0: continue
+        if pd.isna(p) or p <= 0: continue
         cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
         total_lots = row.get('總張數', 0)
         cap = total_lots / 10000
@@ -1151,7 +1165,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V50.04 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V50.05 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1264,7 +1278,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.04版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.05版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1484,7 +1498,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V50.04 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V50.05 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
