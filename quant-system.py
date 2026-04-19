@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.29 全息量化系統 (終極超神版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V50.00版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.29 終極全息量化系統 (數學引擎純淨版)")
+st.title("📱 全息量化系統 (V50.00版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：深度修正大戶門檻矩陣對齊、隔日沖虛胖動態級距過濾，確保資料零污染。{usage_text}")
+st.caption(f"🚀 V50.00 升級：深核數學引擎重構！黏著度母體動態校正、微觀囤貨率精度躍升、防禦極端雜訊。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V48.29 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V50.00 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -349,7 +349,10 @@ def scrape_fubon_pledge(df_pr, tid):
 
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
-    if global_days <= 0: global_days = 1
+    
+    # 數學重構 1：確保新上市股的母體天數不會被高估，導致黏著度失真
+    actual_global_days = df_b_raw['date'].nunique()
+    if actual_global_days == 0: actual_global_days = 1
 
     df_p = df_p_raw.copy()
     df_p['date'] = pd.to_datetime(df_p['date'])
@@ -378,21 +381,26 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
 
     for trader, g in df.groupby('securities_trader'):
-        tb, ts = round(g['buy'].sum() / 1000), round(g['sell'].sum() / 1000)
-        tv = tb + ts
-        if tv == 0: continue
+        # 數學重構 2：在最底層精算囤貨率，避免提前除以 1000 導致微型股失真
+        tb_shares = g['buy'].sum()
+        ts_shares = g['sell'].sum()
+        tv_shares = tb_shares + ts_shares
+        
+        if tv_shares == 0: continue
 
         active_days = g['date_dt'].nunique()
-        stickiness = (active_days / global_days) * 100
+        stickiness = (active_days / actual_global_days) * 100
         
-        net_t = tb - ts
-        if net_t > 0:
-            hoard_ratio = (net_t / tb * 100) if tb > 0 else 0
+        net_t_shares = tb_shares - ts_shares
+        if net_t_shares > 0:
+            hoard_ratio = (net_t_shares / tb_shares * 100) if tb_shares > 0 else 0
         else:
-            hoard_ratio = (abs(net_t) / ts * 100) if ts > 0 else 0
+            hoard_ratio = (abs(net_t_shares) / ts_shares * 100) if ts_shares > 0 else 0
 
-        avg_b = g['buy_amt'].sum() / g['buy'].sum() if g['buy'].sum() > 0 else 0
-        avg_s = g['sell_amt'].sum() / g['sell'].sum() if g['sell'].sum() > 0 else 0
+        tb, ts = round(tb_shares / 1000), round(ts_shares / 1000)
+
+        avg_b = g['buy_amt'].sum() / tb_shares if tb_shares > 0 else 0
+        avg_s = g['sell_amt'].sum() / ts_shares if ts_shares > 0 else 0
         ld = pd.to_datetime(g['date']).max()
         pos = price_stats.get(ld, {'pos': 0.5})['pos']
 
@@ -600,7 +608,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
 def get_smart_threshold(price, total_lots, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
     
-    # 數學重構：絕對真實張數作為唯一基準
     base_lots = 15000 / price
     free_float_ratio = max(0.05, (100 - dead_float) / 100) 
     float_1pct_lots = total_lots * free_float_ratio * 0.01
@@ -637,7 +644,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df = pd.merge_asof(df.sort_values('dt_end'), df_p[['dt', '收盤價(元)', 'ma20']], left_on='dt_end', right_on='dt', direction='backward')
     else: df['收盤價(元)'], df['ma20'] = 0, 0
         
-    df['總人數變動率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
+    df['總人數變率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
     
     out, d_math, d_fri = [], [], []
     prev_large_pct = None
@@ -655,7 +662,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
         ct = get_smart_threshold(p, total_lots, cur_dead)
         
-        # 數學重構：動態精算符合當下門檻的大戶持股總和
         current_large_pct = calculate_dynamic_large_holder_pct(row, ct)
         
         if prev_large_pct is None:
@@ -666,27 +672,27 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         prev_large_pct = current_large_pct
 
         df_f = df_branch_raw[df_branch_raw['date'] == d_str]
-        f_vol = 0
+        f_vol_exact = 0
         if not df_f.empty:
             df_f = df_f.copy()
             df_f['tag'] = df_f['securities_trader'].map(intel_tags).fillna("")
             fn = df_f[df_f['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
-            fn['net_buy'] = (fn['buy'] - fn['sell']) / 1000
+            fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
             
-            # 數學重構：絕對防禦誤殺，只針對「淨買超真的大於等於大戶門檻」的隔日沖分點才視為虛胖
-            fake_branches = fn[fn['net_buy'] >= ct]
-            f_vol = round(fake_branches['net_buy'].sum())
+            # 數學重構 3：完全精準定位干擾源，並用絕對精準浮點數相加，根除四捨五入累積誤差
+            fake_branches = fn[fn['net_buy_exact'] >= ct]
+            f_vol_exact = fake_branches['net_buy_exact'].sum()
             
             for _, fr in fake_branches.iterrows():
-                d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy'])})
+                d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
                 
-        f_impact = (f_vol / total_lots) * 100 if total_lots > 0 else 0
+        f_impact = (f_vol_exact / total_lots) * 100 if total_lots > 0 else 0
         p_chg = round(raw_chg - f_impact, 2)
         d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
         
         lev = 100 / (100 - cur_dead) if 0 < cur_dead < 100 else 1
         adv = []
-        if row['總人數變動率(%)'] > 2.0 and p_chg < 0: adv.append(f"💀 [逃命] 散戶增{row['總人數變動率(%)']}%，大戶實質倒貨{abs(p_chg)}%")
+        if row['總人數變率(%)'] > 2.0 and p_chg < 0: adv.append(f"💀 [逃命] 散戶增{row['總人數變率(%)']}%，大戶實質倒貨{abs(p_chg)}%")
         else:
             if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"🚀 [真軋空] 站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
             elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"🧱 [底位建倉] 跌破月線但主力吃貨{p_chg}%")
@@ -698,7 +704,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     ddf = pd.DataFrame(out)
     df['大戶原持股(%)'], df['原始大戶變動(%)'], df['純淨大戶變動(%)'], df['隔日沖虛胖(%)'], df['專家雷達診斷'] = ddf['大戶原持股(%)'], ddf['原始大戶變動(%)'], ddf['純淨變動'], ddf['雜訊'], ddf['診斷']
     
-    return df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變動率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)[df['專家雷達診斷'] != '⚪ 初始化'], pd.DataFrame(d_math), pd.DataFrame(d_fri)
+    return df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)[df['專家雷達診斷'] != '⚪ 初始化'], pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
 def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
@@ -789,7 +795,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
 
         out.append({
             "日期": d, "收盤價(元)": cp, "漲跌(元)": sp, "聰明錢淨流(張)": int(smart_net), 
-            "大戶買均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
+            "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
@@ -1083,7 +1089,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.29 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V50.00 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1192,7 +1198,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.29 終極超神版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.00版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1412,7 +1418,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V48.29 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V50.00 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
