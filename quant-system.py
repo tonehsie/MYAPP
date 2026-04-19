@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.04版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.05版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.04 K線頂置與AI擴充版)")
+st.title("📱 全息量化系統 (V60.05 參數錯置修復版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.04：K線圖移至頂端並加入完整十字線、AI 鷹眼深度擴充並無縫整合。{usage_text}")
+st.caption(f"🚀 V60.05：透視區參數嚴格校正，修復顯示筆數失效及長線天數固定 60 天之 Bug。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.04 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.05 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -1132,68 +1132,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# V60.04 全面擴充 AI 鷹眼深度診斷，並匯入 df_diff 與 df_radar 的進階戰況
-def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
-    alerts = []
-    
-    if not df_daily.empty and len(df_daily) >= 1:
-        today_d = df_daily.iloc[0]
-        alerts.append("#### 📌 1. 矩陣金流剖析 (聰明錢與成本底牌)")
-        flow_str = f"今日聰明錢淨流入 **{today_d['聰明錢淨流(張)']} 張**。"
-        gap_valid = pd.notna(today_d['均價落差']) and str(today_d['均價落差']).strip() != "-"
-        
-        if gap_valid:
-            try:
-                gap_val = float(str(today_d['均價落差']).replace(',', '').strip())
-                chg_val = float(str(today_d['漲跌(元)']).replace(',', '').strip()) if today_d['漲跌(元)'] not in ["-", ""] else 0.0
-                if gap_val > 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力具備強勢推升意願。")
-                elif gap_val < 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，易引發停損賣壓！")
-                elif today_d['聰明錢淨流(張)'] < -100 and chg_val > 0: alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退。主力逢高倒貨，追高風險大。")
-                elif today_d['聰明錢淨流(張)'] < -100: alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退。長線防守線可能崩潰。")
-                else: alerts.append(f"> ⚪ {flow_str} 今日大戶動向溫和，無極端偏離。")
-            except: alerts.append(f"> ⚪ {flow_str} 聰明錢數值解析中性。")
-        else:
-            if today_d['聰明錢淨流(張)'] > 0:
-                alerts.append(f"> 🟢 {flow_str} 雖無明顯成本落差，但主力籌碼呈淨流入，下檔具備保護力。")
-            elif today_d['聰明錢淨流(張)'] < 0:
-                alerts.append(f"> 🔴 {flow_str} 聰明錢淨流出，需留意上方潛在倒貨賣壓。")
-            else:
-                alerts.append(f"> ⚪ {flow_str} 今日無特定波段大戶(聰明錢)明顯介入，由一般游擊籌碼主導。")
-
-    if not df_diff.empty and len(df_diff) >= 1:
-        today_diff = df_diff.iloc[0]
-        alerts.append("#### 📌 2. 短線買賣力道與籌碼集中度")
-        fp = today_diff.get('買方火力(倍)', 1.0)
-        diff_cnt = today_diff.get('買賣家數差', 0)
-        conc = today_diff.get('籌碼集中度(%)', 0)
-        diag = today_diff.get('鷹眼診斷', '🔵 中性換手')
-        
-        alerts.append(f"> 📊 **【火力與集中度】** 今日買方火力為 **{fp} 倍**，買賣家數差為 **{diff_cnt}** 家，籌碼集中度 **{conc}%**。")
-        if fp >= fire_thresh:
-            alerts.append(f"> 🔥 **【火力壓制】** 買方火力大於設定門檻 ({fire_thresh}倍)，特定大戶積極吃貨，籌碼往少數人集中。")
-        elif fp < 0.8 and diff_cnt > 0:
-            alerts.append(f"> 💀 **【散戶接刀】** 買方火力偏弱且買方家數多於賣方家數，顯示主力倒貨給散戶(螞蟻搬家)，籌碼發散。")
-        alerts.append(f"> 👁️ **【系統判定】** {diag}")
-
-    if not df_radar.empty and len(df_radar) >= 1:
-        today_radar = df_radar.iloc[0]
-        alerts.append("#### 📌 3. 波段活籌碼與大戶動能 (每週集保)")
-        c_val = today_radar.get('純淨活大戶C_Value(%)', 0)
-        big_chg = today_radar.get('純淨大戶變動(%)', 0)
-        radar_diag = today_radar.get('專家雷達診斷', '')
-        
-        if str(c_val) != "-" and float(c_val) > 0:
-            alerts.append(f"> 🎯 **【真實鎖碼率】** 主力吸納了約 **{c_val}%** 的市場自由流通籌碼。數值越高控盤力越強。")
-        
-        if str(big_chg) != "-" and float(big_chg) != 0:
-            dir_str = "增加" if float(big_chg) > 0 else "減少"
-            alerts.append(f"> 📈 **【純淨大戶變動】** 排除隔日沖雜訊後，波段大戶實質持股 {dir_str} **{abs(float(big_chg))}%**。")
-        
-        if radar_diag and str(radar_diag).strip() != "":
-            alerts.append(f"> 💡 **【大戶雷達解析】** {radar_diag}")
-
-    return alerts
-
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1253,7 +1191,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.04 決策引擎 (K線頂置、AI報告整合與重新排序)..."):
+    with st.spinner(f"正在啟動 V60.05 決策引擎 (全息透視區參數嚴格校正)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1369,12 +1307,9 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.04)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.05)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # K線移至最頂端，並修改為完整十字線(包含水平與垂直)
-        # ---------------------------------------------------------
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
@@ -1397,7 +1332,6 @@ if run_btn:
                 
                 fig.update_layout(height=650, margin=dict(l=30, r=30, t=20, b=20), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', hovermode='x unified', showlegend=False)
                 
-                # V60.04 設定完整的垂直與水平十字線
                 fig.update_xaxes(showgrid=False, zeroline=False, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=1, col=1)
                 fig.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=1, col=1)
                 fig.update_xaxes(showgrid=False, zeroline=False, tickangle=45, type='category', showspikes=True, spikemode='across', spikethickness=1, spikecolor='#999999', spikedash='solid', row=2, col=1)
@@ -1405,9 +1339,6 @@ if run_btn:
                 
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-        # ---------------------------------------------------------
-        # AI 診斷報告整合 (跨週期共振 + 鷹眼深度診斷 結合)
-        # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振與鷹眼深度診斷報告</div>", unsafe_allow_html=True)
             
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1541,9 +1472,6 @@ if run_btn:
             clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').replace('📊', '').replace('🔥', '').replace('👁️', '').replace('🎯', '').replace('📈', '').replace('💡', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
-        # ---------------------------------------------------------
-        # 表格模組全面重新排序 (01~17)
-        # ---------------------------------------------------------
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1551,26 +1479,28 @@ if run_btn:
         st.markdown("<div class='category-title'>🕵️‍♂️ 01. 主力分點全息透視區 (全維度折疊展開)</div>", unsafe_allow_html=True)
         st.info("💡 所有分點足跡與明細已集中於此，點擊展開即可查看。表格支援上下左右雙向滑動，直向顯示約 10 行以維持版面整潔。")
         
-        df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"🔥 【近 3 日急單動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_3, f"🔥 【近 3 日急單動向】 近 3 日買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_3, f"🔥 【近 3 日急單動向】 近 3 日賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        # V60.05 修正 parameter: 強制將 user 的 slider `footprint_rows` 餵入 footprint 運算，解決之前顯示筆數被錯置的 Bug
+        df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"🔥 【近 3 日急單動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_3, f"🔥 【近 3 日急單動向】 近 3 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_3, f"🔥 【近 3 日急單動向】 近 3 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
             
-        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"📈 【近 10 日波段動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_10, f"📈 【近 10 日波段動向】 近 10 日買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_10, f"📈 【近 10 日波段動向】 近 10 日賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"📈 【近 10 日波段動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_10, f"📈 【近 10 日波段動向】 近 10 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_10, f"📈 【近 10 日波段動向】 近 10 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
             
-        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:60], tags, df_debug_tags, dynamic_n)
-        with st.expander(f"⚓ 【近 60 日長線動向】 買賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)"):
-            render_clean_html_table(df_fb_60, f"⚓ 【近 60 日長線動向】 近 60 日買超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_60, f"⚓ 【近 60 日長線動向】 近 60 日賣超前 {dynamic_n} 大 (顯示 {actual_foot_days} 日足跡)")
+        # V60.05 修正 parameter: 解決 60 日被死當的 Bug，根據側邊欄設定動態套用 max_len
+        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:max_len], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"⚓ 【近 {max_len} 日長線動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_60, f"⚓ 【近 {max_len} 日長線動向】 近 {max_len} 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_60, f"⚓ 【近 {max_len} 日長線動向】 近 {max_len} 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
 
         with st.expander(f"主力分點 - 今日 ({dates[0]})"):
             render_clean_html_table(df_b_today)
         with st.expander(f"主力分點 - 前一日"):
             render_clean_html_table(df_b_prev1)
-        with st.expander("點此展開過渡期分點 (近3日 / 10日 / 60日總和)"):
+        with st.expander(f"點此展開過渡期分點 (近3日 / 10日 / {max_len}日總和)"):
             render_clean_html_table(df_b_3, "主力分點 - 近 3 日")
             render_clean_html_table(df_b_10, "主力分點 - 近 10 日")
             render_clean_html_table(df_b_60, f"主力分點 - 近 {max_len} 日")
@@ -1602,12 +1532,9 @@ if run_btn:
         render_clean_html_table(df_disp, "16. 處置有價證券狀態")
         render_clean_html_table(df_cbas, "17. CBAS 可轉債數據")
 
-        # ---------------------------------------------------------
-        # CSV 資料包
-        # ---------------------------------------------------------
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.04 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.05 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
