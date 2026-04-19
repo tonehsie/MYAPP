@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.05 數學核心零死角版)")
+st.title("📱 全息量化系統 (V50.05 絕對防禦版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.05 終極數學重構：修復分點抹零漏洞、阻斷雷達時序污染、剔除零價均價坍塌。{usage_text}")
+st.caption(f"🚀 V50.05 升級：徹底根除 VWAP 零價稀釋黑洞、確保加權池 100% 數學剛性對齊。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -509,10 +509,15 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     core_branch_names = top_buyers.index.tolist()
     
     top_buyers['avg_buy_price'] = (top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0)
-    total_net_vol = top_buyers['net_vol'].sum()
     
-    vwap = round((top_buyers['avg_buy_price'] * top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
-    net_accum = int(total_net_vol / 1000)
+    # V50.05 絕對防禦：拔除 0 元均價的無效大戶，確保 VWAP 分母不被黑洞稀釋
+    valid_top_buyers = top_buyers[top_buyers['avg_buy_price'] > 0]
+    total_net_vol = valid_top_buyers['net_vol'].sum()
+    
+    vwap = round((valid_top_buyers['avg_buy_price'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
+    
+    # C_Value 的計算使用全部上榜大戶的量
+    full_net_accum = int(top_buyers['net_vol'].sum() / 1000)
     active_buyers = len(top_buyers)
     
     c_value = 0.0
@@ -521,15 +526,14 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
         free_float_ratio = (100.0 - safe_dead_ratio) / 100.0
         free_float_lots = total_lots * free_float_ratio
         if free_float_lots > 0:
-            c_value = round((net_accum / free_float_lots) * 100, 2)
+            c_value = round((full_net_accum / free_float_lots) * 100, 2)
 
-    return vwap, net_accum, active_buyers, c_value, core_branch_names
+    return vwap, full_net_accum, active_buyers, c_value, core_branch_names
 
 def get_core_period_net(df_raw, rank_dates, core_names):
     if df_raw.empty or not rank_dates or not core_names: return 0
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank = df_rank[df_rank['securities_trader'].isin(core_names)]
-    # V50.05 數學重構：先在股數的絕對維度進行無損總和，最後才四捨五入轉換成張
     net_shares = df_rank['buy'].sum() - df_rank['sell'].sum()
     return int(round(net_shares / 1000))
 
@@ -587,7 +591,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
     df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
     if df.empty: return pd.DataFrame()
     
-    # V50.05 數學重構：單日/多日榜單也必須套用 0 元防護，避免 API 缺漏污染排行均價
     df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
     df['valid_sell'] = np.where(df['price'] > 0, df['sell'], 0)
     df['ba'] = df['valid_buy'] * df['price']
@@ -688,7 +691,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         if pd.isna(p) or p <= 0 or total_lots <= 0: 
             out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "⚪ 初始化/數據不全"})
-            # V50.05 數學防呆：遇到無效日絕對不可覆寫前值，確保 WoW 變動序列的剛性！
             continue
             
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
@@ -820,8 +822,11 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         if not s_ret.empty:
             s_ret['avg_p'] = (s_ret['amt'] / s_ret['valid_bs'].replace(0, np.nan)).fillna(0)
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
-            total_n = s_ret['net_shares'].sum()
-            smart_avg_cost = (s_ret['avg_p'] * s_ret['net_shares']).sum() / total_n if total_n > 0 else 0
+            
+            # V50.05 數學重構：絕對排除均價為 0 的無效交易者，保證 VWAP 母體純淨
+            s_ret_valid = s_ret[s_ret['avg_p'] > 0]
+            total_n = s_ret_valid['net_shares'].sum()
+            smart_avg_cost = (s_ret_valid['avg_p'] * s_ret_valid['net_shares']).sum() / total_n if total_n > 0 else 0
         else:
             smart_avg_cost = 0
             
@@ -896,15 +901,14 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     if df_price.empty or len(df_price) < 30: return pd.DataFrame()
     df_ta = df_price.sort_values('日期', ascending=True).copy()
     df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{m_ma}'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{l_ma}'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
+    df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
     
-    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}']) / df_ta[f'MA{m_ma}'].replace(0, np.nan) * 100).round(2)
+    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
     
-    cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}']
-    cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}']
+    cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
+    cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
-    df_ta.rename(columns={f'MA{m_ma}': f'MA{m_ma}(中線)', f'MA{l_ma}': f'MA{l_ma}(長線)'}, inplace=True)
     return df_ta.sort_values('日期', ascending=False)
 
 def process_tdcc(df):
@@ -942,7 +946,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     out = []
     for _, row in df_m.iterrows():
         p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p <= 0: continue
+        if pd.isna(p) or p == 0: continue
         cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
         total_lots = row.get('總張數', 0)
         cap = total_lots / 10000
