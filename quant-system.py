@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.13 全息量化系統 (跨週期矩陣版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.14 全息量化系統 (跨週期矩陣版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
@@ -36,7 +36,7 @@ CSS = (
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }"
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }"
     ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }"
-    /* 頁籤樣式優化 */
+    # 頁籤樣式優化
     ".stTabs [data-baseweb='tab-list'] { gap: 10px; }"
     ".stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }"
     ".stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }"
@@ -79,10 +79,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.13 終極全息量化系統 (跨週期矩陣版)")
+st.title("📱 V48.14 終極全息量化系統 (跨週期矩陣版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.13 升級：優化足跡矩陣為 3/10/60 日跨週期排序，並自動校正空方出貨率名稱。{usage_text}")
+st.caption(f"🚀 V48.14 升級：優化足跡矩陣為 3/10/60 日跨週期排序，並自動校正空方出貨率名稱。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -93,7 +93,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.13 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.14 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -428,7 +428,7 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active):
     return vwap, int(top_buyers['net'].sum()), len(top_buyers)
 
 # ==========================================
-# 🚀 V48.13 終極進化：跨週期足跡矩陣
+# 🚀 V48.14 終極進化：跨週期足跡矩陣
 # ==========================================
 def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
     """
@@ -449,7 +449,6 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
     df_disp['net'] = ((df_disp['buy'] - df_disp['sell']) / 1000).round().astype(int)
     
-    # 使用 pivot 確保資料對齊
     p = df_disp.groupby(['securities_trader', 'date'])['net'].sum().reset_index()
     p = p.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     
@@ -461,7 +460,7 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
         out = []
         for trader in trader_list:
             st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
-            # 賣方欄位自動更名為「出貨率」
+            # 賣方自動更名為「出貨率」
             hr_name = "出貨率(%)" if is_sell_side else "囤貨率(%)"
             hr_val = fp_dict.get(trader, {}).get('囤貨率(%)', "-")
             
@@ -794,34 +793,13 @@ def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thres
             try:
                 gap_val = float(str(today_d['均價落差']).replace(',', '').strip())
                 chg_val = float(str(today_d['漲跌(元)']).replace(',', '').strip()) if today_d['漲跌(元)'] not in ["-", ""] else 0.0
-                if gap_val > 0 and today_d['聰明錢淨流(張)'] > 0: 
-                    alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力帳面獲利，具備強勢推升與留倉意願。")
-                elif gap_val < 0 and today_d['聰明錢淨流(張)'] > 0: 
-                    alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，明日若無法開高，易引發停損賣壓！")
-                elif today_d['聰明錢淨流(張)'] < -100 and chg_val > 0: 
-                    alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退 **{today_d['聰明錢淨流(張)']} 張**。主力逢高倒貨，追高風險極大。")
-                elif today_d['聰明錢淨流(張)'] < -100: 
-                    alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退 **{today_d['聰明錢淨流(張)']} 張**。長線防守線可能崩潰。")
-                else: 
-                    alerts.append("> ⚪ 今日聰明錢無明顯極端進出，大戶成本線持平。")
+                if gap_val > 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力具備強勢推升意願。")
+                elif gap_val < 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，易引發停損賣壓！")
+                elif today_d['聰明錢淨流(張)'] < -100 and chg_val > 0: alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退 **{today_d['聰明錢淨流(張)']} 張**。主力逢高倒貨，追高風險大。")
+                elif today_d['聰明錢淨流(張)'] < -100: alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退 **{today_d['聰明錢淨流(張)']} 張**。長線防守線可能崩潰。")
+                else: alerts.append("> ⚪ 今日聰明錢無明顯極端進出，大戶成本線持平。")
             except: alerts.append("> ⚪ 今日聰明錢數值解析中性。")
         else: alerts.append("> ⚪ 今日大戶無明顯動作，成本線無法精算。")
-
-    if not df_diff.empty and len(df_diff) >= 1:
-        alerts.append("#### 2. 火力與籌碼結構剖析 (買賣家數差)")
-        latest_diff = df_diff.iloc[0]
-        try:
-            fp_val = float(str(latest_diff['買方火力(倍)']).replace(',', '').strip())
-            fire_str = f"今日活躍券商共 **{latest_diff['活躍家數']} 家**，買方火力倍數為 **{fp_val} 倍**。"
-            if fp_val >= fire_thresh and latest_diff['籌碼集中度(%)'] > 5: 
-                alerts.append(f"> 🟢 **【大戶火力壓制】** {fire_str} 少數大戶用絕對資金優勢集中吃貨，高於 {fire_thresh} 倍門檻，高勝率訊號！")
-            elif fp_val < 0.7 and latest_diff['買賣家數差'] > 50: 
-                alerts.append(f"> 💀 **【散戶蜂擁接刀】** {fire_str} 籌碼嚴重發散，大戶倒貨中。")
-            elif latest_diff['活躍家數'] > 500 and fp_val < 1.0: 
-                alerts.append(f"> ⚠️ **【籌碼極度發散】** {fire_str} 當沖游擊客充斥，淪為當沖雷區。")
-            else: 
-                alerts.append(f"> ⚪ **【中性換手】** {fire_str} 買賣雙方實力相當。")
-        except: alerts.append("> ⚪ 【中性換手】籌碼發散程度一般。")
     return alerts
 
 # ==========================================
@@ -885,7 +863,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.13 決策引擎 (跨週期矩陣運算中)..."):
+    with st.spinner(f"正在啟動 V48.14 決策引擎 (跨週期矩陣運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -963,9 +941,9 @@ if run_btn:
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
         # ==========================================
-        # 🎨 V48.13 頂層：AI 動態解析儀表板
+        # 🎨 V48.14 頂層：AI 動態解析儀表板
         # ==========================================
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.13 跨週期矩陣版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.14 跨週期矩陣版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         today_smart_net = 0
@@ -1035,7 +1013,7 @@ if run_btn:
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
         # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.13 新增：跨週期主力足跡動態矩陣 (Tabs)
+        # 🕵️‍♂️ V48.14 新增：跨週期主力足跡動態矩陣 (Tabs)
         # ---------------------------------------------------------
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1091,6 +1069,6 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V48.13 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.14 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面資料深度分析 {user_stock_id} {name} 的量化籌碼。\n"
             st.code(p1, language="text")
