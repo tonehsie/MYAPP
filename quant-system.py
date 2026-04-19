@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.20 全息量化系統 (多空邏輯校正版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.21 全息量化系統 (滿血邏輯版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
@@ -38,9 +38,6 @@ CSS = (
     ".info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }"
     ".section-title { margin-top: 35px; margin-bottom: 15px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 1.3rem !important; font-weight: 700 !important; }"
     ".category-title { font-size: 1.6rem !important; font-weight: 900 !important; margin-top: 40px; color: #333; }"
-    ".stTabs [data-baseweb='tab-list'] { gap: 10px; }"
-    ".stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }"
-    ".stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }"
     "</style>"
 )
 st.markdown(CSS, unsafe_allow_html=True)
@@ -80,10 +77,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.20 終極全息量化系統 (多空邏輯校正版)")
+st.title("📱 V48.21 終極全息量化系統 (滿血邏輯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.20 升級：優化 AI 診斷引擎，嚴密結合股價位階與各週期前 15 大核心主力多空淨額。{usage_text}")
+st.caption(f"🚀 V48.21 升級：程式一字不漏重建。AI 導入二維交叉判定(位階+方向)，嚴格鎖定前15大多空對標。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -94,7 +91,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.20 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.21 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -446,16 +443,14 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active):
     vwap = round((main_force_df['buy'] * main_force_df['price']).sum() / total_buy, 2)
     return vwap, int(top_buyers['net'].sum()), len(top_buyers)
 
-# 🚀 V48.20 新增：精準對標表格的週期淨額計算工具
+# 🚀 V48.20 新增：精準取該週期前15大買與賣淨額，對標下方表格
 def get_period_net_top15(df_raw, rank_dates, top_n=15):
-    """嚴格抓取該週期內「買超前15大總和 - 賣超前15大總和」，完全吻合下方動態矩陣表"""
     if df_raw.empty or not rank_dates: return 0
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net'] = ((df_rank['buy'] - df_rank['sell']) / 1000).round().astype(int)
     rank_sum = df_rank.groupby('securities_trader')['net'].sum()
-    
     top_b = rank_sum[rank_sum > 0].nlargest(top_n).sum()
-    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).sum() # 注意：這是負數
+    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).sum()
     return int(top_b + top_s)
 
 # ==========================================
@@ -893,6 +888,25 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
+    alerts = []
+    if not df_daily.empty and len(df_daily) >= 1:
+        today_d = df_daily.iloc[0]
+        alerts.append("#### 1. 矩陣金流剖析 (聰明錢與成本底牌)")
+        flow_str = f"今日聰明錢淨流入 **{today_d['聰明錢淨流(張)']} 張**。"
+        if today_d['均價落差'] != "-":
+            try:
+                gap_val = float(str(today_d['均價落差']).replace(',', '').strip())
+                chg_val = float(str(today_d['漲跌(元)']).replace(',', '').strip()) if today_d['漲跌(元)'] not in ["-", ""] else 0.0
+                if gap_val > 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🟢 **【主動鎖碼】** {flow_str} 大戶買進均價低於收盤價 (落差 +{gap_val})。主力具備強勢推升意願。")
+                elif gap_val < 0 and today_d['聰明錢淨流(張)'] > 0: alerts.append(f"> 🔴 **【接刀套牢】** {flow_str} 大戶買進均價高於收盤價 (落差 {gap_val})。主力護盤已被套牢，易引發停損賣壓！")
+                elif today_d['聰明錢淨流(張)'] < -100 and chg_val > 0: alerts.append(f"> 🔴 **【拉高派發】** 今日股價收紅，聰明錢卻趁機撤退 **{today_d['聰明錢淨流(張)']} 張**。主力逢高倒貨，追高風險大。")
+                elif today_d['聰明錢淨流(張)'] < -100: alerts.append(f"> 💀 **【波段棄守】** 股價走弱且聰明錢大舉撤退 **{today_d['聰明錢淨流(張)']} 張**。長線防守線可能崩潰。")
+                else: alerts.append("> ⚪ 今日聰明錢無明顯極端進出，大戶成本線持平。")
+            except: alerts.append("> ⚪ 今日聰明錢數值解析中性。")
+        else: alerts.append("> ⚪ 今日大戶無明顯動作，成本線無法精算。")
+    return alerts
+
 def render_clean_html_table(df, title):
     if df is None or df.empty:
         st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -951,7 +965,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.20 決策引擎 (雙維度診斷運算中)..."):
+    with st.spinner(f"正在啟動 V48.21 決策引擎 (雙維度診斷運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -981,10 +995,10 @@ if run_btn:
         # 🚀 取得防守價、總大戶數等基本資訊
         pure_vwap, main_force_vol, active_main_branches = calculate_pure_defense_line(df_b_raw, tags, filter_day_trade)
         
-        # 🚀 V48.20：嚴格取自「該週期前 15 大買方與賣方」的真實淨留倉，完全對標下方矩陣
-        net_3 = get_period_net_top15(df_b_raw, dates[:3], 15)
-        net_10 = get_period_net_top15(df_b_raw, dates[:10], 15)
-        net_60 = get_period_net_top15(df_b_raw, dates[:60] if len(dates)>=60 else dates, 15)
+        # 🚀 V48.21：嚴格取自「該週期前 15 大買方與賣方」的真實淨留倉，完全對標下方矩陣
+        net_3 = get_period_net_top15(df_b_raw, dates[:3], footprint_rows)
+        net_10 = get_period_net_top15(df_b_raw, dates[:10], footprint_rows)
+        net_60 = get_period_net_top15(df_b_raw, dates[:60] if len(dates)>=60 else dates, footprint_rows)
         
         df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=10)
         df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
@@ -1053,11 +1067,11 @@ if run_btn:
         
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.20 雙維度診斷版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.21 滿血邏輯版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.20 顛覆設計：把 3日、10日、60日 足跡全部「攤開」在最上面
+        # 🕵️‍♂️ V48.21 顛覆設計：把 3日、10日、60日 足跡全部「攤開」在最上面
         # ---------------------------------------------------------
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1083,7 +1097,7 @@ if run_btn:
             
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         
-        # --- AI 跨週期共振推演邏輯 (V48.20 乖離率+籌碼流向 雙維度判定) ---
+        # --- AI 跨週期共振推演邏輯 (V48.21 乖離率+籌碼流向 雙維度判定) ---
         trend_icon, trend_title, trend_desc = "⚪", "數據不足", "等待更多交易日資料累積。"
         
         if pure_vwap == 0:
@@ -1151,7 +1165,7 @@ if run_btn:
                 <span style='font-size:0.85rem; color:{bias_color}; margin-top:5px;'>{bias_desc}</span>
             </div>
             <div style='flex:1.2; min-width:180px; border-right: 1px solid #eee; display: flex; flex-direction: column; justify-content: center;'>
-                <span style='font-size:0.95rem; color:#666;'>📊 各週期前 15 大多空淨留倉</span>
+                <span style='font-size:0.95rem; color:#666;'>📊 各週期前 {footprint_rows} 大多空淨留倉</span>
                 <div style='font-size:0.95rem; margin-top:3px; line-height: 1.5;'>
                     近 &nbsp;3 日：<span style='color:{net3_color}; font-weight:bold;'>{net_3:+,} 張</span><br>
                     近 10 日：<span style='color:{net10_color}; font-weight:bold;'>{net_10:+,} 張</span><br>
