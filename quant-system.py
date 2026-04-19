@@ -81,7 +81,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("📱 全息量化系統 (V50.00版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.00 重構：修復核心主力跨週期追蹤錯位、API資料碎片化聚合聚合修正、絕對過濾零價污染。{usage_text}")
+st.caption(f"🚀 V50.00 最終防禦：解決連假集保時間錯位、阻斷極端盤勢 NaN 毒藥崩潰，數學邏輯 100% 剛性對齊。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -400,6 +400,7 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 
         tb, ts = round(tb_shares / 1000), round(ts_shares / 1000)
 
+        # 絕對防禦：屏除極端空缺價格導致的均價坍塌
         valid_buys = g[g['price'] > 0]
         valid_b_shares = valid_buys['buy'].sum()
         avg_b = (valid_buys['buy'] * valid_buys['price']).sum() / valid_b_shares if valid_b_shares > 0 else 0
@@ -489,7 +490,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     def calc_broker(x):
         b_v = x['buy'].sum()
         s_v = x['sell'].sum()
-        # 數學重構：絕對過濾 price 為 0 的幽靈部位，避免 VWAP 失真
         valid_b = x[x['price'] > 0]
         b_a = (valid_b['buy'] * valid_b['price']).sum()
         valid_b_v = valid_b['buy'].sum()
@@ -520,7 +520,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
 
     return vwap, net_accum, active_buyers, c_value, core_branch_names
 
-# 數學重構：精準萃取「核心名單」的多空淨留倉，而非每日動態重建排名
 def get_core_period_net(df_raw, rank_dates, core_names):
     if df_raw.empty or not rank_dates or not core_names: return 0
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
@@ -680,24 +679,28 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             f_impact = 0.0
             adv = ["⚪ 初始化 (基準建立)"]
         else:
-            # 數學重構：時序對齊，真實計算 WoW 的動態大戶差值
             raw_chg = round(current_large_pct - prev_large_pct, 2)
 
-            df_f = df_branch_raw[df_branch_raw['date'] == d_str]
+            # 數學防呆重構：根除因連假或休市造成的集保日期與分點明細「時序錯位」
+            valid_trading_dates = df_branch_raw[df_branch_raw['date'] <= d_str]['date'].unique()
             f_vol_exact = 0
-            if not df_f.empty:
-                # 數學重構：API 多重切片防禦 (Groupby daily branch total before filtering tags)
-                df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
-                df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
-                fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
-                fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
+            
+            if len(valid_trading_dates) > 0:
+                last_trading_date = max(valid_trading_dates)
+                df_f = df_branch_raw[df_branch_raw['date'] == last_trading_date].copy()
                 
-                fake_branches = fn[fn['net_buy_exact'] >= ct]
-                f_vol_exact = fake_branches['net_buy_exact'].sum()
-                
-                for _, fr in fake_branches.iterrows():
-                    d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
+                if not df_f.empty:
+                    df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
+                    df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
+                    fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
+                    fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
                     
+                    fake_branches = fn[fn['net_buy_exact'] >= ct]
+                    f_vol_exact = fake_branches['net_buy_exact'].sum()
+                    
+                    for _, fr in fake_branches.iterrows():
+                        d_fri.append({"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])})
+                        
             f_impact = (f_vol_exact / total_lots) * 100 if total_lots > 0 else 0
             p_chg = round(raw_chg - f_impact, 2)
             d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
@@ -773,7 +776,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
 
         day_b = df_b[df_b['date'] == d]
         
-        # 數學重構：API 多重切片防禦 (確保分點合併) 與 絕對淨留倉加權均價 (排除當沖量污染)
         smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)].copy()
         smart_b['amt'] = smart_b['bs'] * smart_b['pr']
         smart_grouped = smart_b.groupby(['securities_trader', 'tag']).agg(bs=('bs','sum'), ss=('ss','sum'), amt=('amt','sum')).reset_index()
@@ -1189,7 +1191,7 @@ if run_btn:
                 
             if not df_combined_radar.empty:
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
-                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變動率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
+                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
         df_twse, _ = scrape_block_v46(user_stock_id, dates)
