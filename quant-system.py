@@ -17,11 +17,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 st.set_page_config(page_title="V48.29 全息量化系統 (終極超神版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-# 📖 遠端說明書網址
+# 遠端說明書網址
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 # ==========================================
-# 🎨 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭
+# 終極乾淨 CSS：雙向卷軸 + 雙向凍結表頭
 # ==========================================
 CSS = """
 <style>
@@ -85,7 +85,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("📱 V48.29 終極全息量化系統 (終極超神版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.29 升級：乖離率標尺校正(50%過熱/-30%超跌)、一週集保與各週期足跡標題全面完善。{usage_text}")
+st.caption(f"🚀 V48.29 升級：移除預設避開產業、加強死籌碼定義顯示、強化變數邏輯。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -95,7 +95,7 @@ col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
-    dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
+    dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
 run_btn = st.button("🚀 啟動 V48.29 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
@@ -822,7 +822,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
             cv = max(0, (lp - cur_dead) / (100.0 - cur_dead))
             st_val = "🔴 絕對控盤" if cv >= 0.5 else "🟡 高度鎖碼" if cv >= 0.3 else "🔵 初步集結" if cv >= 0.15 else "⚪ 籌碼渙散"
             cd = round(cv * 100, 2)
-        out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監事持股(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
+        out.append({"日期": row['日期'], "收盤價(元)": p, "股本(億)": round(cap, 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監死籌碼(%)": f"{float(cur_dead):.2f}% ({cl})" if cur_dead > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
     return pd.DataFrame(out)
 
 def process_day_trading(df):
@@ -1015,6 +1015,8 @@ if run_btn:
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
             st.stop()
             
+        industry, address = get_company_profile(user_stock_id)
+            
         df_p_raw = fetch_finmind_v46("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: 
             st.error("⚠️ 查無歷史股價資料。")
@@ -1055,6 +1057,7 @@ if run_btn:
         df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
         
         df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates, firepower_threshold, period_days=5)
+        df_daily_tracker_60, _ = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff_60, dates, firepower_threshold, period_days=60)
         
         df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, dead_chip_input, dynamic_dict, s_val, chip_eng)
         df_v27_radar, df_debug_math, _ = process_v27_ultimate_radar(df_s_wide, dead_chip_input, dynamic_dict, s_val, df_price, df_b_raw, tags)
@@ -1108,10 +1111,9 @@ if run_btn:
             df_cbas = pd.DataFrame()
         
         market_cap_str = "計算中..."
-        industry, address = get_company_profile(user_stock_id)
         if not df_price.empty and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
             
-        company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
+        company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
         st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.29 終極超神版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
@@ -1328,7 +1330,7 @@ if run_btn:
         # ---------------------------------------------------------
         st.markdown("<div class='category-title'>📊 核心戰情追蹤</div>", unsafe_allow_html=True)
         render_clean_html_table(df_daily_tracker, "01. 平日戰情追蹤矩陣 (合併家數差與火力)")
-        render_clean_html_table(df_combined_display, "02. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") # <--- 標題修正
+        render_clean_html_table(df_combined_display, "02. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
 
         st.markdown("<div class='category-title'>🏦 法人與資券變化</div>", unsafe_allow_html=True)
         render_clean_html_table(df_gov, "08. 影子官股進出 (今日)")
