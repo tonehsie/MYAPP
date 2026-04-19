@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.05版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.06版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.05 系統防護版)")
+st.title("📱 全息量化系統 (V60.06 戰情矩陣精準校正版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.05：修正 K 線十字線貼合收盤價，強化鷹眼引擎底層防錯機制。{usage_text}")
+st.caption(f"🚀 V60.06：嚴格校正平日戰情追蹤矩陣的賣壓邏輯、漲跌防呆與診斷參數。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.05 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.06 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     try:
@@ -320,7 +320,7 @@ def scrape_fubon_pledge(df_pr, tid):
             pm = m
             pdts.append(f"{py}-{ds.replace('/', '-')}")
         elif len(ds) >= 7 and '/' in ds: 
-            pts = split('/')
+            pts = ds.split('/')
             py, pm = int(pts[0]) + 1911, int(pts[1])
             pdts.append(f"{py}-{pts[1].strip()}-{pts[2].strip()}")
         else: pdts.append(ds)
@@ -791,18 +791,25 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         df_d = df_raw_num[df_raw_num['date'] == d]
         if df_d.empty: continue
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
-        buy_count, sell_count = buy_branches['securities_trader'].nunique(), sell_branches['securities_trader'].nunique()
-        diff_count = buy_count - sell_count
+        
+        # V60.06 校正: 買賣家數與籌碼集中度的精準計算
+        buy_count = buy_branches['securities_trader'].nunique()
+        sell_count = sell_branches['securities_trader'].nunique()
+        diff_count = buy_count - sell_count  # 買家數-賣家數。正值代表籌碼發散(散戶買)，負值代表籌碼集中(大戶買)
+        
         active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
         concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
+        
         total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
         avg_b = total_buy_vol / buy_count if buy_count > 0 else 0
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
+        
         diag = []
         if firepower >= fire_thresh and concentration > 5: diag.append(f"🔥 大戶火力壓制 ({fire_thresh}倍↑)")
         elif firepower < 0.7 and diff_count > 50: diag.append("💀 散戶螞蟻搬家 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: diag.append("⚠️ 籌碼極度發散 (熱門當沖雷區)")
+        
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "🔵 中性換手"})
     return pd.DataFrame(out)
 
@@ -819,7 +826,13 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         op = pr_row['開盤價(元)'].iloc[0] if not pr_row.empty else 0
         hp = pr_row['最高價(元)'].iloc[0] if not pr_row.empty else 0
         lp = pr_row['最低價(元)'].iloc[0] if not pr_row.empty else 0
-        sp = pr_row['漲跌(元)'].iloc[0] if not pr_row.empty else 0
+        sp_raw = pr_row['漲跌(元)'].iloc[0] if not pr_row.empty else 0
+        
+        # V60.06 防呆: 強制轉換漲跌為 float，避免 API 字串報錯
+        try:
+            sp_num = float(str(sp_raw).replace('+', '').replace(',', '').strip())
+        except:
+            sp_num = 0.0
         
         diff_row = df_branch_diff[df_branch_diff['日期'] == d]
         bsd = diff_row['買賣家數差'].iloc[0] if not diff_row.empty else 0
@@ -846,7 +859,9 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
                 if r['net_vol'] != 0: audit_smart_money.append({"日期": d, "分點": r['securities_trader'], "標籤": r['tag'], "淨買超(張)": r['net_vol']})
         
         smart_net = smart_grouped['net_vol'].sum()
-        short_trap = short_grouped['net_vol'].sum()
+        
+        # V60.06 修正: 潛在賣壓只統計「今日淨買超 > 0」的短線客，賣掉的不能算成明天的賣壓
+        short_trap = short_grouped[short_grouped['net_vol'] > 0]['net_vol'].sum() if not short_grouped.empty else 0
         
         s_ret = smart_grouped[smart_grouped['bs'] > smart_grouped['ss']].copy()
         if not s_ret.empty:
@@ -869,14 +884,15 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             if day_range > 0 and (lower_shadow / day_range) > 0.5 and smart_net > 0: adv.append("🛡️ 探底洗盤成功，主力護盤")
             if smart_net > 50 and gap > 0: adv.append("🔥 主動鎖碼/強勢推升")
             elif smart_net > 50 and gap < 0: adv.append("🩹 大戶接刀/弱勢護盤")
-            elif smart_net < -100 and sp > 0: adv.append("📉 拉高派發/撤退")
-            elif smart_net < -100 and sp <= 0: adv.append("💀 波段棄守/多殺多")
+            # V60.06 修正: 統一使用 sp_num 判斷
+            elif smart_net < -100 and sp_num > 0: adv.append("📉 拉高派發/撤退")
+            elif smart_net < -100 and sp_num <= 0: adv.append("💀 波段棄守/多殺多")
             
         if eye_diag and eye_diag != "🔵 中性換手": adv.append(eye_diag)
         elif not adv: adv.append("🔵 盤整/無明顯特徵")
 
         out.append({
-            "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
+            "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
@@ -1132,7 +1148,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# V60.05 加入極強的 try-except 錯誤捕獲，防止空值或型別錯誤導致 line 1468 報錯當機
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
     alerts = []
     try:
@@ -1270,7 +1285,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.05 決策引擎 (鷹眼系統保護層已啟動)..."):
+    with st.spinner(f"正在啟動 V60.06 決策引擎 (戰情矩陣嚴格校正版)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1386,7 +1401,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.05)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.06)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1409,7 +1424,6 @@ if run_btn:
                 vol_colors = ['#d32f2f' if row['收盤價(元)'] >= row['開盤價(元)'] else '#2e7d32' for _, row in df_plot.iterrows()]
                 fig.add_trace(go.Bar(x=df_plot['日期'], y=df_plot['成交量(張)'], marker_color=vol_colors, showlegend=False, name="成交量", hoverinfo='skip'), row=2, col=1)
                 
-                # V60.05 完美修復十字線：使用 closest 模式並確保 XY 都加上 showspikes，spikesnap='data' 確保貼合收盤價
                 fig.update_layout(height=650, margin=dict(l=30, r=30, t=20, b=20), xaxis_rangeslider_visible=False, plot_bgcolor='white', paper_bgcolor='white', hovermode='closest', showlegend=False)
                 fig.update_xaxes(showgrid=False, zeroline=False, type='category', showspikes=True, spikemode='toaxis+across', spikethickness=1, spikecolor='#999999', spikedash='solid', spikesnap='data', row=1, col=1)
                 fig.update_yaxes(showgrid=True, gridcolor='#f0f0f0', zeroline=False, showspikes=True, spikemode='toaxis+across', spikethickness=1, spikecolor='#999999', spikedash='solid', spikesnap='data', row=1, col=1)
@@ -1551,9 +1565,6 @@ if run_btn:
             clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').replace('📊', '').replace('🔥', '').replace('👁️', '').replace('🎯', '').replace('📈', '').replace('💡', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
-        # ---------------------------------------------------------
-        # 表格模組全面重新排序 (01~17)
-        # ---------------------------------------------------------
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1612,12 +1623,9 @@ if run_btn:
         render_clean_html_table(df_disp, "16. 處置有價證券狀態")
         render_clean_html_table(df_cbas, "17. CBAS 可轉債數據")
 
-        # ---------------------------------------------------------
-        # CSV 資料包
-        # ---------------------------------------------------------
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.05 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.06 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
