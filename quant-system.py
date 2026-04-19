@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V50.01版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V50.02版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V50.01版)")
+st.title("📱 全息量化系統 (V50.02版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V50.01 鈦合金版：根除連假錯位、解決新上市股 NaN 崩潰、Socket 記憶體釋放，無懈可擊。{usage_text}")
+st.caption(f"🚀 V50.02 鈦合金防禦版：根除死籌碼溢位、防護 VWAP 連鎖空值污染、封裝矩陣斷層。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,7 +92,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事或董監事+大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V50.01 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V50.02 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -124,7 +124,6 @@ def fetch_finmind_v46(ds, sd, tid=None, ed=None):
 def fetch_branch_data_v46(dl, tid):
     if not dl: return pd.DataFrame()
     all_d = []
-    # 網路連線池防禦：確保 Session 在平行抓取後被徹底釋放
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
         def fs(d):
@@ -361,7 +360,6 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p['avg_price'] = (df_p['close'] + df_p['max'] + df_p['min']) / 3
     range_diff = df_p['max'] - df_p['min']
-    # 數學防呆：如果漲停/跌停鎖死 (最高=最低)，避免除以零，賦予位階 0.5 或依據常理設定
     df_p['pos'] = np.where(range_diff == 0, 0.5, (df_p['close'] - df_p['min']) / range_diff.replace(0, 1))
     price_stats = df_p.set_index('date')[['pos']].to_dict('index')
     latest_close = df_p.sort_values('date', ascending=False)['close'].iloc[0] if not df_p.empty else 0
@@ -505,7 +503,8 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     
     core_branch_names = top_buyers.index.tolist()
     
-    top_buyers['avg_buy_price'] = top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)
+    # 絕對防禦：.fillna(0) 保護，避免 valid_buy_vol 為 0 產生的 NaN 連鎖坍塌
+    top_buyers['avg_buy_price'] = (top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0)
     total_net_vol = top_buyers['net_vol'].sum()
     
     vwap = round((top_buyers['avg_buy_price'] * top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
@@ -514,7 +513,8 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     
     c_value = 0.0
     if total_lots > 0:
-        safe_dead_ratio = min(99.9, float(dead_chip_ratio))
+        # 絕對剛性鉗制：確保死籌碼比例被嚴格限制在 0.0 ~ 99.9 之間，根除 Overflow 錯誤
+        safe_dead_ratio = max(0.0, min(99.9, float(dead_chip_ratio)))
         free_float_ratio = (100.0 - safe_dead_ratio) / 100.0
         free_float_lots = total_lots * free_float_ratio
         if free_float_lots > 0:
@@ -540,8 +540,9 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     top_s_names = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
     
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
-    df_disp['net'] = ((df_disp['buy'] - df_disp['sell']) / 1000).round().astype(int)
+    if df_disp.empty: return pd.DataFrame(), pd.DataFrame() # 絕對防禦：若篩選後全空，提早撤退避免 .pivot() 拋出 KeyError
     
+    df_disp['net'] = ((df_disp['buy'] - df_disp['sell']) / 1000).round().astype(int)
     p = df_disp.groupby(['securities_trader', 'date'])['net'].sum().reset_index()
     p = p.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     
@@ -621,7 +622,7 @@ def get_smart_threshold(price, total_lots, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
     
     base_lots = 15000 / price
-    safe_dead_ratio = min(99.9, dead_float)
+    safe_dead_ratio = max(0.0, min(99.9, dead_float))
     free_float_ratio = max(0.05, (100 - safe_dead_ratio) / 100) 
     float_1pct_lots = total_lots * free_float_ratio * 0.01
     
@@ -644,7 +645,8 @@ def calculate_dynamic_large_holder_pct(row, threshold):
     total = 0.0
     for k, v in levels_dict.items():
         if k >= threshold and v in row:
-            total += pd.to_numeric(row.get(v, 0), errors='coerce')
+            val = pd.to_numeric(row.get(v, 0), errors='coerce')
+            if pd.notna(val): total += val
     return total
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
@@ -673,7 +675,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             continue
             
         cur_dead, _ = get_dead_chip_info(d_str, dead_chip_input, dynamic_dict, static_val, "")
-        safe_dead_ratio = min(99.9, cur_dead)
+        safe_dead_ratio = max(0.0, min(99.9, cur_dead))
         ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
         
         current_large_pct = calculate_dynamic_large_holder_pct(row, ct)
@@ -797,7 +799,8 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         
         s_ret = smart_grouped[smart_grouped['bs'] > smart_grouped['ss']].copy()
         if not s_ret.empty:
-            s_ret['avg_p'] = s_ret['amt'] / s_ret['bs'].replace(0, np.nan)
+            # 絕對防禦：.fillna(0) 保護，避免有效買量為 0 引發的 NaN 乘法毒藥
+            s_ret['avg_p'] = (s_ret['amt'] / s_ret['bs'].replace(0, np.nan)).fillna(0)
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
             total_n = s_ret['net_shares'].sum()
             smart_avg_cost = (s_ret['avg_p'] * s_ret['net_shares']).sum() / total_n if total_n > 0 else 0
@@ -920,11 +923,11 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     out = []
     for _, row in df_m.iterrows():
         p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p <= 0: continue
+        if pd.isna(p) or p == 0: continue
         cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
         total_lots = row.get('總張數', 0)
         cap = total_lots / 10000
-        safe_dead_ratio = min(99.9, cur_dead)
+        safe_dead_ratio = max(0.0, min(99.9, cur_dead))
         ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
         
         lp = calculate_dynamic_large_holder_pct(row, ct)
@@ -1136,7 +1139,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V50.01 決策引擎 (雙向卷軸渲染中)..."):
+    with st.spinner(f"正在啟動 V50.02 決策引擎 (雙向卷軸渲染中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1250,7 +1253,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.01版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V50.02版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='category-title'>🤖 AI 跨週期共振研判與診斷</div>", unsafe_allow_html=True)
@@ -1264,7 +1267,7 @@ if run_btn:
                     phase_title = "🟢 主力吃貨中 (安全建倉區)"
                     phase_desc = f"最新收盤價 ({curr_price}元) 貼近主力成本，乖離率僅 **{bias:.1f}%**。主力正在安全邊際內默默吸籌，下檔具備鐵板支撐，是風險報酬比極佳的潛伏期。"
                 elif 10.0 < bias <= 50.0:
-                    phase_title = "🔥 趨推推升 (波段多頭起漲)"
+                    phase_title = "🔥 趨勢推升 (波段多頭起漲)"
                     phase_desc = f"股價穩定脫離成本區 (乖離率 **{bias:.1f}%**)，波段主力已點火發動攻勢。若伴隨大戶持續淨買超，顯示推升意願強烈，可抱緊順勢操作。"
                 else:
                     phase_title = "⚠️ 嚴重過熱 (乖離破表)"
@@ -1470,7 +1473,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V50.01 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V50.02 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
