@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="V48.24 全息量化系統 (終極滿血定案版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="V48.25 全息量化系統 (終極無錯定案版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 # 📖 遠端說明書網址
@@ -76,10 +76,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 V48.24 終極全息量化系統 (滿血定案版)")
+st.title("📱 V48.25 終極全息量化系統 (滿血定案版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V48.24 升級：還原最詳盡之階段判定說明、導入 AI 動態雷達深度、C_Value 鎖碼率及雙維度趨勢診斷。{usage_text}")
+st.caption(f"🚀 V48.25 升級：變數錯誤修復。結合 AI 動態雷達深度、C_Value 鎖碼率及雙維度趨勢診斷。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -90,7 +90,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("董監事持股比例 % (留空自動雙引擎抓取)")
-run_btn = st.button("🚀 啟動 V48.24 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V48.25 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -345,9 +345,6 @@ def scrape_fubon_pledge(df_pr, tid):
     sr = [{"身份別": d["title"], "姓名": n, "目前剩餘質設(張)": d["balance"], "最後設質收盤價(元)": d["p"], "估算斷頭價(0.78)": d["mc"]} for n, d in sm.items() if d["balance"] > 0]
     return pd.DataFrame(sr), df_all
 
-# ==========================================
-# 🧠 核心模組：三維動態行為大腦
-# ==========================================
 def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
     if global_days <= 0: global_days = 1
@@ -418,17 +415,13 @@ def get_v47_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         })
     return tags, pd.DataFrame(d_rows).sort_values('近60日淨買(張)', ascending=False)
 
-# 🚀 V48.24 新增：AI 動態雷達深度運算引擎
 def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_shares_k, df_price):
     if total_shares_k <= 0 or df_b_raw.empty: return 15, "基本預設 (缺股本資料)"
-
-    # 1. 股本規模判定 (Base N)
     if total_shares_k < 300000: base_n, cap_desc = 10, "微型股本"
     elif total_shares_k < 1000000: base_n, cap_desc = 15, "中小型股"
     elif total_shares_k < 5000000: base_n, cap_desc = 30, "中大型股"
     else: base_n, cap_desc = 50, "大型權值"
 
-    # 2. 週轉率降噪 (Turnover Filter)
     recent_dates = dates_list[:5]
     recent_pr = df_price[df_price['日期'].isin(recent_dates)]
     avg_vol = recent_pr['成交量(張)'].mean() if not recent_pr.empty else 0
@@ -443,7 +436,6 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_shares_k, df_price
         final_n = min(50, int(base_n * 1.2))
         turn_desc = " | 低波擴散"
 
-    # 3. 籌碼集中度校正 (Concentration)
     df_20 = df_b_raw[df_b_raw['date'].isin(dates_list[:20])].copy()
     g = df_20.groupby('securities_trader')[['buy', 'sell']].sum()
     g['net'] = (g['buy'] - g['sell']) / 1000
@@ -459,7 +451,6 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_shares_k, df_price
     final_n = max(5, min(final_n, 50))
     return final_n, f"{cap_desc}{turn_desc}"
 
-# 🚀 V48.24 升級：接收動態雷達 N 來計算防守價與 C_Value
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_shares_k, dead_chip_ratio, dynamic_n):
     if df_b_raw.empty: return 0.0, 0, 0, 0.0
     df = df_b_raw.copy()
@@ -502,9 +493,6 @@ def get_period_net_topN(df_raw, rank_dates, top_n):
     top_s = rank_sum[rank_sum < 0].nsmallest(top_n).sum()
     return int(top_b + top_s)
 
-# ==========================================
-# 🚀 跨週期足跡矩陣
-# ==========================================
 def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
     if df_raw.empty or not display_dates or not rank_dates: return pd.DataFrame(), pd.DataFrame()
     
@@ -1014,7 +1002,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V48.24 決策引擎 (全自動動態雷達運算中)..."):
+    with st.spinner(f"正在啟動 V48.25 決策引擎 (雙維度與動態雷達運算中)..."):
         name = get_stock_name_v46(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1040,17 +1028,22 @@ if run_btn:
         df_b_raw = fetch_branch_data_v46(dates[:max_len], user_stock_id)
         tags, df_debug_tags = get_v47_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         
+        # 1. 先去抓最新發行張數與死籌碼
         df_s_raw = fetch_finmind_v46("TaiwanStockHoldingSharesPer", d_end, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], dead_chip_input, dynamic_dict, s_val, chip_eng)
         
+        # 📌 V48.25 補回關鍵：定義董監事持股顯示字串
+        director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無數據"
+
+        # 2. 動態雷達 N 值與防守價 C_Value 精算
         dynamic_n, radar_reason = calculate_dynamic_radar_depth(df_b_raw, dates, current_total_shares, df_price)
-        
         pure_vwap, main_force_vol, active_main_branches, core_c_value = calculate_pure_defense_line(
             df_b_raw, tags, filter_day_trade, current_total_shares, latest_director_holding, dynamic_n
         )
         
+        # 3. 取得精準的各週期動態 N 對標淨額
         net_3 = get_period_net_topN(df_b_raw, dates[:3], dynamic_n)
         net_10 = get_period_net_topN(df_b_raw, dates[:10], dynamic_n)
         net_60 = get_period_net_topN(df_b_raw, dates[:60] if len(dates)>=60 else dates, dynamic_n)
@@ -1117,11 +1110,11 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監事持股】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.24 終極定案版)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V48.25 終極定案版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
         
         # ---------------------------------------------------------
-        # 🕵️‍♂️ V48.24 短中長全景足跡矩陣
+        # 🕵️‍♂️ V48.25 短中長全景足跡矩陣 (AI 動態 N 鎖定)
         # ---------------------------------------------------------
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
@@ -1331,7 +1324,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V48.24 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V48.25 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             p1 += hawk_csv_text + "\n"
