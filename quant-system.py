@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.12版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.13版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -79,6 +79,8 @@ firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.
 st.sidebar.divider()
 st.sidebar.markdown("### 📈 技術通道與均線設定")
 lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 60, 5)
+# V60.13 新增轉折趨勢線靈敏度控制器
+pivot_order = st.sidebar.slider("轉折趨勢線靈敏度 (左右N天)", 2, 15, 5, 1)
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
@@ -87,10 +89,10 @@ st.sidebar.divider()
 st.sidebar.markdown("### 🧠 淨化籌碼引擎")
 filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨加權均價」", value=True)
 
-st.title("📱 全息量化系統 (V60.12 線性迴歸通道武裝版)")
+st.title("📱 全息量化系統 (V60.13 標籤重構與雙通道版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.12：實裝動態線性迴歸通道 (Linear Regression Channel)，全面結合 AI 兵推診斷。{usage_text}")
+st.caption(f"🚀 V60.13：拔除官股干擾、標籤全域重構、實裝傳統轉折趨勢線對照線性迴歸。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -101,7 +103,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.12 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.13 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -443,21 +445,19 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
-
-    cond_gov = g.index.str.contains('|'.join(gov_list), na=False)
-    cond_daytrade = (g['net_60d'].between(-200, 200)) & (g['net_20d'].between(-200, 200)) & (g['net_5d'] >= 300)
+    # V60.13 標籤邏輯全面重構，移除官股干擾
     cond_dump = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
-    cond_long = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
-    cond_short = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
-    cond_stuck = (g['net_60d'] <= -100) & (g['net_5d'] >= 200)
+    cond_core = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
+    cond_bear = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
+    cond_cover = (g['net_60d'] <= -100) & (g['net_5d'] >= 200)
+    cond_sniper = (g['net_60d'].between(-200, 200)) & (g['net_20d'].between(-200, 200)) & (g['net_5d'] >= 300)
     cond_maker = g['stickiness'] >= stick_thresh
-    cond_tourist = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > 50)
+    cond_flash = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > 50)
 
     g['tag'] = np.select(
-        [cond_gov, cond_daytrade, cond_dump, cond_long, cond_short, cond_stuck, cond_maker, cond_tourist],
-        ["🏦 [影子官股]", "⚠️ [隔日沖大戶]", "💀 [大戶出貨]", "🔥 [長駐波段主]", "📉 [趨勢空方]", "🩹 [被套牢]", "🥷 [潛伏造市者]", "🏃 [游擊過客]"],
-        default="🔵 一般/游擊"
+        [cond_dump, cond_core, cond_bear, cond_cover, cond_sniper, cond_maker, cond_flash],
+        ["🩸 [逢高派發]", "⚓ [波段鐵粉]", "🐻 [長線倒貨]", "🔄 [低檔回補]", "⚡ [短線狙擊]", "🛡️ [常駐造市]", "💨 [快閃散戶]"],
+        default="🌊 [隨波逐流]"
     )
 
     tags = g['tag'].to_dict()
@@ -530,10 +530,10 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if df_b_raw.empty: return 0.0, 0, 0, 0.0, []
     df = df_b_raw.copy()
-    df['tag'] = df['securities_trader'].map(tags).fillna("🔵 一般/游擊")
+    df['tag'] = df['securities_trader'].map(tags).fillna("🌊 隨波逐流")
     
     if is_filter_active: 
-        valid_df = df[~df['tag'].str.contains("隔日沖|游擊|空方", na=False)].copy()
+        valid_df = df[~df['tag'].str.contains("短線狙擊|快閃散戶|長線倒貨", na=False)].copy()
     else: 
         valid_df = df
 
@@ -616,7 +616,7 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
             
             row_dict = {
                 "分點名稱": trader, 
-                "標籤": intel_tags.get(trader, "🔵 一般"),
+                "標籤": intel_tags.get(trader, "🌊 隨波逐流"),
                 "黏著度(%)": st_val, 
                 hr_name: hr_val,
                 f"區間累計(張)": f"+{total_val}" if total_val > 0 else str(total_val)
@@ -655,13 +655,14 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
     s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
     out, tv = [], round(g['bv'].sum() / 1000) if g['bv'].sum() > 0 else 1
     
+    # V60.13 更新屬性對應邏輯
     for i in range(15):
         r = {}
         if i < len(b): 
             b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}"
             if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0 and b.loc[i,'net'] > 0: b_str = f"⚠️(虧) {b_str}"
-            raw_tag = intel_tags.get(b.loc[i,'securities_trader'],'🔵 一般')
-            attr = "🏃 短線" if any(x in raw_tag for x in ["隔日沖", "游擊"]) else "⚓ 中長線" if any(x in raw_tag for x in ["長駐", "潛伏", "官股"]) else "⚖️ 波段"
+            raw_tag = intel_tags.get(b.loc[i,'securities_trader'], '🌊 隨波逐流')
+            attr = "🏃 短線" if any(x in raw_tag for x in ["短線狙擊", "快閃散戶", "低檔回補"]) else "⚓ 中長線" if any(x in raw_tag for x in ["波段鐵粉", "常駐造市"]) else "⚖️ 波段"
             r["買超分點"] = b.loc[i,'securities_trader']
             r["買_標籤"] = raw_tag
             r["買_週期"] = attr
@@ -671,8 +672,8 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         else: r["買超分點"], r["買_標籤"], r["買_週期"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", "-", 0, "-", "-"
         
         if i < len(s): 
-            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'],'🔵 一般')
-            attr_s = "🏃 短線" if any(x in raw_tag_s for x in ["隔日沖", "游擊"]) else "⚓ 中長線" if any(x in raw_tag_s for x in ["長駐", "潛伏", "官股"]) else "⚖️ 波段"
+            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'], '🌊 隨波逐流')
+            attr_s = "🏃 短線" if any(x in raw_tag_s for x in ["短線狙擊", "快閃散戶", "低檔回補"]) else "⚓ 中長線" if any(x in raw_tag_s for x in ["波段鐵粉", "常駐造市"]) else "⚖️ 波段"
             r["賣超分點"] = s.loc[i,'securities_trader']
             r["賣_標籤"] = raw_tag_s
             r["賣_週期"] = attr_s
@@ -713,41 +714,6 @@ def calculate_dynamic_large_holder_pct(row, threshold):
             val = pd.to_numeric(row.get(v, 0), errors='coerce')
             if pd.notna(val): total += val
     return total
-
-def process_gov_banks(df_branch_raw, actual_dates, intel_tags):
-    if df_branch_raw.empty or not actual_dates: return pd.DataFrame()
-    today = actual_dates[0]
-    df_today = df_branch_raw[df_branch_raw['date'] == today].copy()
-    if df_today.empty: return pd.DataFrame()
-
-    gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
-    pattern = '|'.join(gov_list)
-    df_gov_raw = df_today[df_today['securities_trader'].str.contains(pattern, na=False)].copy()
-
-    if df_gov_raw.empty: return pd.DataFrame()
-
-    df_gov_raw['valid_buy'] = np.where(df_gov_raw['price'] > 0, df_gov_raw['buy'], 0)
-    df_gov_raw['valid_sell'] = np.where(df_gov_raw['price'] > 0, df_gov_raw['sell'], 0)
-    df_gov_raw['ba'] = df_gov_raw['valid_buy'] * df_gov_raw['price']
-    df_gov_raw['sa'] = df_gov_raw['valid_sell'] * df_gov_raw['price']
-
-    g = df_gov_raw.groupby('securities_trader').agg(
-        bv=('buy', 'sum'), sv=('sell', 'sum'),
-        vbv=('valid_buy', 'sum'), vsv=('valid_sell', 'sum'),
-        ba=('ba', 'sum'), sa=('sa', 'sum')
-    ).reset_index()
-
-    g['買超(張)'] = (g['bv'] / 1000).round().astype(int)
-    g['賣超(張)'] = (g['sv'] / 1000).round().astype(int)
-    g['淨買賣(張)'] = g['買超(張)'] - g['賣超(張)']
-
-    g['買均價'] = (g['ba'] / g['vbv'].replace(0, np.nan)).fillna(0).round(2)
-    g['賣均價'] = (g['sa'] / g['vsv'].replace(0, np.nan)).fillna(0).round(2)
-
-    g['標籤'] = g['securities_trader'].map(intel_tags).fillna("🔵 一般")
-
-    res = g[['securities_trader', '標籤', '買超(張)', '賣超(張)', '淨買賣(張)', '買均價', '賣均價']].rename(columns={'securities_trader': '官股分點'})
-    return res.sort_values('淨買賣(張)', ascending=False)
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -805,7 +771,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                     if not df_f.empty:
                         df_f_grouped = df_f.groupby('securities_trader')[['buy', 'sell']].sum().reset_index()
                         df_f_grouped['tag'] = df_f_grouped['securities_trader'].map(intel_tags).fillna("")
-                        fn = df_f_grouped[df_f_grouped['tag'].str.contains("隔日沖|被套牢|游擊過客", na=False)].copy()
+                        fn = df_f_grouped[df_f_grouped['tag'].str.contains("短線狙擊|低檔回補|快閃散戶", na=False)].copy()
                         fn['net_buy_exact'] = (fn['buy'] - fn['sell']) / 1000
                         
                         fake_branches = fn[fn['net_buy_exact'] >= ct]
@@ -877,7 +843,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     out, audit_smart_money = [], []
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].copy()
     df_b = df_b.rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
-    df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("🔵 一般")
+    df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("🌊 隨波逐流")
     
     for d in actual_dates[:period_days]:
         pr_row = df_price[df_price['日期'] == d]
@@ -901,14 +867,14 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
 
         day_b = df_b[df_b['date'] == d].copy()
         
-        smart_b = day_b[day_b['tag'].str.contains('波段主|官股|潛伏造市者|大戶出貨', na=False)].copy()
+        smart_b = day_b[day_b['tag'].str.contains('波段鐵粉|常駐造市|逢高派發|長線倒貨', na=False)].copy()
         smart_b['valid_bs'] = np.where(smart_b['pr'] > 0, smart_b['bs'], 0)
         smart_b['amt'] = smart_b['valid_bs'] * smart_b['pr']
         
         smart_grouped = smart_b.groupby(['securities_trader', 'tag']).agg(bs=('bs','sum'), ss=('ss','sum'), valid_bs=('valid_bs','sum'), amt=('amt','sum')).reset_index()
         smart_grouped['net_vol'] = ((smart_grouped['bs'] - smart_grouped['ss']) / 1000).round().astype(int)
         
-        short_b = day_b[day_b['tag'].str.contains('隔日沖大戶|被套牢|游擊過客', na=False)].copy()
+        short_b = day_b[day_b['tag'].str.contains('短線狙擊|低檔回補|快閃散戶', na=False)].copy()
         short_grouped = short_b.groupby('securities_trader')[['bs', 'ss']].sum().reset_index()
         short_grouped['net_vol'] = ((short_grouped['bs'] - short_grouped['ss']) / 1000).round().astype(int)
         
@@ -1011,20 +977,16 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
     return df_ta.sort_values('日期', ascending=False)
 
-# V60.12 新增線性迴歸通道計算函數
 def process_linear_regression(df_price, lr_days):
     if df_price.empty or len(df_price) < 2:
         return pd.DataFrame()
-    # 依時間順序由舊到新排序以計算迴歸
     df_lr = df_price.head(lr_days).copy().sort_values('日期', ascending=True)
     y = df_lr['收盤價(元)'].values
     x = np.arange(len(y))
     
-    # 計算線性迴歸斜率與截距
     A = np.vstack([x, np.ones(len(x))]).T
     m, c = np.linalg.lstsq(A, y, rcond=None)[0]
     
-    # 預測值(中軌)與殘差標準差
     y_pred = m * x + c
     residuals = y - y_pred
     std_err = np.std(residuals)
@@ -1034,6 +996,47 @@ def process_linear_regression(df_price, lr_days):
     df_lr['LR_Lower'] = y_pred - 2 * std_err
     
     return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
+
+# V60.13 新增：傳統轉折趨勢線演算
+def process_pivot_trendline(df_price, kline_days, order=5):
+    if df_price.empty or len(df_price) < order * 2 + 1:
+        return pd.DataFrame()
+    
+    df_pt = df_price.head(kline_days).copy().sort_values('日期', ascending=True).reset_index(drop=True)
+    
+    highs = df_pt['最高價(元)'].values
+    lows = df_pt['最低價(元)'].values
+    x = np.arange(len(df_pt))
+    
+    pivot_highs = []
+    pivot_lows = []
+    
+    for i in range(order, len(df_pt) - order):
+        if lows[i] == min(lows[i-order:i+order+1]):
+            pivot_lows.append((x[i], lows[i]))
+        if highs[i] == max(highs[i-order:i+order+1]):
+            pivot_highs.append((x[i], highs[i]))
+            
+    df_pt['Pivot_Support'] = np.nan
+    df_pt['Pivot_Resistance'] = np.nan
+    
+    if len(pivot_lows) >= 2:
+        x1, y1 = pivot_lows[-2]
+        x2, y2 = pivot_lows[-1]
+        if x2 > x1:
+            m = (y2 - y1) / (x2 - x1)
+            c = y1 - m * x1
+            df_pt['Pivot_Support'] = m * x + c
+            
+    if len(pivot_highs) >= 2:
+        x1, y1 = pivot_highs[-2]
+        x2, y2 = pivot_highs[-1]
+        if x2 > x1:
+            m = (y2 - y1) / (x2 - x1)
+            c = y1 - m * x1
+            df_pt['Pivot_Resistance'] = m * x + c
+            
+    return df_pt[['日期', 'Pivot_Support', 'Pivot_Resistance']]
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1239,7 +1242,7 @@ def render_clean_html_table(df, title=""):
         st.warning("此區塊查無數據。")
         return
 
-    text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號', '官股分點']
+    text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號']
     
     html = ""
     if title: html += f"<div class='section-title'>{title}</div>"
@@ -1292,7 +1295,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.12 決策引擎 (線性迴歸通道與四層兵推建構中)..."):
+    with st.spinner(f"正在啟動 V60.13 決策引擎 (標籤重構與雙通道計算中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1316,11 +1319,13 @@ if run_btn:
         curr_price = df_price['收盤價(元)'].iloc[0] if not df_price.empty else 0
         df_ta_full = process_technical_analysis(df_price, ma_short, ma_mid, ma_long)
         
-        # V60.12 執行線性迴歸通道運算
         df_lr_channel = process_linear_regression(df_price, lr_days)
         latest_lr_upper = df_lr_channel['LR_Upper'].iloc[-1] if not df_lr_channel.empty else 0.0
         latest_lr_mid = df_lr_channel['LR_Mid'].iloc[-1] if not df_lr_channel.empty else 0.0
         latest_lr_lower = df_lr_channel['LR_Lower'].iloc[-1] if not df_lr_channel.empty else 0.0
+        
+        # V60.13 執行傳統轉折趨勢線運算
+        df_pivot = process_pivot_trendline(df_price, kline_days, pivot_order)
         
         dynamic_dict, s_val, chip_eng, _ = scrape_director_v50(user_stock_id)
         df_b_raw = fetch_branch_data_v50(dates[:max_len], user_stock_id)
@@ -1387,8 +1392,6 @@ if run_btn:
         df_b_3 = process_branch_v25(df_b_raw, 3, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_60 = process_branch_v25(df_b_raw, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len)
-
-        df_gov = process_gov_banks(df_b_raw, dates, tags)
         
         df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
         df_fut = process_fut_inst(fetch_finmind_v50("TaiwanFuturesInstitutionalInvestors", d_end, "TX"))
@@ -1414,21 +1417,21 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.12)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.13)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # V60.12 K線置頂並疊加線性迴歸通道
-        # ---------------------------------------------------------
         if not df_ta_full.empty:
-            st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與動態通道 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與雙軌道技術線 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             
-            # 整合通道數據
             if not df_lr_channel.empty:
                 df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
+                
+            # V60.13 匯入傳統轉折趨勢線
+            if not df_pivot.empty:
+                df_plot = pd.merge(df_plot, df_pivot, on='日期', how='left')
             
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
@@ -1436,12 +1439,17 @@ if run_btn:
                 
                 fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['收盤價(元)'], mode='markers', marker=dict(color='rgba(0,0,0,0)', size=2), hoverinfo='none', showlegend=False), row=1, col=1)
                 
-                # 畫出線性迴歸通道 (半透明藍色底)
                 if 'LR_Upper' in df_plot.columns and not df_plot['LR_Upper'].isna().all():
                     df_plot_lr = df_plot.dropna(subset=['LR_Upper'])
-                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Upper'], mode='lines', name='通道上軌', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Lower'], mode='lines', name='通道下軌', fill='tonexty', fillcolor='rgba(30, 58, 138, 0.05)', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Mid'], mode='lines', name='通道中軌', line=dict(color='rgba(30, 58, 138, 0.8)', width=1.5, dash='dot'), hoverinfo='skip'), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Upper'], mode='lines', name='LR通道上軌', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Lower'], mode='lines', name='LR通道下軌', fill='tonexty', fillcolor='rgba(30, 58, 138, 0.05)', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Mid'], mode='lines', name='LR通道中軌', line=dict(color='rgba(30, 58, 138, 0.8)', width=1.5, dash='dot'), hoverinfo='skip'), row=1, col=1)
+
+                # V60.13 畫出傳統轉折支撐與壓力線
+                if 'Pivot_Support' in df_plot.columns and not df_plot['Pivot_Support'].isna().all():
+                    fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['Pivot_Support'], mode='lines', name='轉折支撐線', line=dict(color='rgba(46, 125, 50, 0.8)', width=1.5, dash='dash'), hoverinfo='skip'), row=1, col=1)
+                if 'Pivot_Resistance' in df_plot.columns and not df_plot['Pivot_Resistance'].isna().all():
+                    fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['Pivot_Resistance'], mode='lines', name='轉折壓力線', line=dict(color='rgba(211, 47, 47, 0.8)', width=1.5, dash='dash'), hoverinfo='skip'), row=1, col=1)
 
                 fig.add_trace(go.Candlestick(x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], name='K線', increasing_line_color='#d32f2f', increasing_fillcolor='#d32f2f', decreasing_line_color='#2e7d32', decreasing_fillcolor='#2e7d32', whiskerwidth=0, hoverinfo='skip'), row=1, col=1)
                 
@@ -1460,9 +1468,6 @@ if run_btn:
                 
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-        # ---------------------------------------------------------
-        # AI 全息籌碼深度診斷總結 (四層兵推重構 + 通道判定)
-        # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1490,7 +1495,6 @@ if run_btn:
             try: radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
             except: radar_chg = 0.0
 
-        # 通道位階判定
         if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
         elif curr_price >= latest_lr_mid and latest_lr_mid > 0: lr_pos_text = "股價運行於通道上半部 (強勢多頭區)"
         elif curr_price <= latest_lr_lower and latest_lr_lower > 0: lr_pos_text = "股價已觸碰或跌破通道下軌 (極度超跌區)"
@@ -1605,36 +1609,35 @@ if run_btn:
         render_clean_html_table(df_daily_tracker, "02. 平日戰情追蹤矩陣 (合併家數差與火力)")
         render_clean_html_table(df_combined_display, "03. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
 
-        render_clean_html_table(df_gov, "04. 影子官股進出 (今日)")
-        render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
-        render_clean_html_table(df_margin, "06. 散戶資券餘額 (近10天)")
-        render_clean_html_table(df_day_trade, "07. 現股當沖明細 (近10天)")
-        render_clean_html_table(df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
+        render_clean_html_table(df_inst, "04. 法人買賣超 (近10天)")
+        render_clean_html_table(df_margin, "05. 散戶資券餘額 (近10天)")
+        render_clean_html_table(df_day_trade, "06. 現股當沖明細 (近10天)")
+        render_clean_html_table(df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
 
-        render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
+        render_clean_html_table(df_rev, "08. 月營收 (百萬元) (近24個月)")
         
-        with st.expander("📂 10. 點此展開集保分級表 (近8週)", expanded=False):
-            render_clean_html_table(df_s_unit, "10-1. 集保分級 - 張數表")
-            render_clean_html_table(df_s_ppl, "10-2. 集保分級 - 人數表")
+        with st.expander("📂 09. 點此展開集保分級表 (近8週)", expanded=False):
+            render_clean_html_table(df_s_unit, "09-1. 集保分級 - 張數表")
+            render_clean_html_table(df_s_ppl, "09-2. 集保分級 - 人數表")
             
-        render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
-        with st.expander("📂 12. 點此展開董監大股東質設明細", expanded=False):
-            render_clean_html_table(df_p_det, "12. 董監大股東質設明細")
+        render_clean_html_table(df_p_sum, "10. 董監大股東質設總覽")
+        with st.expander("📂 11. 點此展開董監大股東質設明細", expanded=False):
+            render_clean_html_table(df_p_det, "11. 董監大股東質設明細")
             
-        render_clean_html_table(df_twse, "13. 鉅額交易明細 (近3天)")
-        render_clean_html_table(df_div, "14. 歷年股利政策 (近5年)")
-        render_clean_html_table(df_per, "15. 本益比、淨值比與殖利率")
-        render_clean_html_table(df_disp, "16. 處置有價證券狀態")
-        render_clean_html_table(df_cbas, "17. CBAS 可轉債數據")
+        render_clean_html_table(df_twse, "12. 鉅額交易明細 (近3天)")
+        render_clean_html_table(df_div, "13. 歷年股利政策 (近5年)")
+        render_clean_html_table(df_per, "14. 本益比、淨值比與殖利率")
+        render_clean_html_table(df_disp, "15. 處置有價證券狀態")
+        render_clean_html_table(df_cbas, "16. CBAS 可轉債數據")
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.12 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.13 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
             clean_ai_report = re.sub(r'<[^>]+>', '', report_md)
-            clean_ai_report = re.sub(r'[*#>`🚀🟢🔴🩹💀🔥🧱⚖️⚡🎯📈💡⚓🌊👑]', '', clean_ai_report)
+            clean_ai_report = re.sub(r'[*#>`🚀🟢🔴🩹💀🔥🧱⚖️⚡🎯📈💡⚓🌊👑🩸🐻🔄🛡️💨]', '', clean_ai_report)
             clean_ai_report = clean_ai_report.replace('&nbsp;', ' ').strip()
             
             p1 += f"▼▼▼ 系統 AI 全息籌碼深度診斷總結 ▼▼▼\n"
@@ -1653,16 +1656,16 @@ if run_btn:
             
             p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近5日)")
             p1 += format_to_csv_string(df_combined_display.head(4) if not df_combined_display.empty else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
-            p1 += format_to_csv_string(df_inst.head(10) if not df_inst.empty else df_inst, "05. 法人買賣超 (近10天)")
-            p1 += format_to_csv_string(df_margin.head(10) if not df_margin.empty else df_margin, "06. 散戶資券餘額 (近10天)")
-            p1 += format_to_csv_string(df_day_trade.head(10) if not df_day_trade.empty else df_day_trade, "07. 現股當沖明細 (近10天)")
-            p1 += format_to_csv_string(df_fut.head(10) if not df_fut.empty else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
-            p1 += format_to_csv_string(df_rev.head(12) if not df_rev.empty else df_rev, "09. 月營收 (百萬元) (近12個月)")
-            p1 += format_to_csv_string(df_p_sum, "11. 董監大股東質設總覽")
-            p1 += format_to_csv_string(df_twse, "13. 鉅額交易明細 (近3日)")
-            p1 += format_to_csv_string(df_per.head(10) if not df_per.empty else df_per, "15. 本益比、淨值比與殖利率")
-            p1 += format_to_csv_string(df_disp, "16. 處置有價證券狀態")
-            p1 += format_to_csv_string(df_cbas, "17. CBAS 可轉債數據")
+            p1 += format_to_csv_string(df_inst.head(10) if not df_inst.empty else df_inst, "04. 法人買賣超 (近10天)")
+            p1 += format_to_csv_string(df_margin.head(10) if not df_margin.empty else df_margin, "05. 散戶資券餘額 (近10天)")
+            p1 += format_to_csv_string(df_day_trade.head(10) if not df_day_trade.empty else df_day_trade, "06. 現股當沖明細 (近10天)")
+            p1 += format_to_csv_string(df_fut.head(10) if not df_fut.empty else df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
+            p1 += format_to_csv_string(df_rev.head(12) if not df_rev.empty else df_rev, "08. 月營收 (百萬元) (近12個月)")
+            p1 += format_to_csv_string(df_p_sum, "10. 董監大股東質設總覽")
+            p1 += format_to_csv_string(df_twse, "12. 鉅額交易明細 (近3日)")
+            p1 += format_to_csv_string(df_per.head(10) if not df_per.empty else df_per, "14. 本益比、淨值比與殖利率")
+            p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
+            p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
 
         st.divider()
