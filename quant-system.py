@@ -3,86 +3,68 @@ import pandas as pd
 import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import numpy as np
+from scipy.signal import argrelextrema
 
-# 設定網頁全寬與標題
-st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
+# 介面設定
+st.set_page_config(layout="wide", page_title="專業級量化分析系統 V2")
 
-# 帶入您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階互動式技術分析圖表")
+st.title("高階圖表：自動型態轉折辨識系統")
 
-# 建立輸入介面
-col1, col2 = st.columns(2)
-with col1:
-    stock_id = st.text_input("輸入股票代號 (例如: 2330)", "2330")
-with col2:
-    start_date = st.text_input("輸入起始日期 (例如: 2023-01-01)", "2023-01-01")
+# 控制面板
+with st.sidebar:
+    st.header("演算法參數設定")
+    stock_id = st.text_input("股票代號", "2330")
+    start_date = st.text_input("起始日期", "2023-01-01")
+    # order 參數決定了型態的「規模」，數值越大，抓到的轉折越具代表性
+    order_val = st.slider("辨識靈敏度 (Order)", min_value=5, max_value=30, value=10)
 
-# 透過 FinMind API 抓取資料
 @st.cache_data
-def get_stock_data(stock_id, start_date):
+def get_data(stock_id, start_date):
     url = "https://api.finmindtrade.com/api/v4/data"
-    params = {
-        "dataset": "TaiwanStockPrice",
-        "data_id": stock_id,
-        "start_date": start_date,
-        "token": TOKEN
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
-    
-    if data.get("status") == 200 and len(data.get("data", [])) > 0:
-        df = pd.DataFrame(data["data"])
+    params = {"dataset": "TaiwanStockPrice", "data_id": stock_id, "start_date": start_date, "token": TOKEN}
+    res = requests.get(url, params=params).json()
+    if res.get("status") == 200 and len(res.get("data", [])) > 0:
+        df = pd.DataFrame(res["data"])
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
-        
-        # 計算常用的高階參考線：10日、20日、60日均線
-        df['MA10'] = df['close'].rolling(window=10).mean()
-        df['MA20'] = df['close'].rolling(window=20).mean()
-        df['MA60'] = df['close'].rolling(window=60).mean()
         return df
     return None
 
-df = get_stock_data(stock_id, start_date)
+df = get_data(stock_id, start_date)
 
 if df is not None:
-    # 建立多副圖的專業版面：上方 K 線與均線，下方成交量
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.03, 
-                        row_heights=[0.7, 0.3])
+    # 數學運算：尋找波峰與波谷
+    # 使用 scipy 尋找局部極大值與極小值
+    df['peak'] = df.iloc[argrelextrema(df['max'].values, np.greater, order=order_val)[0]]['max']
+    df['trough'] = df.iloc[argrelextrema(df['min'].values, np.less, order=order_val)[0]]['min']
 
-    # 1. 繪製 K 線圖 (Candlestick)，設定為台灣習慣的紅漲綠跌
-    fig.add_trace(go.Candlestick(x=df.index,
-                                 open=df['open'], high=df['max'],
-                                 low=df['min'], close=df['close'],
-                                 name="K線",
-                                 increasing_line_color='red',
-                                 decreasing_line_color='green'),
-                  row=1, col=1)
+    # 繪圖
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
 
-    # 2. 繪製均線系統
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA10'], line=dict(color='orange', width=1.5), name="10日均線"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='cyan', width=1.5), name="20日均線"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA60'], line=dict(color='magenta', width=1.5), name="60日季線"), row=1, col=1)
+    # K 線圖
+    fig.add_trace(go.Candlestick(x=df.index, open=df['open'], high=df['max'], low=df['min'], close=df['close'], name="K線",
+                                 increasing_line_color='red', decreasing_line_color='green'), row=1, col=1)
 
-    # 3. 繪製成交量柱狀圖 (配合漲跌變色)
-    colors = ['red' if row['close'] >= row['open'] else 'green' for index, row in df.iterrows()]
+    # 自動標註波峰 (紅點)
+    fig.add_trace(go.Scatter(x=df.index, y=df['peak'], mode='markers', 
+                             marker=dict(color='white', size=8, symbol='triangle-down', line=dict(color='red', width=2)),
+                             name="波峰 (Peak)"), row=1, col=1)
+
+    # 自動標註波谷 (綠點)
+    fig.add_trace(go.Scatter(x=df.index, y=df['trough'], mode='markers', 
+                             marker=dict(color='white', size=8, symbol='triangle-up', line=dict(color='green', width=2)),
+                             name="波谷 (Trough)"), row=1, col=1)
+
+    # 成交量
+    colors = ['red' if r['close'] >= r['open'] else 'green' for i, r in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Trading_Volume'], marker_color=colors, name="成交量"), row=2, col=1)
 
-    # 4. 圖表版面高階質感微調 (深色模式)
-    fig.update_layout(
-        template="plotly_dark",
-        height=850,
-        xaxis_rangeslider_visible=False,
-        showlegend=True,
-        margin=dict(l=20, r=20, t=40, b=20)
-    )
-    
-    # 隱藏週末無交易的空白區間，讓線型連續
+    fig.update_layout(template="plotly_dark", height=800, xaxis_rangeslider_visible=False)
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
-
-    # 顯示圖表
+    
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("查無資料，請確認代號或日期是否正確，或您的 Token 權限是否正常。")
+    st.error("讀取失敗，請檢查代號或 Token。")
