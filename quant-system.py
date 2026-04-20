@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.09版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.10版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,10 +78,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.09 官股法人資料校正版)")
+st.title("📱 全息量化系統 (V60.10 診斷報告極淨化版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.09：徹底重構官股獨立抓取邏輯、修復法人缺項報錯與資券公式驗證。{usage_text}")
+st.caption(f"🚀 V60.10：跨週期共振與鷹眼底層邏輯全驗證，CSV 資料包徹底去蕪存菁。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -92,9 +92,8 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.09 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.10 決策引擎", use_container_width=True, key="run_engine")
 
-# V60.09 強化安全轉型器，避免處理非陣列型別時報錯
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         try:
@@ -706,7 +705,6 @@ def calculate_dynamic_large_holder_pct(row, threshold):
             if pd.notna(val): total += val
     return total
 
-# V60.09 官股進出徹底重構版：直接從底層獨立抓取，杜絕受到排行榜順位混淆
 def process_gov_banks(df_branch_raw, actual_dates, intel_tags):
     if df_branch_raw.empty or not actual_dates: return pd.DataFrame()
     today = actual_dates[0]
@@ -1104,7 +1102,6 @@ def process_margin(df):
     cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df.columns]
     return df[cols].tail(10).sort_values('日期', ascending=False)
 
-# V60.09 法人買賣超：強化安全取值與單位精確度
 def process_inst(df):
     if df.empty: return pd.DataFrame()
     pdf = df.pivot_table(index='date', columns='name', values=['buy', 'sell'], fill_value=0).reset_index()
@@ -1202,6 +1199,41 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     else: df_out["未償還比例(%)"] = "需原始發行總額"
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
+
+def process_gov_banks(df_branch_raw, actual_dates, intel_tags):
+    if df_branch_raw.empty or not actual_dates: return pd.DataFrame()
+    today = actual_dates[0]
+    df_today = df_branch_raw[df_branch_raw['date'] == today].copy()
+    if df_today.empty: return pd.DataFrame()
+
+    gov_list = ["台銀", "土銀", "彰銀", "第一", "兆豐", "華南", "合庫", "台企銀"]
+    pattern = '|'.join(gov_list)
+    df_gov_raw = df_today[df_today['securities_trader'].str.contains(pattern, na=False)].copy()
+
+    if df_gov_raw.empty: return pd.DataFrame()
+
+    df_gov_raw['valid_buy'] = np.where(df_gov_raw['price'] > 0, df_gov_raw['buy'], 0)
+    df_gov_raw['valid_sell'] = np.where(df_gov_raw['price'] > 0, df_gov_raw['sell'], 0)
+    df_gov_raw['ba'] = df_gov_raw['valid_buy'] * df_gov_raw['price']
+    df_gov_raw['sa'] = df_gov_raw['valid_sell'] * df_gov_raw['price']
+
+    g = df_gov_raw.groupby('securities_trader').agg(
+        bv=('buy', 'sum'), sv=('sell', 'sum'),
+        vbv=('valid_buy', 'sum'), vsv=('valid_sell', 'sum'),
+        ba=('ba', 'sum'), sa=('sa', 'sum')
+    ).reset_index()
+
+    g['買超(張)'] = (g['bv'] / 1000).round().astype(int)
+    g['賣超(張)'] = (g['sv'] / 1000).round().astype(int)
+    g['淨買賣(張)'] = g['買超(張)'] - g['賣超(張)']
+
+    g['買均價'] = (g['ba'] / g['vbv'].replace(0, np.nan)).fillna(0).round(2)
+    g['賣均價'] = (g['sa'] / g['vsv'].replace(0, np.nan)).fillna(0).round(2)
+
+    g['標籤'] = g['securities_trader'].map(intel_tags).fillna("🔵 一般")
+
+    res = g[['securities_trader', '標籤', '買超(張)', '賣超(張)', '淨買賣(張)', '買均價', '賣均價']].rename(columns={'securities_trader': '官股分點'})
+    return res.sort_values('淨買賣(張)', ascending=False)
 
 def generate_ai_hawk_eye(df_daily, df_radar, df_fingerprint, df_diff, fire_thresh):
     alerts = []
@@ -1350,7 +1382,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.09 決策引擎 (官股獨立過濾與法人防呆修復中)..."):
+    with st.spinner(f"正在啟動 V60.10 決策引擎 (診斷報告精準除錯與 CSV 去蕪存菁中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1440,7 +1472,6 @@ if run_btn:
         df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_60 = process_branch_v25(df_b_raw, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len)
 
-        # V60.09 官股進出徹底重構，直接從 raw 獨立運算，排除排行榜干擾
         df_gov = process_gov_banks(df_b_raw, dates, tags)
         
         df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
@@ -1467,7 +1498,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.09)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.10)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1625,11 +1656,12 @@ if run_btn:
         st.caption(f"💡 備註：所有數據皆已透過 AI 自動 **{'過濾隔日沖' if filter_day_trade else '包含所有分點'}**。加權防守價已排除高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 為大戶整體鎖碼率。")
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # V60.10 徹底淨化 CSV 資料包格式，刪除符號防止 AI 讀取混亂
         hawk_alerts = generate_ai_hawk_eye(df_daily_tracker, df_combined_display, pd.DataFrame(), df_b_diff, firepower_threshold)
         hawk_csv_text = "▼▼▼ 系統 AI 鷹眼深度診斷報告 ▼▼▼\n"
         for alert in hawk_alerts: 
             st.markdown(alert)
-            clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').replace('📊', '').replace('🔥', '').replace('👁️', '').replace('🎯', '').replace('📈', '').replace('💡', '').strip()
+            clean_text = alert.replace('**', '').replace('> ', '').replace('🟢', '').replace('🔴', '').replace('💀', '').replace('⚠️', '').replace('⚪', '').replace('📊', '').replace('🔥', '').replace('👁️', '').replace('🎯', '').replace('📈', '').replace('💡', '').replace('📌', '').replace('####', '').strip()
             hawk_csv_text += f"{clean_text}\n"
 
         st.markdown("---")
@@ -1692,7 +1724,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.09 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.10 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
