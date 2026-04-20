@@ -4,3 +4,4 @@ numpy
 requests
 plotly
 lxml
+scipy
