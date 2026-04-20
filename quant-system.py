@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.15版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.16版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -80,7 +80,7 @@ st.sidebar.divider()
 st.sidebar.markdown("### 📐 AI 幾何型態與技術線")
 enable_pattern = st.sidebar.checkbox("啟動 AI 幾何型態掃描", value=True)
 pattern_mode = st.sidebar.selectbox("型態顯示模式", ["🤖 全自動智能辨識 (Auto)", "🔍 強制鎖定：W底", "🔍 強制鎖定：M頭", "🔍 強制鎖定：頭肩底", "🔍 強制鎖定：收斂三角形"])
-pivot_order = st.sidebar.slider("型態辨識靈敏度 (Order)", 2, 15, 5, 1)
+pattern_order = st.sidebar.slider("型態辨識靈敏度 (Order)", 2, 15, 5, 1)
 lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 60, 5)
 
 st.sidebar.divider()
@@ -91,10 +91,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.15 極簡純淨軌道版)")
+st.title("📱 全息量化系統 (V60.16 徹底淨化軌道版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.15：拔除傳統轉折趨勢線，保留 LR 迴歸通道與 AI 幾何型態辨識，畫面極致乾淨。{usage_text}")
+st.caption(f"🚀 V60.16：物理級刪除傳統轉折趨勢線代碼，確保圖表極致純淨，專注於 LR 迴歸與幾何型態。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -105,7 +105,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.15 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.16 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1335,7 +1335,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.15 決策引擎 (拔除傳統趨勢線、優化純淨通道中)..."):
+    with st.spinner(f"正在啟動 V60.16 決策引擎 (拔除傳統趨勢線、優化純淨通道中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1364,10 +1364,10 @@ if run_btn:
         latest_lr_mid = df_lr_channel['LR_Mid'].iloc[-1] if not df_lr_channel.empty else 0.0
         latest_lr_lower = df_lr_channel['LR_Lower'].iloc[-1] if not df_lr_channel.empty else 0.0
         
-        # V60.15: 啟動 AI 型態辨識 (不含傳統轉折線)
+        # V60.16: 啟動 AI 型態辨識 (僅保留幾何型態，完全移除轉折線)
         pat_data = {}
         if enable_pattern:
-            pat_data = process_geometric_patterns(df_price, kline_days, pivot_order, pattern_mode, curr_price)
+            pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
         
         dynamic_dict, s_val, chip_eng, _ = scrape_director_v50(user_stock_id)
         df_b_raw = fetch_branch_data_v50(dates[:max_len], user_stock_id)
@@ -1459,7 +1459,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.15)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.16)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1484,7 +1484,7 @@ if run_btn:
                     fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Lower'], mode='lines', name='LR通道下軌', fill='tonexty', fillcolor='rgba(30, 58, 138, 0.05)', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
                     fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Mid'], mode='lines', name='LR通道中軌', line=dict(color='rgba(30, 58, 138, 0.8)', width=1.5, dash='dot'), hoverinfo='skip'), row=1, col=1)
 
-                # V60.15: 疊加 AI 型態線條 (已移除傳統轉折虛線)
+                # V60.16: 疊加 AI 型態線條 (確認已完全清除 Pivot_Support / Resistance 虛線畫圖代碼)
                 if pat_data:
                     fig.add_trace(go.Scatter(x=pat_data['shape_x'], y=pat_data['shape_y'], mode='lines+markers', line=dict(color=pat_data['color'], width=4), name=pat_data['name'], opacity=0.8), row=1, col=1)
                     fig.add_trace(go.Scatter(x=pat_data['neck_x'], y=pat_data['neck_y'], mode='lines', line=dict(color=pat_data['color'], width=2, dash='dot'), name='頸線/邊界'), row=1, col=1)
@@ -1696,7 +1696,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.15 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.16 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
