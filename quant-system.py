@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.17版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.18版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -77,11 +77,10 @@ footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)",
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 
 st.sidebar.divider()
-st.sidebar.markdown("### 📐 AI 幾何型態與技術線")
-enable_pattern = st.sidebar.checkbox("啟動 AI 幾何型態掃描", value=True)
+st.sidebar.markdown("### 📐 AI 幾何形態與技術線")
+enable_pattern = st.sidebar.checkbox("啟動 AI 幾何形態掃描", value=True)
 
-# V60.17 擴充西方古典形態選單
-pattern_mode = st.sidebar.selectbox("型態顯示模式", [
+pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "🤖 全自動智能辨識 (Auto)", 
     "🔍 反轉：W底 (雙重底)", "🔍 反轉：M頭 (雙重頂)", 
     "🔍 反轉：頭肩底", "🔍 反轉：頭肩頂", 
@@ -93,7 +92,7 @@ pattern_mode = st.sidebar.selectbox("型態顯示模式", [
     "🔍 連續：矩形 (箱型整理)"
 ])
 
-pattern_order = st.sidebar.slider("型態辨識靈敏度 (Order)", 2, 20, 5, 1)
+pattern_order = st.sidebar.slider("形態辨識靈敏度 (Order)", 2, 20, 5, 1)
 lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 60, 5)
 
 st.sidebar.divider()
@@ -104,10 +103,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.17 古典圖表火力全開版)")
+st.title("📱 全息量化系統 (V60.18 極端資料防呆版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.17：內建西方古典幾何形態演算法 (13大形態支援)，完美還原頂級看盤軟體樣式識別功能。{usage_text}")
+st.caption(f"🚀 V60.18：修復集保資料不足時導致的 0.0% 顯示錯誤，完美備援防呆機制。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -118,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.17 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.18 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -460,7 +459,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    # V60.17 標籤全域重構 (不再強制覆蓋官股，並更新精準命名)
     cond_dump = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
     cond_core = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
     cond_bear = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
@@ -846,7 +844,7 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         
         diag = []
         if firepower >= fire_thresh and concentration > 5: diag.append(f"🔥 大戶火力壓制 ({fire_thresh}倍↑)")
-        elif firepower < 0.7 and diff_count > 50: diag.append("💀 散戶螞 ব্যায়াম搬家 (主力倒貨)")
+        elif firepower < 0.7 and diff_count > 50: diag.append("💀 散戶螞蟻搬家 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: diag.append("⚠️ 籌碼極度發散 (熱門當沖雷區)")
         
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "🔵 中性換手"})
@@ -1011,7 +1009,6 @@ def process_linear_regression(df_price, lr_days):
     
     return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
 
-# V60.17 擴充：古典西方圖表形態演算法矩陣
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     if df_price.empty or len(df_price) < order * 2: return {}
     
@@ -1026,11 +1023,9 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if len(lows) < 2 or len(highs) < 2: return {}
 
     last_date = df['日期'].iloc[-1]
-    tol = 0.03 # 3% 的水平容錯率
-    
+    tol = 0.03
     is_auto = "Auto" in mode
     
-    # 1. 三重底 / 三重頂 (需先判斷，避免被 W/M 提早攔截)
     if "三重底" in mode or is_auto:
         if len(lows) >= 3:
             l1, l2, l3 = lows[-3], lows[-2], lows[-1]
@@ -1057,7 +1052,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         'neck_x': [h1[0], last_date], 'neck_y': [l_min[1], l_min[1]], 'color': '#d32f2f', 'desc': f"三重頂 ({status})", 'signal': 'bearish'
                     }
 
-    # 2. 頭肩底 / 頭肩頂
     if "頭肩底" in mode or is_auto:
         if len(lows) >= 3:
             l1, l2, l3 = lows[-3], lows[-2], lows[-1]
@@ -1086,7 +1080,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         'neck_x': [l1[0], last_date], 'neck_y': [l1[1], l2[1]], 'color': '#d32f2f', 'desc': f"頭肩頂 ({status})", 'signal': 'bearish'
                     }
 
-    # 3. W底 / M頭
     if "W底" in mode or is_auto:
         if len(lows) >= 2:
             l1, l2 = lows[-2], lows[-1]
@@ -1117,7 +1110,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         'neck_x': [h1[0], last_date], 'neck_y': [l1[1], l1[1]], 'color': '#d32f2f', 'desc': desc, 'signal': 'bearish'
                     }
 
-    # 4. 連續形態：三角形、楔形、矩形
     if any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto:
         if len(highs) >= 2 and len(lows) >= 2:
             h1, h2 = highs[-2], highs[-1]
@@ -1128,22 +1120,16 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             
             p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
             
-            # 矩形
             if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto):
                 p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理 (等待突破)"
-            # 上升三角形
             elif abs(h_diff) < tol and l_diff > tol and ("上升三角形" in mode or is_auto):
                 p_name, p_color, p_desc, p_sig = "上升三角形", "#4caf50", "上升三角形 (偏多醞釀)", "bullish"
-            # 下降三角形
             elif h_diff < -tol and abs(l_diff) < tol and ("下降三角形" in mode or is_auto):
                 p_name, p_color, p_desc, p_sig = "下降三角形", "#f44336", "下降三角形 (偏空醞釀)", "bearish"
-            # 對稱/收斂三角形
             elif h_diff < -tol and l_diff > tol and ("對稱" in mode or "收斂" in mode or is_auto):
                 p_name, p_color, p_desc = "對稱三角形", "#ff9800", "對稱三角形 (收斂表態前)"
-            # 上升楔形
             elif h_diff > tol and l_diff > tol and l_diff > h_diff and ("上升楔形" in mode or is_auto):
                 p_name, p_color, p_desc, p_sig = "上升楔形", "#ff5722", "上升楔形 (上漲力道衰退，偏空)", "bearish"
-            # 下降楔形
             elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and ("下降楔形" in mode or is_auto):
                 p_name, p_color, p_desc, p_sig = "下降楔形", "#8bc34a", "下降楔形 (殺跌力道衰退，偏多)", "bullish"
 
@@ -1151,12 +1137,11 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                 if not p_name: p_name, p_color, p_desc = mode.split('：')[-1].strip(), "#999", f"強制標示 {mode.split('：')[-1]}"
                 return {
                     'name': p_name,
-                    'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], # 上邊界
-                    'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]],   # 下邊界
+                    'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], 
+                    'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]],   
                     'color': p_color, 'desc': p_desc, 'signal': p_sig
                 }
                 
-    # 5. V型反轉
     if "V型反轉" in mode or is_auto:
         if len(lows) >= 1 and len(highs) >= 2:
             l1 = lows[-1]
@@ -1164,7 +1149,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             h_after = [h for h in highs if h[2] < l1[2]]
             if h_before and h_after:
                 hb, ha = h_before[-1], h_after[0]
-                if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: # 深度至少 10%
+                if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: 
                     return {
                         'name': 'V型反轉', 'shape_x': [hb[0], l1[0], ha[0]], 'shape_y': [hb[1], l1[1], ha[1]],
                         'neck_x': [hb[0], ha[0]], 'neck_y': [hb[1], ha[1]], 'color': '#00bcd4', 'desc': "深V反轉 (強勢軋空)", 'signal': 'bullish'
@@ -1429,7 +1414,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.17 決策引擎 (13大古典幾何形態矩陣展開中)..."):
+    with st.spinner(f"正在啟動 V60.18 決策引擎 (修復集保斷層與純淨化圖表)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1458,7 +1443,6 @@ if run_btn:
         latest_lr_mid = df_lr_channel['LR_Mid'].iloc[-1] if not df_lr_channel.empty else 0.0
         latest_lr_lower = df_lr_channel['LR_Lower'].iloc[-1] if not df_lr_channel.empty else 0.0
         
-        # V60.17: 啟動古典形態辨識引擎
         pat_data = {}
         if enable_pattern:
             pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
@@ -1472,7 +1456,9 @@ if run_btn:
             
         tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         
-        df_s_raw = fetch_finmind_v50("TaiwanStockHoldingSharesPer", d_end, user_stock_id)
+        # V60.18: 強制回溯半年 (180天) 來確保集保數據充足，避免 0.0% 斷層
+        tdcc_start_date = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+        df_s_raw = fetch_finmind_v50("TaiwanStockHoldingSharesPer", tdcc_start_date, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
@@ -1553,7 +1539,7 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.17)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.18)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1577,7 +1563,6 @@ if run_btn:
                     fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Lower'], mode='lines', name='LR通道下軌', fill='tonexty', fillcolor='rgba(30, 58, 138, 0.05)', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
                     fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Mid'], mode='lines', name='LR通道中軌', line=dict(color='rgba(30, 58, 138, 0.8)', width=1.5, dash='dot'), hoverinfo='skip'), row=1, col=1)
 
-                # V60.17: 疊加 AI 形態線條
                 if pat_data:
                     fig.add_trace(go.Scatter(x=pat_data['shape_x'], y=pat_data['shape_y'], mode='lines+markers', line=dict(color=pat_data['color'], width=4), name=pat_data['name'], opacity=0.8), row=1, col=1)
                     fig.add_trace(go.Scatter(x=pat_data['neck_x'], y=pat_data['neck_y'], mode='lines', line=dict(color=pat_data['color'], width=2, dash='dot'), name='頸線/邊界'), row=1, col=1)
@@ -1599,9 +1584,6 @@ if run_btn:
                 
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-        # ---------------------------------------------------------
-        # AI 全息籌碼深度診斷總結 (五層兵推重構)
-        # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1621,13 +1603,28 @@ if run_btn:
             today_fp = df_b_diff.iloc[0].get('買方火力(倍)', 1.0)
             today_diff_cnt = df_b_diff.iloc[0].get('買賣家數差', 0)
 
+        # V60.18: 智能缺項文字防呆
         radar_c_val = 0.0
         radar_chg = 0.0
+        c_val_text = "**[數據擷取中/不足]**"
+        chg_text = "**[變動率計算中/不足]**"
+        
         if not df_combined_display.empty:
-            try: radar_c_val = float(str(df_combined_display.iloc[0].get('純淨活大戶C_Value(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
-            except: radar_c_val = 0.0
-            try: radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
-            except: radar_chg = 0.0
+            try: 
+                c_val_raw = df_combined_display.iloc[0].get('純淨活大戶C_Value(%)', 0)
+                if str(c_val_raw).strip() == "-":
+                    # 如果 C_Value 算不出來，退而求其次顯示最基礎的大戶持股比例
+                    c_val_text = f"**{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)**"
+                else:
+                    radar_c_val = float(str(c_val_raw).replace('+', '').replace(',', '').replace('%', '').strip())
+                    c_val_text = f"**{radar_c_val}%**"
+            except: pass
+            
+            try: 
+                radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
+                dir_str = "增加" if radar_chg > 0 else "減少"
+                chg_text = f"**{dir_str} {abs(radar_chg)}%**"
+            except: pass
 
         if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
         elif curr_price >= latest_lr_mid and latest_lr_mid > 0: lr_pos_text = "股價運行於通道上半部 (強勢多頭區)"
@@ -1666,10 +1663,10 @@ if run_btn:
 
         report_md += "#### 🌊 第二層：中線籌碼 (集保大戶與鎖碼流向)\n"
         report_md += "<ul>"
-        report_md += f"<li>**【大戶真實鎖碼率】**：波段大戶吸納了約 **{radar_c_val}%** 的市場自由流通籌碼。</li>\n"
-        dir_str = "增加" if radar_chg > 0 else "減少"
-        report_md += f"<li>**【波段籌碼流向】**：排除隔日沖雜訊後，最新一週波段大戶實質持股 **{dir_str} {abs(radar_chg)}%**。</li>\n"
-        if radar_chg >= 1.0: layer2_diag = "🟢 中線大戶持續吃貨鎖碼，籌碼集中度顯著提升。"
+        report_md += f"<li>**【大戶真實鎖碼率】**：波段大戶吸納了約 {c_val_text} 的市場自由流通籌碼。</li>\n"
+        report_md += f"<li>**【波段籌碼流向】**：排除隔日沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
+        if df_combined_display.empty: layer2_diag = "⚪ 集保大戶數據不足 (可能為新上市或資料未滿兩週)，無法計算變動率。"
+        elif radar_chg >= 1.0: layer2_diag = "🟢 中線大戶持續吃貨鎖碼，籌碼集中度顯著提升。"
         elif radar_chg <= -1.0: layer2_diag = "🔴 中線大戶出現逢高減碼或倒貨跡象，籌碼流向散戶。"
         else: layer2_diag = "⚪ 中線大戶籌碼水位無明顯極端變動，處於觀望或盤整。"
         report_md += f"<li>**👉 解讀**：{layer2_diag}</li>"
@@ -1697,7 +1694,7 @@ if run_btn:
             conclusion = "🚨 【形態轉弱 / 主力撤退，立刻停損】"
             action = f"視覺形態確認跌破或轉弱，且今日聰明錢果斷撤退。技術面與籌碼面雙重轉空，請立刻停損逃命，嚴禁留戀！"
         elif pat_is_breakout and today_smart_net > 0:
-            conclusion = "🚀 【形態轉強 / 主力點火，強勢追擊】"
+            conclusion = "🚀 【形態突破 / 主力點火，強勢追擊】"
             action = f"視覺形態確認突破頸線或形成強力反轉，且今日聰明錢大舉淨流入點火。技術面與籌碼面完美共振，此為高勝率買點，請順勢抱緊！"
         elif radar_chg < -1.0 and today_smart_net < -500 and today_diff_cnt > 0:
             conclusion = "🚨 【高檔派發 / 趨勢反轉，準備逃命】"
@@ -1789,7 +1786,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.17 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.18 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
