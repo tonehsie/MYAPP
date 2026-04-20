@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.11版)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="全息量化系統 (V60.12版)", layout="wide", initial_sidebar_state="expanded")
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -75,18 +75,22 @@ stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 60, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
+
 st.sidebar.divider()
-st.sidebar.markdown("### 🧠 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨加權均價」", value=True)
-st.sidebar.divider()
+st.sidebar.markdown("### 📈 技術通道與均線設定")
+lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 60, 5)
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("📱 全息量化系統 (V60.11 四層兵推整合版)")
+st.sidebar.divider()
+st.sidebar.markdown("### 🧠 淨化籌碼引擎")
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨加權均價」", value=True)
+
+st.title("📱 全息量化系統 (V60.12 線性迴歸通道武裝版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | 🔑 FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"🚀 V60.11：徹底捨棄碎片化報告，重構為「長中短線+最終定調」四層式全息診斷兵推。{usage_text}")
+st.caption(f"🚀 V60.12：實裝動態線性迴歸通道 (Linear Regression Channel)，全面結合 AI 兵推診斷。{usage_text}")
 
 with st.expander("📖 點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -97,7 +101,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("🚀 啟動 V60.11 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("🚀 啟動 V60.12 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1007,6 +1011,30 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta['技術面診斷'] = np.where(cond_up, "🟢 站上中線防守", np.where(cond_down, "🔴 跌破中線防守", "🔵 盤整"))
     return df_ta.sort_values('日期', ascending=False)
 
+# V60.12 新增線性迴歸通道計算函數
+def process_linear_regression(df_price, lr_days):
+    if df_price.empty or len(df_price) < 2:
+        return pd.DataFrame()
+    # 依時間順序由舊到新排序以計算迴歸
+    df_lr = df_price.head(lr_days).copy().sort_values('日期', ascending=True)
+    y = df_lr['收盤價(元)'].values
+    x = np.arange(len(y))
+    
+    # 計算線性迴歸斜率與截距
+    A = np.vstack([x, np.ones(len(x))]).T
+    m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+    
+    # 預測值(中軌)與殘差標準差
+    y_pred = m * x + c
+    residuals = y - y_pred
+    std_err = np.std(residuals)
+    
+    df_lr['LR_Mid'] = y_pred
+    df_lr['LR_Upper'] = y_pred + 2 * std_err
+    df_lr['LR_Lower'] = y_pred - 2 * std_err
+    
+    return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
+
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')].copy()
@@ -1264,7 +1292,7 @@ if run_btn:
         st.warning("⚠️ 請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.11 決策引擎 (四層全息兵推模組構建中)..."):
+    with st.spinner(f"正在啟動 V60.12 決策引擎 (線性迴歸通道與四層兵推建構中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"⚠️ 查無股票代號 {user_stock_id} 的基本資料。")
@@ -1287,6 +1315,12 @@ if run_btn:
         df_price = process_price(df_p_raw)
         curr_price = df_price['收盤價(元)'].iloc[0] if not df_price.empty else 0
         df_ta_full = process_technical_analysis(df_price, ma_short, ma_mid, ma_long)
+        
+        # V60.12 執行線性迴歸通道運算
+        df_lr_channel = process_linear_regression(df_price, lr_days)
+        latest_lr_upper = df_lr_channel['LR_Upper'].iloc[-1] if not df_lr_channel.empty else 0.0
+        latest_lr_mid = df_lr_channel['LR_Mid'].iloc[-1] if not df_lr_channel.empty else 0.0
+        latest_lr_lower = df_lr_channel['LR_Lower'].iloc[-1] if not df_lr_channel.empty else 0.0
         
         dynamic_dict, s_val, chip_eng, _ = scrape_director_v50(user_stock_id)
         df_b_raw = fetch_branch_data_v50(dates[:max_len], user_stock_id)
@@ -1380,20 +1414,35 @@ if run_btn:
             
         company_info_text = f"🏢 **【產業】** {industry} &nbsp;｜&nbsp; 💵 **【股本】** {capital_str} &nbsp;｜&nbsp; 💰 **【市值】** {market_cap_str} &nbsp;｜&nbsp; 📍 **【公司地址】** {address} &nbsp;｜&nbsp; 🔒 **【董監死籌碼】** {director_holding_str}"
         
-        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.11)")
+        st.subheader(f"📊 {user_stock_id} {name} 全息戰報 (V60.12)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
+        # ---------------------------------------------------------
+        # V60.12 K線置頂並疊加線性迴歸通道
+        # ---------------------------------------------------------
         if not df_ta_full.empty:
-            st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與成交量 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>📈 極簡純淨 K 線與動態通道 (自訂 {kline_days} 日)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
+            
+            # 整合通道數據
+            if not df_lr_channel.empty:
+                df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
             
             if not df_plot.empty:
                 df_plot['日期'] = df_plot['日期'].astype(str)
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_heights=[0.75, 0.25])
                 
                 fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot['收盤價(元)'], mode='markers', marker=dict(color='rgba(0,0,0,0)', size=2), hoverinfo='none', showlegend=False), row=1, col=1)
+                
+                # 畫出線性迴歸通道 (半透明藍色底)
+                if 'LR_Upper' in df_plot.columns and not df_plot['LR_Upper'].isna().all():
+                    df_plot_lr = df_plot.dropna(subset=['LR_Upper'])
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Upper'], mode='lines', name='通道上軌', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Lower'], mode='lines', name='通道下軌', fill='tonexty', fillcolor='rgba(30, 58, 138, 0.05)', line=dict(color='rgba(30, 58, 138, 0.3)', width=1), hoverinfo='skip'), row=1, col=1)
+                    fig.add_trace(go.Scatter(x=df_plot_lr['日期'], y=df_plot_lr['LR_Mid'], mode='lines', name='通道中軌', line=dict(color='rgba(30, 58, 138, 0.8)', width=1.5, dash='dot'), hoverinfo='skip'), row=1, col=1)
+
                 fig.add_trace(go.Candlestick(x=df_plot['日期'], open=df_plot['開盤價(元)'], high=df_plot['最高價(元)'], low=df_plot['最低價(元)'], close=df_plot['收盤價(元)'], name='K線', increasing_line_color='#d32f2f', increasing_fillcolor='#d32f2f', decreasing_line_color='#2e7d32', decreasing_fillcolor='#2e7d32', whiskerwidth=0, hoverinfo='skip'), row=1, col=1)
                 
                 if f'MA{ma_short}' in df_plot.columns: fig.add_trace(go.Scatter(x=df_plot['日期'], y=df_plot[f'MA{ma_short}'], mode='lines', name=f'MA{ma_short}', line=dict(color='#ffa726', width=1.5), hoverinfo='skip'), row=1, col=1)
@@ -1412,7 +1461,7 @@ if run_btn:
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
         # ---------------------------------------------------------
-        # V60.11 AI 全息籌碼深度診斷總結 (四層兵推重構)
+        # AI 全息籌碼深度診斷總結 (四層兵推重構 + 通道判定)
         # ---------------------------------------------------------
         st.markdown("<div class='category-title'>🤖 AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
@@ -1441,16 +1490,26 @@ if run_btn:
             try: radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
             except: radar_chg = 0.0
 
+        # 通道位階判定
+        if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
+        elif curr_price >= latest_lr_mid and latest_lr_mid > 0: lr_pos_text = "股價運行於通道上半部 (強勢多頭區)"
+        elif curr_price <= latest_lr_lower and latest_lr_lower > 0: lr_pos_text = "股價已觸碰或跌破通道下軌 (極度超跌區)"
+        elif latest_lr_mid > 0: lr_pos_text = "股價運行於通道下半部 (弱勢空頭區)"
+        else: lr_pos_text = "通道資料不足"
+
         report_md = "<div class='ai-report-box'>\n\n"
 
-        report_md += "#### ⚓ 第一層：長線底盤 (波段防守與籌碼成本)\n"
+        report_md += "#### ⚓ 第一層：長線底盤與動態通道 (防守線與價格重心)\n"
         report_md += "<ul>"
         report_md += f"<li>**【防守價與乖離】**：系統算出核心主力加權防守價為 **{vwap_str} 元**。今日收盤價 **{curr_price} 元**，主力成本乖離率 **{bias:.1f}%**。</li>\n"
+        if latest_lr_upper > 0:
+            report_md += f"<li>**【線性迴歸通道】**：{lr_days}日動態通道上軌 **{latest_lr_upper:.2f}**，中軌 **{latest_lr_mid:.2f}**，下軌 **{latest_lr_lower:.2f}**。</li>\n"
         report_md += f"<li>**【核心底單水位】**：近60日核心主力淨留倉 **{net_60:+,} 張**，近10日 **{net_10:+,} 張**，近3日 **{net_3:+,} 張**。</li>\n"
-        if bias > 10 and net_60 > 0: layer1_diag = "🟢 長線主力獲利豐厚，處於趨勢推升或高檔狀態，下檔有底單保護但也具備砸盤本錢。"
-        elif bias >= 0 and net_60 > 0: layer1_diag = "🟢 股價貼近主力成本，長線大戶默默吸籌，處於安全建倉區。"
-        elif bias < 0 and net_60 > 0: layer1_diag = "🩹 股價跌破防守線，主力帳面出現虧損，進入弱勢防守戰。"
-        else: layer1_diag = "🔴 長線大戶無明顯囤貨或呈現淨流出，底部支撐脆弱。"
+        
+        if bias > 10 and net_60 > 0: layer1_diag = f"🟢 長線主力獲利豐厚，{lr_pos_text}，下檔有底單保護但也具備砸盤本錢。"
+        elif bias >= 0 and net_60 > 0: layer1_diag = f"🟢 股價貼近主力成本且{lr_pos_text}，長線大戶默默吸籌，處於安全建倉區。"
+        elif bias < 0 and net_60 > 0: layer1_diag = f"🩹 股價跌破防守線且{lr_pos_text}，主力帳面出現虧損，進入弱勢防守戰。"
+        else: layer1_diag = f"🔴 長線大戶無明顯囤貨或呈現淨流出，{lr_pos_text}，底部支撐脆弱。"
         report_md += f"<li>**👉 解讀**：{layer1_diag}</li>"
         report_md += "</ul>\n\n"
 
@@ -1481,7 +1540,13 @@ if run_btn:
         report_md += "#### 👑 第四層：綜合兵推與最終操作定調\n"
         if radar_chg < -1.0 and today_smart_net < -500 and today_diff_cnt > 0:
             conclusion = "🚨 【高檔派發 / 趨勢反轉，準備逃命】"
-            action = "中線大戶已在減碼，今日短線聰明錢又趁機大舉倒貨給散戶。儘管長線防守價未破，但這正是主力利用老本優勢在進行出貨。請忽略長線的靜態支撐，立刻以短線逃命訊號為主，逢高減碼，嚴防接刀多殺多！"
+            action = f"中線大戶已在減碼，今日短線聰明錢大舉倒貨給散戶。目前{lr_pos_text}，請忽略長線的靜態支撐，立刻以短線逃命訊號為主，逢高減碼，嚴防接刀多殺多！"
+        elif curr_price >= latest_lr_upper and latest_lr_upper > 0 and today_smart_net < 0:
+            conclusion = "🚨 【通道過熱 / 逢高派發，準備停利】"
+            action = f"股價已頂到 {lr_days} 日通道上軌（極度過熱區），且短線聰明錢開始趁高檔撤退。請逢高停利一趟，嚴防主力順勢出貨，切勿在此追高！"
+        elif curr_price <= latest_lr_lower and latest_lr_lower > 0 and radar_chg >= 0 and today_smart_net > 0:
+            conclusion = "🚀 【超跌反轉 / 左側掃貨，絕佳買點】"
+            action = f"股價打到 {lr_days} 日通道下軌（極度超跌區），但中線大戶籌碼安定，且今日短線聰明錢大舉淨流入！主力趁暴跌吃貨，此為極具安全邊際的高勝率左側買點。"
         elif radar_chg > 1.0 and today_smart_net > 500 and float(today_fp) > 1.2:
             conclusion = "🚀 【強勢推升 / 主力鎖碼，順勢抱緊】"
             action = "中線大戶持續吸籌，今日短線火力全開且聰明錢大舉淨流入。籌碼高度集中於特定主力手中，趨勢呈強勢多頭，沿防守線抱緊，切勿輕易被洗下車。"
@@ -1564,17 +1629,21 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 Gemini 進行深度分析或稽核。")
-        with st.expander(f"📋 給 Gemini 的 V60.11 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"📋 給 Gemini 的 V60.12 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統鷹眼報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
-            # V60.11 淨化 CSV 輸出：剝除 HTML 與 Markdown 符號，讓 AI 讀取純粹文本
-            clean_ai_report = re.sub(r'<[^>]+>', '', report_md) # 移除 HTML 標籤
-            clean_ai_report = re.sub(r'[*#>`🚀🟢🔴🩹💀🔥🧱⚖️⚡🎯📈💡]', '', clean_ai_report) # 移除 Markdown 與 Emoji
+            clean_ai_report = re.sub(r'<[^>]+>', '', report_md)
+            clean_ai_report = re.sub(r'[*#>`🚀🟢🔴🩹💀🔥🧱⚖️⚡🎯📈💡⚓🌊👑]', '', clean_ai_report)
             clean_ai_report = clean_ai_report.replace('&nbsp;', ' ').strip()
             
             p1 += f"▼▼▼ 系統 AI 全息籌碼深度診斷總結 ▼▼▼\n"
             p1 += f"{clean_ai_report}\n\n"
+            
+            if latest_lr_upper > 0:
+                p1 += f"【線性迴歸通道上軌 (壓力)】: {latest_lr_upper:.2f} 元\n"
+                p1 += f"【線性迴歸通道中軌 (趨勢)】: {latest_lr_mid:.2f} 元\n"
+                p1 += f"【線性迴歸通道下軌 (支撐)】: {latest_lr_lower:.2f} 元\n\n"
             
             p1 += f"【系統算出之純淨主力加權防守價 (Net VWAP)】: {vwap_str} 元\n"
             p1 += f"【核心分點控盤率 (相對於自由流通籌碼)】: {core_c_value}%\n\n"
