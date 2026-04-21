@@ -1,7 +1,7 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import requests
 import pandas as pd
+import requests
+import json
 import numpy as np
 import datetime
 import re
@@ -9,14 +9,14 @@ import concurrent.futures
 import urllib.request
 import ssl
 import urllib3
-import json
 from io import StringIO
+import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(page_title="全息量化系統 (V60.18版)", layout="wide", initial_sidebar_state="expanded")
-FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.19版)", initial_sidebar_state="expanded")
 
+FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 CSS = """
@@ -92,21 +92,21 @@ pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "連續：矩形 (箱型整理)"
 ])
 
+lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 20, 5)
 pattern_order = st.sidebar.slider("形態辨識靈敏度 (Order)", 2, 20, 5, 1)
-lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 60, 5)
 
 st.sidebar.divider()
 st.sidebar.markdown("### 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算「純淨加權均價」", value=True)
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算純淨加權均價", value=True)
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.18 極端資料防呆版)")
+st.title("全息量化系統 (V60.19 極端資料防呆版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.18：修復集保資料不足時導致的 0.0% 顯示錯誤，完美備援防呆機制。{usage_text}")
+st.caption(f"V60.19：優化 K 線黑白對比，通道預設 20 天，純淨專業介面。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.18 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.19 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1414,7 +1414,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.18 決策引擎 (修復集保斷層與純淨化圖表)..."):
+    with st.spinner(f"正在啟動 V60.19 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1538,7 +1538,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.18)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.19)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1554,7 +1554,7 @@ if run_btn:
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
                 volume_data = [
-                    {'time': t, 'value': float(v), 'color': '#000000' if c >= o else '#888888'}
+                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
                     for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
                 ]
 
@@ -1616,8 +1616,8 @@ if run_btn:
                         const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), volOptions);
 
                         const candleSeries = mainChart.addCandlestickSeries({
-                            upColor: '#fff', borderUpColor: '#000', wickUpColor: '#000',
-                            downColor: '#000', borderDownColor: '#000', wickDownColor: '#000'
+                            upColor: '#ffffff', borderUpColor: '#000000', wickUpColor: '#000000',
+                            downColor: '#000000', borderDownColor: '#000000', wickDownColor: '#000000'
                         });
                         candleSeries.setData(kData);
 
@@ -1633,7 +1633,7 @@ if run_btn:
                         const updateLegend = (p) => {
                             const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
                             if (d) {
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${d.close >= d.open ? '#e53935' : '#43a047'}">${d.close}</span>`;
+                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
                             }
                         };
                         updateLegend({time: null});
@@ -1679,23 +1679,23 @@ if run_btn:
 
         radar_c_val = 0.0
         radar_chg = 0.0
-        c_val_text = "**[數據擷取中/不足]**"
-        chg_text = "**[變動率計算中/不足]**"
+        c_val_text = "[數據擷取中/不足]"
+        chg_text = "[變動率計算中/不足]"
         
         if not df_combined_display.empty:
             try: 
                 c_val_raw = df_combined_display.iloc[0].get('純淨活大戶C_Value(%)', 0)
                 if str(c_val_raw).strip() == "-":
-                    c_val_text = f"**{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)**"
+                    c_val_text = f"{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)"
                 else:
                     radar_c_val = float(str(c_val_raw).replace('+', '').replace(',', '').replace('%', '').strip())
-                    c_val_text = f"**{radar_c_val}%**"
+                    c_val_text = f"{radar_c_val}%"
             except: pass
             
             try: 
                 radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
                 dir_str = "增加" if radar_chg > 0 else "減少"
-                chg_text = f"**{dir_str} {abs(radar_chg)}%**"
+                chg_text = f"{dir_str} {abs(radar_chg)}%"
             except: pass
 
         if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
@@ -1709,52 +1709,52 @@ if run_btn:
         report_md += "#### 第零層：幾何形態與結構 (AI 視覺辨識)\n"
         report_md += "<ul>"
         if pat_data:
-            report_md += f"<li>**【觸發形態】**：{pat_data['desc']}。</li>\n"
+            report_md += f"<li>【觸發形態】：{pat_data['desc']}。</li>\n"
             if pat_data['signal'] == 'bullish': pat_diag = "圖形結構偏多，若配合聰明錢流入，突破成功率極高。"
             elif pat_data['signal'] == 'bearish': pat_diag = "圖形結構偏空，上檔頸線或壓力沉重，提防假突破真倒貨。"
             else: pat_diag = "圖形面臨收斂末端或箱型邊界，即將表態，請密切觀察突破方向與籌碼跟進狀況。"
-            report_md += f"<li>**解讀**：{pat_diag}</li>"
+            report_md += f"<li>解讀：{pat_diag}</li>"
         else:
-            report_md += f"<li>**【觸發形態】**：目前設定下無明顯標準幾何形態。</li>\n"
-            report_md += f"<li>**解讀**：可嘗試調降「形態辨識靈敏度」或切換為強制鎖定模式以尋找次級波段形態。</li>"
+            report_md += f"<li>【觸發形態】：目前設定下無明顯標準幾何形態。</li>\n"
+            report_md += f"<li>解讀：可嘗試調降「形態辨識靈敏度」或切換為強制鎖定模式以尋找次級波段形態。</li>"
         report_md += "</ul>\n\n"
 
         report_md += "#### 第一層：長線底盤與動態通道 (防守線與價格重心)\n"
         report_md += "<ul>"
-        report_md += f"<li>**【防守價與乖離】**：系統算出核心主力加權防守價為 **{vwap_str} 元**。今日收盤價 **{curr_price} 元**，主力成本乖離率 **{bias:.1f}%**。</li>\n"
+        report_md += f"<li>【防守價與乖離】：系統算出核心主力加權防守價為 {vwap_str} 元。今日收盤價 {curr_price} 元，主力成本乖離率 {bias:.1f}%。</li>\n"
         if latest_lr_upper > 0:
-            report_md += f"<li>**【線性迴歸通道】**：{lr_days}日動態通道上軌 **{latest_lr_upper:.2f}**，中軌 **{latest_lr_mid:.2f}**，下軌 **{latest_lr_lower:.2f}**。</li>\n"
-        report_md += f"<li>**【核心底單水位】**：近60日核心主力淨留倉 **{net_60:+,} 張**，近10日 **{net_10:+,} 張**，近3日 **{net_3:+,} 張**。</li>\n"
+            report_md += f"<li>【線性迴歸通道】：{lr_days}日動態通道上軌 {latest_lr_upper:.2f}，中軌 {latest_lr_mid:.2f}，下軌 {latest_lr_lower:.2f}。</li>\n"
+        report_md += f"<li>【核心底單水位】：近60日核心主力淨留倉 {net_60:+,} 張，近10日 {net_10:+,} 張，近3日 {net_3:+,} 張。</li>\n"
         
-        if bias > 10 and net_60 > 0: layer1_diag = f"長線主力獲利豐厚，{lr_pos_text}，下檔有底單保護但也具備砸盤本錢。"
+        if bias >= 10 and net_60 > 0: layer1_diag = f"主力成本乖離達10%以上，為台灣市場波段趨勢啟動特徵，{lr_pos_text}，且長線大戶籌碼鎖定。"
         elif bias >= 0 and net_60 > 0: layer1_diag = f"股價貼近主力成本且{lr_pos_text}，長線大戶默默吸籌，處於安全建倉區。"
         elif bias < 0 and net_60 > 0: layer1_diag = f"股價跌破防守線且{lr_pos_text}，主力帳面出現虧損，進入弱勢防守戰。"
         else: layer1_diag = f"長線大戶無明顯囤貨或呈現淨流出，{lr_pos_text}，底部支撐脆弱。"
-        report_md += f"<li>**解讀**：{layer1_diag}</li>"
+        report_md += f"<li>解讀：{layer1_diag}</li>"
         report_md += "</ul>\n\n"
 
         report_md += "#### 第二層：中線籌碼 (集保大戶與鎖碼流向)\n"
         report_md += "<ul>"
-        report_md += f"<li>**【大戶真實鎖碼率】**：波段大戶吸納了約 {c_val_text} 的市場自由流通籌碼。</li>\n"
-        report_md += f"<li>**【波段籌碼流向】**：排除隔日沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
+        report_md += f"<li>【大戶真實鎖碼率】：波段大戶吸納了約 {c_val_text} 的市場自由流通籌碼。</li>\n"
+        report_md += f"<li>【波段籌碼流向】：排除隔日沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
         if df_combined_display.empty: layer2_diag = "集保大戶數據不足 (可能為新上市或資料未滿兩週)，無法計算變動率。"
         elif radar_chg >= 1.0: layer2_diag = "中線大戶持續吃貨鎖碼，籌碼集中度顯著提升。"
         elif radar_chg <= -1.0: layer2_diag = "中線大戶出現逢高減碼或倒貨跡象，籌碼流向散戶。"
         else: layer2_diag = "中線大戶籌碼水位無明顯極端變動，處於觀望或盤整。"
-        report_md += f"<li>**解讀**：{layer2_diag}</li>"
+        report_md += f"<li>解讀：{layer2_diag}</li>"
         report_md += "</ul>\n\n"
 
         report_md += "#### 第三層：短線肉搏 (今日聰明錢與散戶對決)\n"
         report_md += "<ul>"
         dir_smart = "淨流入" if today_smart_net > 0 else "淨流出"
-        report_md += f"<li>**【今日主力動向】**：聰明錢今日 **{dir_smart} {abs(today_smart_net):,} 張**。</li>\n"
-        report_md += f"<li>**【買賣力道對決】**：買方火力 **{today_fp} 倍**，買賣家數差為 **{today_diff_cnt} 家**。</li>\n"
+        report_md += f"<li>【今日主力動向】：聰明錢今日 {dir_smart} {abs(today_smart_net):,} 張。</li>\n"
+        report_md += f"<li>【買賣力道對決】：買方火力 {today_fp} 倍，買賣家數差為 {today_diff_cnt} 家。</li>\n"
 
         if today_smart_net < 0 and today_diff_cnt > 0: layer3_diag = "聰明錢撤退，且買賣家數差為正(散戶湧入接刀)，標準的主力倒貨特徵。"
         elif today_smart_net > 0 and float(today_fp) >= float(firepower_threshold): layer3_diag = "聰明錢積極買進，且買方火力強大，主力強勢鎖碼推升。"
         elif today_smart_net < 0 and today_diff_cnt <= 0: layer3_diag = "聰明錢流出，但籌碼未發散至散戶手中，偏向特定大戶換手或壓盤洗盤。"
         else: layer3_diag = "短線多空交戰，無極端偏離，屬自然換手。"
-        report_md += f"<li>**解讀**：{layer3_diag}</li>"
+        report_md += f"<li>解讀：{layer3_diag}</li>"
         report_md += "</ul>\n\n"
 
         report_md += "#### 第四層：綜合兵推與最終操作定調\n"
@@ -1858,7 +1858,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.18 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.19 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
