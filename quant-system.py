@@ -37,6 +37,11 @@ def get_stock_data(stock_id, start_date):
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
         
+        # --- 關鍵修復：確保日期排序與去除重複 ---
+        df = df.sort_index(ascending=True)
+        df = df[~df.index.duplicated(keep='last')]
+        df = df.ffill() # 填補可能出現的空值
+        
         # 計算常用的高階參考線：10日、20日、60日均線
         df['MA10'] = df['close'].rolling(window=10).mean()
         df['MA20'] = df['close'].rolling(window=20).mean()
@@ -47,13 +52,12 @@ def get_stock_data(stock_id, start_date):
 df = get_stock_data(stock_id, start_date)
 
 if df is not None:
-    # --- 以下開始準備 TradingView 引擎專用的資料格式 ---
+    # 準備 TradingView 引擎專用的資料格式
     kline_data = []
     volume_data = []
     
     for index, row in df.iterrows():
         t = index.strftime('%Y-%m-%d')
-        # K線資料
         kline_data.append({
             'time': t, 'open': row['open'], 'high': row['max'], 
             'low': row['min'], 'close': row['close']
@@ -61,59 +65,70 @@ if df is not None:
         # 台灣習慣：收盤大於等於開盤為紅，反之為綠
         color = '#ef5350' if row['close'] >= row['open'] else '#26a69a'
         volume_data.append({
-            'time': t, 'value': row['Trading_Volume'], 'color': color
+            'time': t, 'value': float(row['Trading_Volume']), 'color': color
         })
 
-    # 處理均線資料 (需排除開頭無法計算的空白值)
     def prep_ma(series):
-        return [{'time': idx.strftime('%Y-%m-%d'), 'value': val} for idx, val in series.dropna().items()]
+        return [{'time': idx.strftime('%Y-%m-%d'), 'value': float(val)} for idx, val in series.dropna().items()]
         
     ma10_data = prep_ma(df['MA10'])
     ma20_data = prep_ma(df['MA20'])
     ma60_data = prep_ma(df['MA60'])
 
-    # --- 將 TradingView 的網頁語法直接嵌入 Python ---
+    # 將 TradingView 網頁語法直接嵌入 Python，加入防呆與自動適應大小
     html_template = """
     <!DOCTYPE html>
     <html>
     <head>
         <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-        <style> body { margin: 0; padding: 0; background-color: #131722; overflow: hidden; } </style>
+        <style> 
+            body { margin: 0; padding: 0; background-color: #131722; overflow: hidden; } 
+            #tvchart { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        </style>
     </head>
     <body>
-        <div id="tvchart" style="width: 100vw; height: 95vh;"></div>
+        <div id="tvchart"></div>
         <script>
-            // 建立圖表主體與外觀設定
-            const chart = LightweightCharts.createChart(document.getElementById('tvchart'), {
-                layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
-                grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: { borderColor: '#2b2b43', autoScale: true }, // 開啟自動縮放
-                timeScale: { borderColor: '#2b2b43', timeVisible: true }
-            });
+            try {
+                const chartOptions = {
+                    autoSize: true,
+                    layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
+                    grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                    rightPriceScale: { borderColor: '#2b2b43', autoScale: true },
+                    timeScale: { borderColor: '#2b2b43', timeVisible: true }
+                };
+                
+                const chart = LightweightCharts.createChart(document.getElementById('tvchart'), chartOptions);
 
-            // 設定 K 線 (台灣習慣：紅漲綠跌)
-            const mainSeries = chart.addCandlestickSeries({
-                upColor: '#ef5350', downColor: '#26a69a', borderVisible: false,
-                wickUpColor: '#ef5350', wickDownColor: '#26a69a'
-            });
-            mainSeries.setData(KLINE_DATA);
+                // 設定 K 線
+                const mainSeries = chart.addCandlestickSeries({
+                    upColor: '#ef5350', downColor: '#26a69a', borderVisible: false,
+                    wickUpColor: '#ef5350', wickDownColor: '#26a69a'
+                });
+                mainSeries.setData(KLINE_DATA);
 
-            // 設定均線
-            const ma10 = chart.addLineSeries({ color: 'orange', lineWidth: 1.5, title: 'MA10' });
-            ma10.setData(MA10_DATA);
-            const ma20 = chart.addLineSeries({ color: 'cyan', lineWidth: 1.5, title: 'MA20' });
-            ma20.setData(MA20_DATA);
-            const ma60 = chart.addLineSeries({ color: 'magenta', lineWidth: 1.5, title: 'MA60' });
-            ma60.setData(MA60_DATA);
+                // 設定均線
+                const ma10 = chart.addLineSeries({ color: 'orange', lineWidth: 1.5, title: 'MA10' });
+                ma10.setData(MA10_DATA);
+                const ma20 = chart.addLineSeries({ color: 'cyan', lineWidth: 1.5, title: 'MA20' });
+                ma20.setData(MA20_DATA);
+                const ma60 = chart.addLineSeries({ color: 'magenta', lineWidth: 1.5, title: 'MA60' });
+                ma60.setData(MA60_DATA);
 
-            // 設定成交量 (疊加在圖表最下方)
-            const volumeSeries = chart.addHistogramSeries({
-                priceFormat: { type: 'volume' },
-                priceScaleId: '', // 將 Y 軸獨立，不干擾 K 線的價格縮放
-                scaleMargins: { top: 0.8, bottom: 0 } // 只佔據畫面底部 20%
-            });
-            volumeSeries.setData(VOLUME_DATA);
+                // 設定成交量
+                chart.priceScale('volume').applyOptions({
+                    scaleMargins: { top: 0.8, bottom: 0 },
+                });
+                const volumeSeries = chart.addHistogramSeries({
+                    priceFormat: { type: 'volume' },
+                    priceScaleId: 'volume',
+                });
+                volumeSeries.setData(VOLUME_DATA);
+                
+            } catch (error) {
+                document.body.innerHTML = "<div style='color:#ef5350; font-family:sans-serif; padding:20px;'><h3>圖表渲染失敗</h3><p>錯誤訊息: " + error.message + "</p></div>";
+            }
         </script>
     </body>
     </html>
@@ -126,7 +141,7 @@ if df is not None:
     html_code = html_code.replace("MA20_DATA", json.dumps(ma20_data))
     html_code = html_code.replace("MA60_DATA", json.dumps(ma60_data))
 
-    # 在 Streamlit 中渲染這張圖表
+    # 在 Streamlit 中渲染圖表
     components.html(html_code, height=750)
 else:
     st.error("查無資料，請確認代號或日期是否正確，或您的 Token 權限是否正常。")
