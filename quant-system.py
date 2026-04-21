@@ -157,7 +157,7 @@ if df is not None:
     </body>
     </html>
     """
-    st.components.html(
+    components.html(
         html_template.replace("KLINE_DATA", json.dumps(kline_data))
                      .replace("VOLUME_DATA", json.dumps(volume_data))
                      .replace("MA_DATA", json.dumps(ma_data)),
