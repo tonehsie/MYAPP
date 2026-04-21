@@ -37,12 +37,12 @@ def get_stock_data(stock_id, start_date):
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
         
-        # --- 關鍵修復：確保日期排序與去除重複 ---
+        # 確保日期排序與去除重複
         df = df.sort_index(ascending=True)
         df = df[~df.index.duplicated(keep='last')]
-        df = df.ffill() # 填補可能出現的空值
+        df = df.ffill()
         
-        # 計算常用的高階參考線：10日、20日、60日均線
+        # 計算高階參考線：10日、20日、60日均線
         df['MA10'] = df['close'].rolling(window=10).mean()
         df['MA20'] = df['close'].rolling(window=20).mean()
         df['MA60'] = df['close'].rolling(window=60).mean()
@@ -62,7 +62,7 @@ if df is not None:
             'time': t, 'open': row['open'], 'high': row['max'], 
             'low': row['min'], 'close': row['close']
         })
-        # 台灣習慣：收盤大於等於開盤為紅，反之為綠
+        # 收盤大於等於開盤為紅，反之為綠
         color = '#ef5350' if row['close'] >= row['open'] else '#26a69a'
         volume_data.append({
             'time': t, 'value': float(row['Trading_Volume']), 'color': color
@@ -75,12 +75,12 @@ if df is not None:
     ma20_data = prep_ma(df['MA20'])
     ma60_data = prep_ma(df['MA60'])
 
-    # 將 TradingView 網頁語法直接嵌入 Python，加入防呆與自動適應大小
+    # 鎖定載入 4.2.1 穩定版的 Lightweight Charts 引擎
     html_template = """
     <!DOCTYPE html>
     <html>
     <head>
-        <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+        <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
         <style> 
             body { margin: 0; padding: 0; background-color: #131722; overflow: hidden; } 
             #tvchart { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
