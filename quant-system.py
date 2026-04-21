@@ -5,15 +5,12 @@ import json
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 
-# 設定網頁全寬
 st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
 
-# 您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階技術分析 (純淨白底黑白版 - 移除均線價格標籤)")
+st.title("高階技術分析 (純淨白底黑白版 - 10/60/240均線)")
 
-# 輸入介面
 col1, col2 = st.columns(2)
 with col1:
     stock_id = st.text_input("輸入股票代號", "2330")
@@ -22,8 +19,9 @@ with col2:
 
 @st.cache_data
 def get_stock_data(stock_id, start_date_str):
+    # 擴大緩衝期至 400 天，確保 240MA 能夠計算
     start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
-    fetch_start = (start_dt - timedelta(days=150)).strftime('%Y-%m-%d')
+    fetch_start = (start_dt - timedelta(days=400)).strftime('%Y-%m-%d')
     
     url = "https://api.finmindtrade.com/api/v4/data"
     params = {
@@ -41,9 +39,10 @@ def get_stock_data(stock_id, start_date_str):
         df.set_index('date', inplace=True)
         df = df.sort_index(ascending=True).drop_duplicates(keep='last').ffill()
         
+        # 更改均線參數：10, 60, 240
         df['MA10'] = df['close'].rolling(window=10).mean()
-        df['MA20'] = df['close'].rolling(window=20).mean()
         df['MA60'] = df['close'].rolling(window=60).mean()
+        df['MA240'] = df['close'].rolling(window=240).mean()
         
         df = df[df.index >= pd.to_datetime(start_date_str)]
         return df
@@ -65,8 +64,8 @@ if df is not None:
     
     ma_data = {
         "ma10": prep_ma(df['MA10']),
-        "ma20": prep_ma(df['MA20']),
-        "ma60": prep_ma(df['MA60'])
+        "ma60": prep_ma(df['MA60']),
+        "ma240": prep_ma(df['MA240'])
     }
 
     html_template = """
@@ -108,13 +107,13 @@ if df is not None:
             });
             candleSeries.setData(kData);
 
-            // 關閉均線在右側 Y 軸上的最新數值標籤與水平線
+            // 寫入 10, 60, 240 均線，並保持右側標籤隱藏
             const s10 = mainChart.addLineSeries({ color: '#ff9800', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
             s10.setData(ma.ma10);
-            const s20 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-            s20.setData(ma.ma20);
-            const s60 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+            const s60 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
             s60.setData(ma.ma60);
+            const s240 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+            s240.setData(ma.ma240);
 
             const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
             vSeries.setData(vData);
