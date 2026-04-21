@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.19版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.20版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -103,10 +103,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.19 極端資料防呆版)")
+st.title("全息量化系統 (V60.20 極端資料防呆版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.19：優化 K 線黑白對比，通道預設 20 天，純淨專業介面。{usage_text}")
+st.caption(f"V60.20：修復 Lightweight Charts 通道與圖形渲染遺失問題，還原技術分析線。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.19 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.20 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1414,7 +1414,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.19 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.20 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1538,7 +1538,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.19)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.20)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1548,6 +1548,33 @@ if run_btn:
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
 
             if not df_plot.empty:
+                # 把線性迴歸通道的資料 Merge 進來，並包裝成 JSON 給 JS 讀取
+                lr_data_json = "{}"
+                if not df_lr_channel.empty:
+                    df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
+                    df_plot_lr = df_plot.dropna(subset=['LR_Upper']).sort_values('日期', ascending=True)
+                    lr_data = {
+                        "upper": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
+                        "mid": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
+                        "lower": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Lower'])]
+                    }
+                    lr_data_json = json.dumps(lr_data)
+
+                # 把幾何圖形的資料包裝成 JSON 給 JS 讀取
+                pat_js = "[]"
+                neck_js = "[]"
+                pat_color_js = "'transparent'"
+                if pat_data:
+                    pat_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
+                    neck_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
+                    
+                    pat_list = sorted(pat_list, key=lambda k: k['time'])
+                    neck_list = sorted(neck_list, key=lambda k: k['time'])
+                    
+                    pat_js = json.dumps(pat_list)
+                    neck_js = json.dumps(neck_list)
+                    pat_color_js = f"'{pat_data.get('color', '#000000')}'"
+
                 time_series = df_plot['日期'].astype(str).tolist()
                 kline_data = [
                     {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
@@ -1621,10 +1648,30 @@ if run_btn:
                         });
                         candleSeries.setData(kData);
 
-                        const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false };
+                        // 繪製均線
+                        const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
                         mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
                         mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
                         mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
+
+                        // 繪製線性迴歸通道
+                        const lr = LR_DATA;
+                        if (lr && lr.upper && lr.upper.length > 0) {
+                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
+                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
+                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.lower);
+                        }
+
+                        // 繪製幾何形態與技術頸線
+                        const pat = PAT_DATA;
+                        const neck = NECK_DATA;
+                        const patColor = PAT_COLOR;
+                        if (pat && pat.length > 0) {
+                            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(pat);
+                        }
+                        if (neck && neck.length > 0) {
+                            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
+                        }
 
                         const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         vSeries.setData(vData);
@@ -1655,7 +1702,13 @@ if run_btn:
                 </body>
                 </html>
                 """
-                html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data)).replace("VOLUME_DATA", json.dumps(volume_data)).replace("MA_DATA", json.dumps(ma_data))
+                html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
+                                         .replace("VOLUME_DATA", json.dumps(volume_data))\
+                                         .replace("MA_DATA", json.dumps(ma_data))\
+                                         .replace("LR_DATA", lr_data_json)\
+                                         .replace("PAT_DATA", pat_js)\
+                                         .replace("NECK_DATA", neck_js)\
+                                         .replace("PAT_COLOR", pat_color_js)
                 components.html(html_code, height=736)
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
@@ -1858,7 +1911,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.19 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.20 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
