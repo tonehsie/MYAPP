@@ -11,7 +11,7 @@ st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
 # 您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階技術分析 (純淨白底黑白版)")
+st.title("高階技術分析 (純淨白底黑白版 - 移除均線價格標籤)")
 
 # 輸入介面
 col1, col2 = st.columns(2)
@@ -22,7 +22,6 @@ with col2:
 
 @st.cache_data
 def get_stock_data(stock_id, start_date_str):
-    # 自動多抓 150 天的資料做緩衝，確保 MA 正常計算
     start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
     fetch_start = (start_dt - timedelta(days=150)).strftime('%Y-%m-%d')
     
@@ -42,12 +41,10 @@ def get_stock_data(stock_id, start_date_str):
         df.set_index('date', inplace=True)
         df = df.sort_index(ascending=True).drop_duplicates(keep='last').ffill()
         
-        # 計算均線
         df['MA10'] = df['close'].rolling(window=10).mean()
         df['MA20'] = df['close'].rolling(window=20).mean()
         df['MA60'] = df['close'].rolling(window=60).mean()
         
-        # 只保留使用者真正要看的日期範圍
         df = df[df.index >= pd.to_datetime(start_date_str)]
         return df
     return None
@@ -105,26 +102,23 @@ if df is not None:
             const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), {...options, timeScale: {visible: false}});
             const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), options);
 
-            // K線
             const candleSeries = mainChart.addCandlestickSeries({
                 upColor: '#fff', borderUpColor: '#000', wickUpColor: '#000',
                 downColor: '#000', borderDownColor: '#000', wickDownColor: '#000'
             });
             candleSeries.setData(kData);
 
-            // 均線 (移除 title 屬性)
-            const s10 = mainChart.addLineSeries({ color: '#ff9800', lineWidth: 2 });
+            // 關閉均線在右側 Y 軸上的最新數值標籤與水平線
+            const s10 = mainChart.addLineSeries({ color: '#ff9800', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
             s10.setData(ma.ma10);
-            const s20 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2 });
+            const s20 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
             s20.setData(ma.ma20);
-            const s60 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2 });
+            const s60 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
             s60.setData(ma.ma60);
 
-            // 成交量
             const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
             vSeries.setData(vData);
 
-            // 同步與純淨版 Legend (移除 MA 數值)
             const legend = document.getElementById('legend');
             const sync = (p) => {
                 if (p.time) {
