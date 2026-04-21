@@ -10,7 +10,7 @@ st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
 # 帶入您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階互動技術圖表 (雙視窗分離連動版)")
+st.title("高階技術分析 (白底黑白專業版)")
 
 # 建立輸入介面
 col1, col2 = st.columns(2)
@@ -42,7 +42,7 @@ def get_stock_data(stock_id, start_date):
         df = df[~df.index.duplicated(keep='last')]
         df = df.ffill()
         
-        # 計算高階參考線：10日、20日、60日均線
+        # 計算均線
         df['MA10'] = df['close'].rolling(window=10).mean()
         df['MA20'] = df['close'].rolling(window=20).mean()
         df['MA60'] = df['close'].rolling(window=60).mean()
@@ -52,7 +52,7 @@ def get_stock_data(stock_id, start_date):
 df = get_stock_data(stock_id, start_date)
 
 if df is not None:
-    # 準備 TradingView 引擎專用的資料格式
+    # 準備資料
     kline_data = []
     volume_data = []
     
@@ -62,10 +62,10 @@ if df is not None:
             'time': t, 'open': row['open'], 'high': row['max'], 
             'low': row['min'], 'close': row['close']
         })
-        # 收盤大於等於開盤為紅，反之為綠
-        color = '#ef5350' if row['close'] >= row['open'] else '#26a69a'
+        # 成交量配色：維持黑色調，但以深淺區分漲跌
+        vol_color = '#000000' if row['close'] >= row['open'] else '#888888'
         volume_data.append({
-            'time': t, 'value': float(row['Trading_Volume']), 'color': color
+            'time': t, 'value': float(row['Trading_Volume']), 'color': vol_color
         })
 
     def prep_ma(series):
@@ -75,17 +75,15 @@ if df is not None:
     ma20_data = prep_ma(df['MA20'])
     ma60_data = prep_ma(df['MA60'])
 
-    # 嵌入前端程式碼，建立雙 div 視窗並進行 JS 雙向綁定
+    # 嵌入前端程式碼：設定白底與黑白 K 線
     html_template = """
     <!DOCTYPE html>
     <html>
     <head>
         <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
         <style> 
-            body { margin: 0; padding: 0; background-color: #131722; display: flex; flex-direction: column; height: 100vh; overflow: hidden; } 
-            /* 物理分離的關鍵：上方 K 線區塊佔據 75%，並加一條實體分隔線 */
-            #chart-main { flex: 3; position: relative; border-bottom: 2px solid #2b2b43; }
-            /* 下方成交量區塊佔據 25% */
+            body { margin: 0; padding: 0; background-color: #ffffff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; } 
+            #chart-main { flex: 3; position: relative; border-bottom: 1px solid #e1e3eb; }
             #chart-vol { flex: 1; position: relative; }
         </style>
     </head>
@@ -95,35 +93,39 @@ if df is not None:
         
         <script>
             try {
-                // 共用的基礎外觀設定
+                // 白底配置設定
                 const commonOptions = {
                     autoSize: true,
-                    layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
-                    grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
-                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                    rightPriceScale: { borderColor: '#2b2b43' }
+                    layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#333333' },
+                    grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { color: '#758696' }, horzLine: { color: '#758696' } },
+                    rightPriceScale: { borderColor: '#e1e3eb' }
                 };
 
-                // --- 1. 建立主圖表 (K線與均線) ---
                 const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), {
                     ...commonOptions,
-                    timeScale: { visible: false } // 隱藏主圖表的時間軸，讓畫面更緊湊
+                    timeScale: { visible: false }
                 });
 
+                // 設定黑白 K 線：陽線白底黑框，陰線純黑
                 const mainSeries = mainChart.addCandlestickSeries({
-                    upColor: '#ef5350', downColor: '#26a69a', borderVisible: false,
-                    wickUpColor: '#ef5350', wickDownColor: '#26a69a'
+                    upColor: '#ffffff',       // 漲：白色填充
+                    borderUpColor: '#000000', // 漲：黑色邊框
+                    wickUpColor: '#000000',   // 漲：黑色影線
+                    downColor: '#000000',     // 跌：黑色填充
+                    borderDownColor: '#000000',
+                    wickDownColor: '#000000'
                 });
                 mainSeries.setData(KLINE_DATA);
 
-                mainChart.addLineSeries({ color: 'orange', lineWidth: 1.5, title: 'MA10' }).setData(MA10_DATA);
-                mainChart.addLineSeries({ color: 'cyan', lineWidth: 1.5, title: 'MA20' }).setData(MA20_DATA);
-                mainChart.addLineSeries({ color: 'magenta', lineWidth: 1.5, title: 'MA60' }).setData(MA60_DATA);
+                // 均線：在白底下使用更鮮艷但專業的顏色
+                mainChart.addLineSeries({ color: '#ff9800', lineWidth: 1.5, title: 'MA10' }).setData(MA10_DATA);
+                mainChart.addLineSeries({ color: '#2196f3', lineWidth: 1.5, title: 'MA20' }).setData(MA20_DATA);
+                mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 1.5, title: 'MA60' }).setData(MA60_DATA);
 
-                // --- 2. 建立副圖表 (成交量) ---
                 const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), {
                     ...commonOptions,
-                    timeScale: { borderColor: '#2b2b43', timeVisible: true }
+                    timeScale: { borderColor: '#e1e3eb', timeVisible: true }
                 });
 
                 const volumeSeries = volChart.addHistogramSeries({
@@ -131,52 +133,40 @@ if df is not None:
                 });
                 volumeSeries.setData(VOLUME_DATA);
 
-                // --- 3. 建立 O(1) 查詢表，用於十字線同步 ---
-                const volMap = {};
-                VOLUME_DATA.forEach(d => { volMap[d.time] = d.value; });
-                const klineMap = {};
-                KLINE_DATA.forEach(d => { klineMap[d.time] = d.close; });
-
-                // --- 4. 雙向綁定：同步縮放與平移 (時間軸) ---
-                mainChart.timeScale().subscribeVisibleLogicalRangeChange(timeRange => {
-                    if (timeRange) volChart.timeScale().setVisibleLogicalRange(timeRange);
+                // 同步機制
+                mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    if (range) volChart.timeScale().setVisibleLogicalRange(range);
                 });
-                volChart.timeScale().subscribeVisibleLogicalRangeChange(timeRange => {
-                    if (timeRange) mainChart.timeScale().setVisibleLogicalRange(timeRange);
+                volChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    if (range) mainChart.timeScale().setVisibleLogicalRange(range);
                 });
 
-                // --- 5. 雙向綁定：同步滑鼠十字線 ---
-                function syncCrosshair(sourceChart, targetChart, dataMap, targetSeries) {
-                    sourceChart.subscribeCrosshairMove(param => {
-                        if (!param.time || param.point.x < 0 || param.point.y < 0) {
-                            targetChart.clearCrosshairPosition();
-                        } else {
-                            const price = dataMap[param.time];
-                            if (price !== undefined) {
-                                targetChart.setCrosshairPosition(price, param.time, targetSeries);
-                            }
-                        }
+                const volMap = {}; VOLUME_DATA.forEach(d => { volMap[d.time] = d.value; });
+                const klineMap = {}; KLINE_DATA.forEach(d => { klineMap[d.time] = d.close; });
+
+                function syncCrosshair(source, target, map, series) {
+                    source.subscribeCrosshairMove(p => {
+                        if (!p.time || p.point.x < 0 || p.point.y < 0) target.clearCrosshairPosition();
+                        else { const price = map[p.time]; if (price !== undefined) target.setCrosshairPosition(price, p.time, series); }
                     });
                 }
                 syncCrosshair(mainChart, volChart, volMap, volumeSeries);
                 syncCrosshair(volChart, mainChart, klineMap, mainSeries);
 
             } catch (error) {
-                document.body.innerHTML = "<div style='color:#ef5350; font-family:sans-serif; padding:20px;'><h3>圖表渲染失敗</h3><p>錯誤訊息: " + error.message + "</p></div>";
+                document.body.innerHTML = "<div style='color:#000000; font-family:sans-serif; padding:20px;'><h3>渲染錯誤</h3><p>" + error.message + "</p></div>";
             }
         </script>
     </body>
     </html>
     """
     
-    # 注入實際數據
     html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))
     html_code = html_code.replace("VOLUME_DATA", json.dumps(volume_data))
     html_code = html_code.replace("MA10_DATA", json.dumps(ma10_data))
     html_code = html_code.replace("MA20_DATA", json.dumps(ma20_data))
     html_code = html_code.replace("MA60_DATA", json.dumps(ma60_data))
 
-    # 在 Streamlit 中渲染圖表，拉高容器確保雙視窗完美顯示
     components.html(html_code, height=850)
 else:
-    st.error("查無資料，請確認代號或日期是否正確，或您的 Token 權限是否正常。")
+    st.error("查無資料，請確認 Token 是否正確。")
