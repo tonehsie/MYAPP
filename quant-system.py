@@ -11,7 +11,7 @@ st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
 # 您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階技術分析 (黑白專業版 - 均線修復)")
+st.title("高階技術分析 (純淨白底黑白版)")
 
 # 輸入介面
 col1, col2 = st.columns(2)
@@ -22,7 +22,7 @@ with col2:
 
 @st.cache_data
 def get_stock_data(stock_id, start_date_str):
-    # 【關鍵修復】為了讓 MA60 正常顯示，自動多抓 100 天的資料做緩衝
+    # 自動多抓 150 天的資料做緩衝，確保 MA 正常計算
     start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
     fetch_start = (start_dt - timedelta(days=150)).strftime('%Y-%m-%d')
     
@@ -81,8 +81,7 @@ if df is not None:
             body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
             #chart-main { flex: 3; border-bottom: 1px solid #eee; position: relative; }
             #chart-vol { flex: 1; }
-            .legend { position: absolute; top: 10px; left: 10px; z-index: 10; font-size: 12px; pointer-events: none; line-height: 1.6; background: rgba(255,255,255,0.8); padding: 5px; border-radius: 4px; }
-            .ma10 { color: #ff9800; } .ma20 { color: #2196f3; } .ma60 { color: #9c27b0; }
+            .legend { position: absolute; top: 10px; left: 10px; z-index: 10; font-size: 12px; pointer-events: none; line-height: 1.6; background: rgba(255,255,255,0.8); padding: 5px; border-radius: 4px; color: #333; }
         </style>
     </head>
     <body>
@@ -113,31 +112,25 @@ if df is not None:
             });
             candleSeries.setData(kData);
 
-            // 均線 - 確保在這裡添加
-            const s10 = mainChart.addLineSeries({ color: '#ff9800', lineWidth: 2, title: 'MA10' });
+            // 均線 (移除 title 屬性)
+            const s10 = mainChart.addLineSeries({ color: '#ff9800', lineWidth: 2 });
             s10.setData(ma.ma10);
-            const s20 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2, title: 'MA20' });
+            const s20 = mainChart.addLineSeries({ color: '#2196f3', lineWidth: 2 });
             s20.setData(ma.ma20);
-            const s60 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2, title: 'MA60' });
+            const s60 = mainChart.addLineSeries({ color: '#9c27b0', lineWidth: 2 });
             s60.setData(ma.ma60);
 
             // 成交量
             const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
             vSeries.setData(vData);
 
-            // 同步與 Legend
+            // 同步與純淨版 Legend (移除 MA 數值)
             const legend = document.getElementById('legend');
             const sync = (p) => {
                 if (p.time) {
                     const d = kData.find(x => x.time === p.time);
-                    const m10 = ma.ma10.find(x => x.time === p.time);
-                    const m20 = ma.ma20.find(x => x.time === p.time);
-                    const m60 = ma.ma60.find(x => x.time === p.time);
                     if (d) {
-                        legend.innerHTML = `<b>${p.time}</b> O:${d.open} H:${d.high} L:${d.low} C:${d.close}<br>` +
-                                         `<span class="ma10">MA10: ${m10?m10.value:'-'}</span> ` +
-                                         `<span class="ma20">MA20: ${m20?m20.value:'-'}</span> ` +
-                                         `<span class="ma60">MA60: ${m60?m60.value:'-'}</span>`;
+                        legend.innerHTML = `<b>${p.time}</b> O:${d.open} H:${d.high} L:${d.low} C:${d.close}`;
                     }
                 }
             };
@@ -163,3 +156,5 @@ if df is not None:
                      .replace("MA_DATA", json.dumps(ma_data)),
         height=800
     )
+else:
+    st.error("查無資料，請確認代號或日期是否正確，或 Token 是否正常。")
