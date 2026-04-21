@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.21 優化版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.22版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -103,10 +103,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.21 極速優化版)")
+st.title("全息量化系統 (V60.22 雙核心極速優化版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.21：深度優化底層 O(N^2) 效能瓶頸，徹底淨化介面。{usage_text}")
+st.caption(f"V60.22：修復模組相依性錯誤，並將 O(1) 向量化預計算全面套用至全息雷達與集保動態分級模組。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.21 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.22 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -476,7 +476,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     tags = g['tag'].to_dict()
     g = g[(g['tb_shares'] > 0) | (g['ts_shares'] > 0)].copy()
     
-    # 向量化自訂格式優化
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}")
     g['b_str'] = np.where(cond_loss, "(虧) " + b_strs, b_strs)
@@ -707,6 +706,22 @@ def get_smart_threshold(price, total_lots, dead_float):
     al = min(levels, key=lambda x: abs(x - raw_threshold))
     return al
 
+def calculate_dynamic_large_holder_pct(row, threshold):
+    levels_dict = {
+        100: '100-200張_比例(%)',
+        200: '200-400張_比例(%)',
+        400: '400-600張_比例(%)',
+        600: '600-800張_比例(%)',
+        800: '800-1000張_比例(%)',
+        1000: '1000張以上_比例(%)'
+    }
+    total = 0.0
+    for k, v in levels_dict.items():
+        if k >= threshold and v in row:
+            val = pd.to_numeric(row.get(v, 0), errors='coerce')
+            if pd.notna(val): total += val
+    return total
+
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df_wide.sort_values('日期', ascending=True).copy()
@@ -722,7 +737,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
     df['總人數變率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
     
-    # 向量化預計算大戶持股比例 (移除 inner loop 中的型別轉換延遲)
+    # 向量化預計算大戶持股比例，避免迴圈內重複呼叫而造成效能瓶頸
     levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
     for col in levels_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0) if col in df.columns else 0.0
@@ -742,7 +757,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         if threshold <= 800: return row['pct_800']
         return row['pct_1000']
     
-    # 預先群組化字典與向量化日期陣列以供 O(1) 與 Binary Search 使用
     arr_dates_str = np.sort(df_branch_raw['date'].unique()) if not df_branch_raw.empty else np.array([])
     arr_dates_dt = pd.to_datetime(arr_dates_str) if len(arr_dates_str) > 0 else []
     branch_grouped_by_date = dict(tuple(df_branch_raw.groupby('date'))) if not df_branch_raw.empty else {}
@@ -853,7 +867,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
-    # 優化：利用字典映射取代 dataframe 搜尋
     branch_grouped = dict(tuple(df_b.groupby('date')))
     price_dict = df_price.set_index('日期').to_dict('index') if not df_price.empty else {}
     diff_dict = df_branch_diff.set_index('日期').to_dict('index') if not df_branch_diff.empty else {}
@@ -1160,6 +1173,26 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     df_s['dt'], df_p['dt'] = pd.to_datetime(df_s['日期']), pd.to_datetime(df_p['日期'])
     df_p = df_p.drop_duplicates(subset=['dt']).sort_values('dt')
     df_m = pd.merge_asof(df_s.sort_values('dt'), df_p[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
+
+    levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+    for col in levels_cols:
+        df_m[col] = pd.to_numeric(df_m[col], errors='coerce').fillna(0.0) if col in df_m.columns else 0.0
+
+    df_m['pct_1000'] = df_m['1000張以上_比例(%)']
+    df_m['pct_800'] = df_m['pct_1000'] + df_m['800-1000張_比例(%)']
+    df_m['pct_600'] = df_m['pct_800'] + df_m['600-800張_比例(%)']
+    df_m['pct_400'] = df_m['pct_600'] + df_m['400-600張_比例(%)']
+    df_m['pct_200'] = df_m['pct_400'] + df_m['200-400張_比例(%)']
+    df_m['pct_100'] = df_m['pct_200'] + df_m['100-200張_比例(%)']
+
+    def get_pct(row, threshold):
+        if threshold <= 100: return row['pct_100']
+        if threshold <= 200: return row['pct_200']
+        if threshold <= 400: return row['pct_400']
+        if threshold <= 600: return row['pct_600']
+        if threshold <= 800: return row['pct_800']
+        return row['pct_1000']
+
     out = []
     for _, row in df_m.iterrows():
         p = row.get('收盤價(元)', 0)
@@ -1168,7 +1201,8 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         total_lots = row.get('總張數', 0)
         safe_dead_ratio = max(0.0, min(99.9, cur_dead))
         ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
-        lp = calculate_dynamic_large_holder_pct(row, ct)
+        
+        lp = get_pct(row, ct)
         cd, st_val = "-", "無董監事持股數據"
         if 0 < safe_dead_ratio < 100:
             cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
@@ -1355,7 +1389,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.21 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.22 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1477,7 +1511,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.21)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.22)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1835,7 +1869,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.21 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.22 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
