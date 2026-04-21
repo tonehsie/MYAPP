@@ -11,9 +11,9 @@ st.set_page_config(layout="wide", page_title="專業級量化互動圖表")
 # 您的 FinMind Token
 TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 
-st.title("高階技術分析 (極速最佳化 + 極窄留白版)")
+st.title("高階技術分析 (極緻緊湊版 - 10/60/240均線)")
 
-# 使用 form 包裝輸入區塊
+# 查詢表單
 with st.form("query_form"):
     col1, col2 = st.columns(2)
     with col1:
@@ -27,7 +27,7 @@ with st.form("query_form"):
 def get_stock_data(stock_id, start_date_str):
     try:
         start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
-        # 擴大緩衝期至 400 天確保 240MA 運算
+        # 緩衝期 400 天確保 240MA 運算
         fetch_start = (start_dt - timedelta(days=400)).strftime('%Y-%m-%d')
         
         url = "https://api.finmindtrade.com/api/v4/data"
@@ -62,7 +62,7 @@ if submitted or 'first_load' not in st.session_state:
     df = get_stock_data(stock_id, start_date_input)
 
     if df is not None:
-        # 高效資料處理
+        # 高效資料處理 (向量化最佳化)
         time_series = df.index.strftime('%Y-%m-%d').tolist()
         kline_data = [
             {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
@@ -87,9 +87,9 @@ if submitted or 'first_load' not in st.session_state:
             <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
             <style>
                 body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
-                #chart-main { flex: 3; border-bottom: 2px solid #f0f3fa; position: relative; }
-                #chart-vol { flex: 1; position: relative;}
-                .legend { position: absolute; top: 8px; left: 10px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.8); padding: 4px 8px; border-radius: 4px; color: #333;}
+                #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
+                #chart-vol { flex: 0.8; position: relative;}
+                .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
             </style>
         </head>
         <body>
@@ -100,7 +100,6 @@ if submitted or 'first_load' not in st.session_state:
                 const vData = VOLUME_DATA;
                 const ma = MA_DATA;
 
-                // 核心優化：壓縮上下邊距
                 const mainOptions = {
                     autoSize: true,
                     layout: { background: { color: '#ffffff' }, textColor: '#333' },
@@ -108,7 +107,8 @@ if submitted or 'first_load' not in st.session_state:
                     rightPriceScale: { 
                         borderColor: '#eee', 
                         autoScale: true,
-                        scaleMargins: { top: 0.03, bottom: 0.03 } // 僅留白 3%，讓 K 線飽滿
+                        // [優化] 上下邊距極致壓縮至 1%
+                        scaleMargins: { top: 0.01, bottom: 0.01 } 
                     },
                     timeScale: { visible: false }
                 };
@@ -120,7 +120,8 @@ if submitted or 'first_load' not in st.session_state:
                     rightPriceScale: { 
                         borderColor: '#eee', 
                         autoScale: true,
-                        scaleMargins: { top: 0.1, bottom: 0 } // 成交量直接貼底
+                        // [優化] 成交量頂部僅留 2%
+                        scaleMargins: { top: 0.02, bottom: 0 } 
                     },
                     timeScale: { borderColor: '#eee' }
                 };
@@ -134,7 +135,6 @@ if submitted or 'first_load' not in st.session_state:
                 });
                 candleSeries.setData(kData);
 
-                // 均線：隱藏 Y 軸標籤
                 const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false };
                 mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma10);
                 mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma60);
@@ -170,6 +170,8 @@ if submitted or 'first_load' not in st.session_state:
         </html>
         """
         html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data)).replace("VOLUME_DATA", json.dumps(volume_data)).replace("MA_DATA", json.dumps(ma_data))
-        components.html(html_code, height=800)
+        
+        # [優化] 整個圖表外層容器高度縮減 8% (由 800 減至 700)
+        components.html(html_code, height=700)
     else:
-        st.warning("查無資料，請確認輸入內容。")
+        st.warning("查無資料。")
