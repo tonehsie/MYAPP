@@ -75,7 +75,7 @@ if df is not None:
     ma20_data = prep_ma(df['MA20'])
     ma60_data = prep_ma(df['MA60'])
 
-    # 鎖定載入 4.2.1 穩定版的 Lightweight Charts 引擎
+    # 鎖定載入 4.2.1 穩定版的 Lightweight Charts 引擎，並設定上下分層邊距
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -95,7 +95,12 @@ if df is not None:
                     layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
                     grid: { vertLines: { color: '#2b2b43' }, horzLines: { color: '#2b2b43' } },
                     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                    rightPriceScale: { borderColor: '#2b2b43', autoScale: true },
+                    rightPriceScale: { 
+                        borderColor: '#2b2b43', 
+                        autoScale: true,
+                        // 主圖表 (K線與均線) 佔據上方空間，距離底部保留 25% 的空白區域
+                        scaleMargins: { top: 0.05, bottom: 0.25 }
+                    },
                     timeScale: { borderColor: '#2b2b43', timeVisible: true }
                 };
                 
@@ -116,10 +121,12 @@ if df is not None:
                 const ma60 = chart.addLineSeries({ color: 'magenta', lineWidth: 1.5, title: 'MA60' });
                 ma60.setData(MA60_DATA);
 
-                // 設定成交量
+                // 設定獨立的成交量 Y 軸區塊
                 chart.priceScale('volume').applyOptions({
+                    // 成交量圖表從上方 80% 處開始，佔據最底部 20% (與主圖表保留 5% 的實體留白)
                     scaleMargins: { top: 0.8, bottom: 0 },
                 });
+                
                 const volumeSeries = chart.addHistogramSeries({
                     priceFormat: { type: 'volume' },
                     priceScaleId: 'volume',
