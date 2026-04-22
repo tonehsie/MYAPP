@@ -317,7 +317,7 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = [], False
+    out, ist = False, []
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
@@ -721,7 +721,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
     df['總人數變率(%)'] = (df['總人數(人)'].pct_change() * 100).round(2)
     
-    # 向量化預計算大戶持股比例 (移除 inner loop 中的型別轉換延遲)
     levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
     for col in levels_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0) if col in df.columns else 0.0
@@ -741,7 +740,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         if threshold <= 800: return row['pct_800']
         return row['pct_1000']
     
-    # 預先處理分點短線標籤並建立 O(1) 字典，根除 N^2 延遲
     fake_dict = {}
     if not df_branch_raw.empty:
         df_b_tagged = df_branch_raw[['date', 'securities_trader', 'buy', 'sell']].copy()
@@ -850,6 +848,7 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "中性換手"})
     return pd.DataFrame(out)
 
+# === 升級模組：加入淨現金流均價法 ===
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
@@ -859,10 +858,20 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     # 預先群組化智能運算字典，根除 N^2 效能延遲
     df_b['is_smart'] = df_b['tag'].str.contains('波段鐵粉|常駐造市|逢高派發|長線倒貨', na=False)
     df_b['is_short'] = df_b['tag'].str.contains('短線狙擊|低檔回補|快閃散戶', na=False)
+    
+    # 優化核心：同時計算買進金額與賣出金額
     df_b['valid_bs'] = np.where(df_b['pr'] > 0, df_b['bs'], 0)
-    df_b['amt'] = df_b['valid_bs'] * df_b['pr']
+    df_b['valid_ss'] = np.where(df_b['pr'] > 0, df_b['ss'], 0)
+    df_b['buy_amt'] = df_b['valid_bs'] * df_b['pr']
+    df_b['sell_amt'] = df_b['valid_ss'] * df_b['pr']
 
-    df_smart_all = df_b[df_b['is_smart']].groupby(['date', 'securities_trader', 'tag']).agg(bs=('bs','sum'), ss=('ss','sum'), valid_bs=('valid_bs','sum'), amt=('amt','sum')).reset_index()
+    df_smart_all = df_b[df_b['is_smart']].groupby(['date', 'securities_trader', 'tag']).agg(
+        bs=('bs','sum'), 
+        ss=('ss','sum'), 
+        buy_amt=('buy_amt','sum'), 
+        sell_amt=('sell_amt','sum')
+    ).reset_index()
+    
     df_smart_all['net_vol'] = ((df_smart_all['bs'] - df_smart_all['ss']) / 1000).round().astype(int)
     smart_dict = dict(tuple(df_smart_all.groupby('date'))) if not df_smart_all.empty else {}
 
@@ -891,7 +900,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         concentration = diff_row.get('籌碼集中度(%)', 0)
         eye_diag = diff_row.get('鷹眼診斷', "")
 
-        smart_grouped = smart_dict.get(d, pd.DataFrame(columns=['securities_trader', 'tag', 'bs', 'ss', 'valid_bs', 'amt', 'net_vol']))
+        smart_grouped = smart_dict.get(d, pd.DataFrame(columns=['securities_trader', 'tag', 'bs', 'ss', 'buy_amt', 'sell_amt', 'net_vol']))
         short_grouped = short_dict.get(d, pd.DataFrame(columns=['securities_trader', 'bs', 'ss', 'net_vol']))
         
         if d == actual_dates[0]:
@@ -901,14 +910,26 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_net = smart_grouped['net_vol'].sum() if not smart_grouped.empty else 0
         short_trap = short_grouped[short_grouped['net_vol'] > 0]['net_vol'].sum() if not short_grouped.empty else 0
         
-        s_ret = smart_grouped[smart_grouped['bs'] > smart_grouped['ss']].copy()
-        if not s_ret.empty:
-            s_ret['avg_p'] = (s_ret['amt'] / s_ret['valid_bs'].replace(0, np.nan)).fillna(0)
+        # 優化核心：淨持倉成本滾動計算 (淨現金流法)
+        if not smart_grouped.empty:
+            s_ret = smart_grouped.copy()
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
-            s_ret_valid = s_ret[s_ret['avg_p'] > 0]
-            total_n = s_ret_valid['net_shares'].sum()
-            smart_avg_cost = (s_ret_valid['avg_p'] * s_ret_valid['net_shares']).sum() / total_n if total_n > 0 else 0
-        else: smart_avg_cost = 0
+            s_ret['net_amt'] = s_ret['buy_amt'] - s_ret['sell_amt']
+            
+            # 只針對目前「還有淨留倉(沒賣光)」的分點計算真實成本
+            s_ret_long = s_ret[s_ret['net_shares'] > 0]
+            total_n = s_ret_long['net_shares'].sum()
+            total_net_amt = s_ret_long['net_amt'].sum()
+            
+            if total_n > 0:
+                smart_avg_cost = total_net_amt / total_n
+                # 若主力已經獲利了結大部分，導致本金抽回(總賣出金額大於總買進金額)
+                # 剩下的籌碼等同於「無本獲利」，成本視為 0
+                smart_avg_cost = max(0.0, smart_avg_cost)
+            else: 
+                smart_avg_cost = 0.0
+        else: 
+            smart_avg_cost = 0.0
             
         gap = cp - smart_avg_cost if smart_avg_cost > 0 and cp > 0 else 0
         
@@ -918,7 +939,10 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             day_range = hp - lp
             lower_shadow = min(cp, op) - lp
             if day_range > 0 and (lower_shadow / day_range) > 0.5 and smart_net > 0: adv.append("探底洗盤成功，主力護盤")
-            if smart_net > 50 and gap > 0: adv.append("主動鎖碼/強勢推升")
+            
+            # 配合無本出貨判斷
+            if smart_avg_cost == 0 and smart_net < 0: adv.append("【危險】主力零成本無本出貨中")
+            elif smart_net > 50 and gap > 0: adv.append("主動鎖碼/強勢推升")
             elif smart_net > 50 and gap < 0: adv.append("大戶承接/弱勢護盤")
             elif smart_net < -100 and sp_num > 0: adv.append("拉高派發/撤退")
             elif smart_net < -100 and sp_num <= 0: adv.append("波段棄守/多殺多")
@@ -928,12 +952,13 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
 
         out.append({
             "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
-            "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else "-", 
+            "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("0 (無本獲利)" if smart_avg_cost == 0 and total_n > 0 else "-"), 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
+# === 升級模組結束 ===
 
 _num_re = re.compile(r'\d+')
 def clean_level_by_math(x):
