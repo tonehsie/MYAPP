@@ -19,7 +19,6 @@ st.set_page_config(layout="wide", page_title="全息量化系統 (V60.26版)", i
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
-# V60.26 優化：新增 profit-warning 視覺警示標籤
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -287,7 +286,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
@@ -1201,7 +1200,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     df_m['pct_800'] = df_m['pct_1000'] + df_m['800-1000張_比例(%)']
     df_m['pct_600'] = df_m['pct_800'] + df_m['600-800張_比例(%)']
     df_m['pct_400'] = df_m['pct_600'] + df_m['400-600張_比例(%)']
-    df_m['pct_200'] = df_m['pct_400'] + df_m['600-800張_比例(%)']
+    df_m['pct_200'] = df_m['pct_400'] + df_m['200-400張_比例(%)']
     df_m['pct_100'] = df_m['pct_200'] + df_m['100-200張_比例(%)']
 
     def get_pct(row, threshold):
@@ -1356,7 +1355,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# V60.26 優化：HTML 渲染加入無本獲利的警示高亮
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1542,10 +1540,30 @@ if run_btn:
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
 
             if not df_plot.empty:
+                # ========================================================
+                # 🔴 安全防護區：先抓取當沖資料並合併，然後確保 DataFrame 有確實依時間排序
+                # ========================================================
+                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", df_plot['日期'].min(), user_stock_id)
+                if not df_dt_chart.empty and 'date' in df_dt_chart.columns:
+                    df_dt_chart = df_dt_chart.drop_duplicates(subset=['date'])
+                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume' if 'Volume' in df_dt_chart.columns else None
+                    if vol_col:
+                        df_dt_chart['當沖總張數'] = (pd.to_numeric(df_dt_chart[vol_col], errors='coerce').fillna(0) / 1000).round().astype(int)
+                        df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
+                
+                # 處理沒當沖資料的防呆
+                df_plot['當沖總張數'] = df_plot.get('當沖總張數', 0).fillna(0)
+
+                # 合併線性迴歸
                 lr_data_json = "{}"
                 if not df_lr_channel.empty:
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
-                    df_plot_lr = df_plot.dropna(subset=['LR_Upper']).sort_values('日期', ascending=True)
+
+                # 🔴 核心修復：強制依日期排序與重置 Index，這是圖表不會崩潰的絕對關鍵！
+                df_plot = df_plot.sort_values('日期', ascending=True).reset_index(drop=True)
+
+                if not df_lr_channel.empty:
+                    df_plot_lr = df_plot.dropna(subset=['LR_Upper'])
                     lr_data = {
                         "upper": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
                         "mid": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
@@ -1553,6 +1571,7 @@ if run_btn:
                     }
                     lr_data_json = json.dumps(lr_data)
 
+                # 幾何形態資料處理
                 pat_js = "[]"
                 neck_js = "[]"
                 pat_color_js = "'transparent'"
@@ -1565,30 +1584,23 @@ if run_btn:
                     neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
 
+                # ========================================================
+                # 🔴 開始抽取繪圖資料
+                # ========================================================
                 time_series = df_plot['日期'].astype(str).tolist()
+                
                 kline_data = [
                     {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
 
-                # --- 新增：自動抓取當沖資料並與 K 線合併 ---
-                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", df_plot['日期'].min(), user_stock_id)
-                if not df_dt_chart.empty:
-                    df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart.get('DayTradingVolume', df_dt_chart.get('Volume', 0))) / 1000).round().astype(int)
-                    df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
-                
-                # 防錯機制：確保就算沒抓到當沖資料，也有預設的 0 可以用，避免圖表崩潰
-                if '當沖總張數' not in df_plot.columns:
-                    df_plot['當沖總張數'] = 0
-                else:
-                    df_plot['當沖總張數'] = df_plot['當沖總張數'].fillna(0)
-
                 volume_data = [
                     {'time': t, 'value': float(v), 'color': '#404040' if c < o else '#b2b5be'}
                     for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
                 ]
+                
                 dt_volume_data = [
-                    {'time': t, 'value': float(dv), 'color': 'rgba(255, 82, 82, 0.9)'} # 當沖量：紅色半透明疊加
+                    {'time': t, 'value': float(dv) if not pd.isna(dv) else 0.0, 'color': 'rgba(255, 82, 82, 0.9)'}
                     for t, dv in zip(time_series, df_plot['當沖總張數'])
                 ]
 
@@ -1680,10 +1692,10 @@ if run_btn:
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1]; // 這裡剛剛漏掉了，已經補回！
+                            const d = (p && p.time) ? kData.find(x => x.time === p.time) : (kData.length > 0 ? kData[kData.length-1] : null);
                             if (d) {
-                                const v = p.time ? vData.find(x => x.time === p.time) : vData[vData.length-1];
-                                const dt = p.time ? dtData.find(x => x.time === p.time) : dtData[dtData.length-1];
+                                const v = (p && p.time) ? vData.find(x => x.time === p.time) : vData[vData.length-1];
+                                const dt = (p && p.time) ? dtData.find(x => x.time === p.time) : dtData[dtData.length-1];
                                 let volStr = v ? ` 量:${v.value}` : '';
                                 let dtStr = (dt && dt.value > 0) ? ` 沖:<span style="color:#ff5252; font-weight:bold">${dt.value}</span>` : '';
                                 legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>${volStr}${dtStr}`;
@@ -1693,12 +1705,12 @@ if run_btn:
 
                         mainChart.subscribeCrosshairMove(p => {
                             updateLegend(p);
-                            if (p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
+                            if (p && p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
                             else volChart.clearCrosshairPosition();
                         });
                         volChart.subscribeCrosshairMove(p => {
                             updateLegend(p);
-                            if (p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
+                            if (p && p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
                             else mainChart.clearCrosshairPosition();
                         });
 
