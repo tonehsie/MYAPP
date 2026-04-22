@@ -14,11 +14,12 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.25版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.26版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
+# V60.26 優化：新增 profit-warning 視覺警示標籤
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -31,6 +32,7 @@ CSS = """
 .text-left { text-align: left !important; }
 .text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
 .loss-warning { color: #d9480f; font-weight: bold; }
+.profit-warning { color: #6a1b9a; font-weight: 900; background-color: #f3e5f5; padding: 3px 6px; border-radius: 4px; border: 1px solid #ce93d8; }
 .highlight-red { color: #d32f2f; font-weight: bold; }
 .highlight-green { color: #2e7d32; font-weight: bold; }
 .info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }
@@ -103,10 +105,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.25 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.26 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.25：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +119,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.25 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.26 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1354,6 +1356,7 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+# V60.26 優化：HTML 渲染加入無本獲利的警示高亮
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1373,7 +1376,9 @@ def render_clean_html_table(df, title=""):
             display_val = "-"
             if pd.notna(val) and str(val).strip() != "" and str(val).strip().lower() != "nan":
                 s = str(val).strip()
-                if "(虧)" in s:
+                if "無本獲利" in s:
+                    display_val = f"<span class='profit-warning'>{s}</span>"
+                elif "(虧)" in s:
                     clean_num = s.replace("(虧)", "").strip()
                     display_val = f"<span class='loss-warning'>(虧) {clean_num}</span>"
                 elif s.startswith("+"):
@@ -1405,7 +1410,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.25 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.26 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1527,7 +1532,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.25)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.26)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1721,7 +1726,6 @@ if run_btn:
             
             try: 
                 radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
-                # V60.25: 修正 0.0% 正負號判斷邏輯
                 if radar_chg > 0: dir_str = "增加"
                 elif radar_chg < 0: dir_str = "減少"
                 else: dir_str = "無變動"
@@ -1888,7 +1892,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.25 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.26 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
