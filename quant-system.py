@@ -104,10 +104,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.26 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.26 終極除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.26：絕對防禦圖表崩潰機制，確保當沖資料與 K 線完美疊加。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -135,11 +135,11 @@ def safe_to_num(series, fill_val=0):
             return fill_val
 
 # ==========================================
-# 🔴 新增：絕對防呆過濾器，杜絕任何 NaN 導致圖表崩潰
+# 🔴 絕對防禦過濾器：杜絕任何 NaN/Inf 傳入 JSON
 # ==========================================
 def safe_float(val, default=0.0):
     try:
-        f = float(val)
+        f = float(str(val).replace(',', '').strip())
         if np.isnan(f) or np.isinf(f):
             return default
         return f
@@ -366,7 +366,7 @@ def scrape_fubon_pledge(df_pr, tid):
             pm = m
             pdts.append(f"{py}-{ds.replace('/', '-')}")
         elif len(ds) >= 7 and '/' in ds: 
-            pts = ds.split('/')
+            pts = split('/')
             py, pm = int(pts[0]) + 1911, int(pts[1])
             pdts.append(f"{py}-{pts[1].strip()}-{pts[2].strip()}")
         else: pdts.append(ds)
@@ -1408,7 +1408,7 @@ def render_clean_html_table(df, title=""):
     st.markdown(html, unsafe_allow_html=True)
 
 def format_to_csv_string(df, title):
-    header = f"▼▼ {title} ▼▼\n"
+    header = f"▼▼▼ {title} ▼▼▼\n"
     if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
@@ -1499,9 +1499,16 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
+        # 🔴【修正2】：直接在這邊提前抓取當沖資料，並且抓滿 K 線的天數，供圖表和表格共用
+        dt_start = dates[kline_days-1] if len(dates) >= kline_days else dates[-1]
+        df_dt_raw = fetch_finmind_v50("TaiwanStockDayTrading", dt_start, user_stock_id)
+
         df_twse, _ = scrape_block_v50(user_stock_id, dates)
         df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
-        df_day_trade = process_day_trading(fetch_finmind_v50("TaiwanStockDayTrading", d_end, user_stock_id))
+        
+        # 表格直接吃提早抓好的當沖 raw data
+        df_day_trade = process_day_trading(df_dt_raw)
+        
         df_inst = process_inst(fetch_finmind_v50("TaiwanStockInstitutionalInvestorsBuySell", d_end, user_stock_id))
         
         df_rev_raw = fetch_finmind_v50("TaiwanStockMonthRevenue", "2022-01-01", user_stock_id)
@@ -1547,7 +1554,11 @@ if run_btn:
 
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
+            
+            # 🔴【修正1】：清洗 K 線資料，剔除「收盤價為 0 或異常」的日子，防止 JS 繪圖引擎死機
             df_plot = df_price.head(kline_days).copy()
+            df_plot = df_plot[df_plot['收盤價(元)'] > 0] 
+            
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             
             df_plot = df_plot.drop_duplicates(subset=['日期'])
@@ -1557,32 +1568,25 @@ if run_btn:
             if not df_plot.empty:
                 time_series = df_plot['日期'].astype(str).tolist()
 
-                # ========================================================
-                # 🔴 終極修復區：全面棄用 Pandas Merge，改用字典映射
-                # 確保不產出任何會讓 JavaScript 解析引擎當機的空值
-                # ========================================================
+                # 建立安全的當沖對應字典
                 dt_vol_map = {}
-                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", time_series[0] if time_series else "2020-01-01", user_stock_id)
-                
-                if not df_dt_chart.empty and 'date' in df_dt_chart.columns:
-                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume' if 'Volume' in df_dt_chart.columns else None
+                if not df_dt_raw.empty and 'date' in df_dt_raw.columns:
+                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_raw.columns else 'Volume' if 'Volume' in df_dt_raw.columns else None
                     if vol_col:
-                        for _, r in df_dt_chart.iterrows():
-                            # 強制數值轉換，避免夾帶字串或 NaN
+                        for _, r in df_dt_raw.iterrows():
                             val = safe_float(str(r[vol_col]).replace(',', '').strip()) / 1000
                             dt_vol_map[str(r['date']).strip()] = int(round(val))
 
                 dt_volume_data = []
                 for t in time_series:
                     dt_volume_data.append({'time': t, 'value': float(dt_vol_map.get(t, 0.0))})
-                # ========================================================
 
                 lr_data_json = "{}"
                 if not df_lr_channel.empty:
                     df_lr_channel = df_lr_channel.drop_duplicates(subset=['日期'])
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
 
-                # 強制清洗所有的空值為0，阻止 NaN 流入 JSON
+                # 強制清洗所有空值為0
                 df_plot = df_plot.replace([np.inf, -np.inf], np.nan).fillna(0)
 
                 if not df_lr_channel.empty:
@@ -1624,11 +1628,6 @@ if run_btn:
                     "ma_mid": prep_ma(df_plot[f'MA{ma_mid}(中線)'], time_series),
                     "ma_long": prep_ma(df_plot[f'MA{ma_long}(長線)'], time_series)
                 }
-
-                # 增加前後端抓蟲顯示板
-                with st.expander("🚨 圖表 JSON Debug 驗證區 (若圖表空白請展開檢查)"):
-                    st.info("系統已強制過濾所有 NaN 空值，確保 JSON 絕對合法。")
-                    st.write(f"資料筆數: K線={len(kline_data)}, 當沖={len(dt_volume_data)}")
 
                 html_template = """
                 <!DOCTYPE html>
@@ -1912,3 +1911,102 @@ if run_btn:
         df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, footprint_rows)
         with st.expander(f"【近 3 日急單動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
             render_clean_html_table(df_fb_3, f"【近 3 日急單動向】 近 3 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_3, f"【近 3 日急單動向】 近 3 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            
+        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"【近 10 日波段動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_10, f"【近 10 日波段動向】 近 10 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_10, f"【近 10 日波段動向】 近 10 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            
+        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:max_len], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"【近 {max_len} 日長線動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_60, f"【近 {max_len} 日長線動向】 近 {max_len} 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_60, f"【近 {max_len} 日長線動向】 近 {max_len} 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+
+        with st.expander(f"主力分點 - 今日 ({dates[0]})"):
+            render_clean_html_table(df_b_today)
+        with st.expander(f"主力分點 - 前一日"):
+            render_clean_html_table(df_b_prev1)
+        with st.expander(f"點此展開過渡期分點 (近3日 / 10日 / {max_len}日總和)"):
+            render_clean_html_table(df_b_3, "主力分點 - 近 3 日")
+            render_clean_html_table(df_b_10, "主力分點 - 近 10 日")
+            render_clean_html_table(df_b_60, f"主力分點 - 近 {max_len} 日")
+        with st.expander("主力分點圖鑑 (三維動態檢驗)"):
+            render_clean_html_table(df_debug_tags)
+
+        render_clean_html_table(df_daily_tracker, "02. 平日戰情追蹤矩陣 (合併家數差與火力)")
+        render_clean_html_table(df_combined_display, "03. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
+
+        render_clean_html_table(df_inst, "04. 法人買賣超 (近10天)")
+        render_clean_html_table(df_margin, "05. 散戶資券餘額 (近10天)")
+        render_clean_html_table(df_day_trade, "06. 現股當沖明細 (近10天)")
+        render_clean_html_table(df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
+
+        render_clean_html_table(df_rev, "08. 月營收 (百萬元) (近24個月)")
+        
+        with st.expander("點此展開集保分級表 (近8週)", expanded=False):
+            render_clean_html_table(df_s_unit, "09-1. 集保分級 - 張數表")
+            render_clean_html_table(df_s_ppl, "09-2. 集保分級 - 人數表")
+            
+        render_clean_html_table(df_p_sum, "10. 董監大股東質設總覽")
+        with st.expander("點此展開董監大股東質設明細", expanded=False):
+            render_clean_html_table(df_p_det, "11. 董監大股東質設明細")
+            
+        render_clean_html_table(df_twse, "12. 鉅額交易明細 (近3天)")
+        render_clean_html_table(df_div, "13. 歷年股利政策 (近5年)")
+        render_clean_html_table(df_per, "14. 本益比、淨值比與殖利率")
+        render_clean_html_table(df_disp, "15. 處置有價證券狀態")
+        render_clean_html_table(df_cbas, "16. CBAS 可轉債數據")
+
+        st.divider()
+        st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
+        with st.expander(f"給 AI 的 V60.26 實戰精華資料包 (CSV格式)", expanded=True):
+            p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
+            p1 += f"{company_info_text}\n\n"
+            
+            clean_ai_report = re.sub(r'<[^>]+>', '', report_md)
+            clean_ai_report = clean_ai_report.replace('&nbsp;', ' ').strip()
+            
+            p1 += f"▼▼▼ 系統 AI 全息籌碼深度診斷總結 ▼▼▼\n"
+            p1 += f"{clean_ai_report}\n\n"
+            
+            if latest_lr_upper > 0:
+                p1 += f"【線性迴歸通道上軌 (壓力)】: {latest_lr_upper:.2f} 元\n"
+                p1 += f"【線性迴歸通道中軌 (趨勢)】: {latest_lr_mid:.2f} 元\n"
+                p1 += f"【線性迴歸通道下軌 (支撐)】: {latest_lr_lower:.2f} 元\n\n"
+            
+            p1 += f"【系統算出之純淨主力加權防守價 (Net VWAP)】: {vwap_str} 元\n"
+            p1 += f"【核心分點控盤率 (相對於自由流通籌碼)】: {core_c_value}%\n\n"
+            p1 += f"【核心主力3日淨留倉】: {net_3} 張\n"
+            p1 += f"【核心主力10日淨留倉】: {net_10} 張\n"
+            p1 += f"【核心主力60日淨留倉】: {net_60} 張\n\n"
+            
+            p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近5日)")
+            p1 += format_to_csv_string(df_combined_display.head(4) if not df_combined_display.empty else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
+            p1 += format_to_csv_string(df_inst.head(10) if not df_inst.empty else df_inst, "04. 法人買賣超 (近10天)")
+            p1 += format_to_csv_string(df_margin.head(10) if not df_margin.empty else df_margin, "05. 散戶資券餘額 (近10天)")
+            p1 += format_to_csv_string(df_day_trade.head(10) if not df_day_trade.empty else df_day_trade, "06. 現股當沖明細 (近10天)")
+            p1 += format_to_csv_string(df_fut.head(10) if not df_fut.empty else df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
+            p1 += format_to_csv_string(df_rev.head(12) if not df_rev.empty else df_rev, "08. 月營收 (百萬元) (近12個月)")
+            p1 += format_to_csv_string(df_p_sum, "10.董監大股東質設總覽")
+            p1 += format_to_csv_string(df_twse, "12. 鉅額交易明細 (近3日)")
+            p1 += format_to_csv_string(df_per.head(10) if not df_per.empty else df_per, "14. 本益比、淨值比與殖利率")
+            p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
+            p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
+            st.code(p1, language="text")
+
+        st.divider()
+        st.markdown("<div class='category-title'>系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
+        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
+            st.info("這裡傾印了供你人工或稽核技術面與主力戰情所需的近 60 天核心基礎資料。")
+            dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
+            
+            df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
+            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
+            
+            df_tdcc_dump = df_s_wide.head(10).copy() if not df_s_wide.empty else pd.DataFrame()
+            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
+            
+            st.code(dump_text, language="text")
