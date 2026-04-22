@@ -1537,12 +1537,14 @@ if run_btn:
             st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
-            df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
+            
+            # [核心修復] - 開始：為了避免前端圖表崩潰，在 DataFrame 操作時必須嚴格強制去除重複日期並重新排序！
+            df_plot = df_plot.drop_duplicates(subset=['日期'])
+            df_t_plot = df_t_plot.drop_duplicates(subset=['日期'])
+            df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True).reset_index(drop=True)
 
             if not df_plot.empty:
-                # ========================================================
-                # 🔴 安全防護區：先抓取當沖資料並合併，然後確保 DataFrame 有確實依時間排序
-                # ========================================================
+                # 抓取當沖資料並與 K 線合併
                 df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", df_plot['日期'].min(), user_stock_id)
                 if not df_dt_chart.empty and 'date' in df_dt_chart.columns:
                     df_dt_chart = df_dt_chart.drop_duplicates(subset=['date'])
@@ -1551,16 +1553,19 @@ if run_btn:
                         df_dt_chart['當沖總張數'] = (pd.to_numeric(df_dt_chart[vol_col], errors='coerce').fillna(0) / 1000).round().astype(int)
                         df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
                 
-                # 處理沒當沖資料的防呆
-                df_plot['當沖總張數'] = df_plot.get('當沖總張數', 0).fillna(0)
+                # 防錯機制：確保就算沒抓到當沖資料，也有預設的 0 可以用，避免圖表崩潰
+                if '當沖總張數' not in df_plot.columns:
+                    df_plot['當沖總張數'] = 0
+                df_plot['當沖總張數'] = df_plot['當沖總張數'].fillna(0)
 
                 # 合併線性迴歸
                 lr_data_json = "{}"
                 if not df_lr_channel.empty:
+                    df_lr_channel = df_lr_channel.drop_duplicates(subset=['日期'])
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
 
-                # 🔴 核心修復：強制依日期排序與重置 Index，這是圖表不會崩潰的絕對關鍵！
-                df_plot = df_plot.sort_values('日期', ascending=True).reset_index(drop=True)
+                # [核心修復] - 結束：將整理好的完美 DataFrame 再次確認日期排序
+                df_plot = df_plot.drop_duplicates(subset=['日期']).sort_values('日期', ascending=True).reset_index(drop=True)
 
                 if not df_lr_channel.empty:
                     df_plot_lr = df_plot.dropna(subset=['LR_Upper'])
@@ -1584,9 +1589,7 @@ if run_btn:
                     neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
 
-                # ========================================================
-                # 🔴 開始抽取繪圖資料
-                # ========================================================
+                # 開始抽取繪圖資料給 HTML
                 time_series = df_plot['日期'].astype(str).tolist()
                 
                 kline_data = [
@@ -1600,7 +1603,7 @@ if run_btn:
                 ]
                 
                 dt_volume_data = [
-                    {'time': t, 'value': float(dv) if not pd.isna(dv) else 0.0, 'color': 'rgba(255, 82, 82, 0.9)'}
+                    {'time': t, 'value': float(dv) if not pd.isna(dv) else 0.0, 'color': '#ff5252'}
                     for t, dv in zip(time_series, df_plot['當沖總張數'])
                 ]
 
@@ -1683,19 +1686,19 @@ if run_btn:
                         }
 
                         // 底層成交量 (灰黑)
-                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         vSeries.setData(vData);
 
                         // 上層疊加當沖量 (橘紅)
-                        const dtSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+                        const dtSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
                             const d = (p && p.time) ? kData.find(x => x.time === p.time) : (kData.length > 0 ? kData[kData.length-1] : null);
                             if (d) {
-                                const v = (p && p.time) ? vData.find(x => x.time === p.time) : vData[vData.length-1];
-                                const dt = (p && p.time) ? dtData.find(x => x.time === p.time) : dtData[dtData.length-1];
+                                const v = (p && p.time) ? vData.find(x => x.time === p.time) : (vData.length > 0 ? vData[vData.length-1] : null);
+                                const dt = (p && p.time) ? dtData.find(x => x.time === p.time) : (dtData.length > 0 ? dtData[dtData.length-1] : null);
                                 let volStr = v ? ` 量:${v.value}` : '';
                                 let dtStr = (dt && dt.value > 0) ? ` 沖:<span style="color:#ff5252; font-weight:bold">${dt.value}</span>` : '';
                                 legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>${volStr}${dtStr}`;
