@@ -319,6 +319,7 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
+    out, ist = False, []
     out, ist = [], False
     for tr in trs:
         tds = tdp.findall(tr)
@@ -1570,9 +1571,21 @@ if run_btn:
                     {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
+
+                # --- 新增：自動抓取當沖資料並與 K 線合併 ---
+                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", df_plot['日期'].min(), user_stock_id)
+                if not df_dt_chart.empty:
+                    df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart.get('DayTradingVolume', df_dt_chart.get('Volume', 0))) / 1000).round().astype(int)
+                    df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
+                df_plot['當沖總張數'] = df_plot.get('當沖總張數', 0).fillna(0)
+
                 volume_data = [
-                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
+                    {'time': t, 'value': float(v), 'color': '#404040' if c < o else '#b2b5be'}
                     for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
+                ]
+                dt_volume_data = [
+                    {'time': t, 'value': float(dv), 'color': 'rgba(255, 82, 82, 0.9)'} # 當沖量：紅色半透明疊加
+                    for t, dv in zip(time_series, df_plot['當沖總張數'])
                 ]
 
                 def prep_ma(series, times):
@@ -1603,6 +1616,7 @@ if run_btn:
                     <script>
                         const kData = KLINE_DATA;
                         const vData = VOLUME_DATA;
+                        const dtData = DT_VOLUME_DATA;
                         const ma = MA_DATA;
 
                         const mainOptions = {
@@ -1652,14 +1666,22 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+                        // 底層成交量 (灰黑)
+                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
                         vSeries.setData(vData);
+
+                        // 上層疊加當沖量 (橘紅)
+                        const dtSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+                        dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
                             if (d) {
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
+                                const v = p.time ? vData.find(x => x.time === p.time) : vData[vData.length-1];
+                                const dt = p.time ? dtData.find(x => x.time === p.time) : dtData[dtData.length-1];
+                                let volStr = v ? ` 量:${v.value}` : '';
+                                let dtStr = (dt && dt.value > 0) ? ` 沖:<span style="color:#ff5252; font-weight:bold">${dt.value}</span>` : '';
+                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>${volStr}${dtStr}`;
                             }
                         };
                         updateLegend({time: null});
@@ -1683,6 +1705,7 @@ if run_btn:
                 """
                 html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
                                          .replace("VOLUME_DATA", json.dumps(volume_data))\
+                                         .replace("DT_VOLUME_DATA", json.dumps(dt_volume_data))\
                                          .replace("MA_DATA", json.dumps(ma_data))\
                                          .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
@@ -1920,7 +1943,7 @@ if run_btn:
             p1 += format_to_csv_string(df_day_trade.head(10) if not df_day_trade.empty else df_day_trade, "06. 現股當沖明細 (近10天)")
             p1 += format_to_csv_string(df_fut.head(10) if not df_fut.empty else df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
             p1 += format_to_csv_string(df_rev.head(12) if not df_rev.empty else df_rev, "08. 月營收 (百萬元) (近12個月)")
-            p1 += format_to_csv_string(df_p_sum, "10. 董監大股東質設總覽")
+            p1 += format_to_csv_string(df_p_sum, "10.董監大股東質設總覽")
             p1 += format_to_csv_string(df_twse, "12. 鉅額交易明細 (近3日)")
             p1 += format_to_csv_string(df_per.head(10) if not df_per.empty else df_per, "14. 本益比、淨值比與殖利率")
             p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
