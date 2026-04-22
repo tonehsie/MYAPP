@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.23版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.24版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -103,10 +103,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.23 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.24 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.23：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.24：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.23 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.24 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -848,18 +848,15 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "中性換手"})
     return pd.DataFrame(out)
 
-# === 升級模組：加入淨現金流均價法 ===
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
-    # 預先群組化智能運算字典，根除 N^2 效能延遲
     df_b['is_smart'] = df_b['tag'].str.contains('波段鐵粉|常駐造市|逢高派發|長線倒貨', na=False)
     df_b['is_short'] = df_b['tag'].str.contains('短線狙擊|低檔回補|快閃散戶', na=False)
     
-    # 優化核心：同時計算買進金額與賣出金額
     df_b['valid_bs'] = np.where(df_b['pr'] > 0, df_b['bs'], 0)
     df_b['valid_ss'] = np.where(df_b['pr'] > 0, df_b['ss'], 0)
     df_b['buy_amt'] = df_b['valid_bs'] * df_b['pr']
@@ -910,21 +907,17 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_net = smart_grouped['net_vol'].sum() if not smart_grouped.empty else 0
         short_trap = short_grouped[short_grouped['net_vol'] > 0]['net_vol'].sum() if not short_grouped.empty else 0
         
-        # 優化核心：淨持倉成本滾動計算 (淨現金流法)
         if not smart_grouped.empty:
             s_ret = smart_grouped.copy()
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
             s_ret['net_amt'] = s_ret['buy_amt'] - s_ret['sell_amt']
             
-            # 只針對目前「還有淨留倉(沒賣光)」的分點計算真實成本
             s_ret_long = s_ret[s_ret['net_shares'] > 0]
             total_n = s_ret_long['net_shares'].sum()
             total_net_amt = s_ret_long['net_amt'].sum()
             
             if total_n > 0:
                 smart_avg_cost = total_net_amt / total_n
-                # 若主力已經獲利了結大部分，導致本金抽回(總賣出金額大於總買進金額)
-                # 剩下的籌碼等同於「無本獲利」，成本視為 0
                 smart_avg_cost = max(0.0, smart_avg_cost)
             else: 
                 smart_avg_cost = 0.0
@@ -940,7 +933,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             lower_shadow = min(cp, op) - lp
             if day_range > 0 and (lower_shadow / day_range) > 0.5 and smart_net > 0: adv.append("探底洗盤成功，主力護盤")
             
-            # 配合無本出貨判斷
             if smart_avg_cost == 0 and smart_net < 0: adv.append("【危險】主力零成本無本出貨中")
             elif smart_net > 50 and gap > 0: adv.append("主動鎖碼/強勢推升")
             elif smart_net > 50 and gap < 0: adv.append("大戶承接/弱勢護盤")
@@ -958,7 +950,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
-# === 升級模組結束 ===
 
 _num_re = re.compile(r'\d+')
 def clean_level_by_math(x):
@@ -1024,6 +1015,7 @@ def process_linear_regression(df_price, lr_days):
     df_lr['LR_Lower'] = y_pred - 2 * std_err
     return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
 
+# === V60.24 修正模組：幾何形態辨識 (修復 V型反轉時間軸 Bug) ===
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     if df_price.empty or len(df_price) < order * 2: return {}
     df = df_price.head(kline_days).copy().sort_values('日期', ascending=True).reset_index(drop=True)
@@ -1149,13 +1141,25 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "V型反轉" in mode or is_auto:
         if len(lows) >= 1 and len(highs) >= 2:
             l1 = lows[-1]
-            h_before = [h for h in highs if h[2] > l1[2]] 
-            h_after = [h for h in highs if h[2] < l1[2]]
+            # 修正 V型反轉 時間軸比較邏輯：確保索引為過去 -> 谷底 -> 未來
+            h_before = [h for h in highs if h[2] < l1[2]] 
+            h_after = [h for h in highs if h[2] > l1[2]]
             if h_before and h_after:
                 hb, ha = h_before[-1], h_after[0]
                 if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: 
-                    return {'name': 'V型反轉', 'shape_x': [hb[0], l1[0], ha[0]], 'shape_y': [hb[1], l1[1], ha[1]], 'neck_x': [hb[0], ha[0]], 'neck_y': [hb[1], ha[1]], 'color': '#00bcd4', 'desc': "深V反轉 (強勢軋空)", 'signal': 'bullish'}
+                    status = "已突破下降趨勢" if current_price > ha[1] else "反轉進行中"
+                    return {
+                        'name': 'V型反轉', 
+                        'shape_x': [hb[0], l1[0], ha[0]], 
+                        'shape_y': [hb[1], l1[1], ha[1]], 
+                        'neck_x': [hb[0], ha[0]], 
+                        'neck_y': [hb[1], ha[1]], 
+                        'color': '#00bcd4', 
+                        'desc': f"深V反轉 ({status})", 
+                        'signal': 'bullish'
+                    }
     return {}
+# === V60.24 修正模組結束 ===
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1404,7 +1408,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.23 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.24 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1526,7 +1530,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.23)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.24)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1884,7 +1888,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.23 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.24 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
