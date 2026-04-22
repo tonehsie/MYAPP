@@ -317,7 +317,7 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = False, []
+    out, ist = [], False
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
