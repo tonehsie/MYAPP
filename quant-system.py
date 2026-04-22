@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.24版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.25版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -103,10 +103,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.24 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.25 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.24：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.25：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -117,7 +117,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.24 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.25 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1015,7 +1015,6 @@ def process_linear_regression(df_price, lr_days):
     df_lr['LR_Lower'] = y_pred - 2 * std_err
     return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
 
-# === V60.24 修正模組：幾何形態辨識 (修復 V型反轉時間軸 Bug) ===
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     if df_price.empty or len(df_price) < order * 2: return {}
     df = df_price.head(kline_days).copy().sort_values('日期', ascending=True).reset_index(drop=True)
@@ -1141,7 +1140,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "V型反轉" in mode or is_auto:
         if len(lows) >= 1 and len(highs) >= 2:
             l1 = lows[-1]
-            # 修正 V型反轉 時間軸比較邏輯：確保索引為過去 -> 谷底 -> 未來
             h_before = [h for h in highs if h[2] < l1[2]] 
             h_after = [h for h in highs if h[2] > l1[2]]
             if h_before and h_after:
@@ -1159,7 +1157,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         'signal': 'bullish'
                     }
     return {}
-# === V60.24 修正模組結束 ===
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1408,7 +1405,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.24 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.25 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1530,7 +1527,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.24)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.25)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1724,8 +1721,11 @@ if run_btn:
             
             try: 
                 radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
-                dir_str = "增加" if radar_chg > 0 else "減少"
-                chg_text = f"{dir_str} {abs(radar_chg)}%"
+                # V60.25: 修正 0.0% 正負號判斷邏輯
+                if radar_chg > 0: dir_str = "增加"
+                elif radar_chg < 0: dir_str = "減少"
+                else: dir_str = "無變動"
+                chg_text = f"{dir_str} {abs(radar_chg)}%" if radar_chg != 0 else f"{dir_str} 0.0%"
             except: pass
 
         if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
@@ -1888,7 +1888,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.24 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.25 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
