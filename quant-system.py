@@ -1538,33 +1538,42 @@ if run_btn:
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             
-            # 🔴 絕對防禦區：剔除重複日期並強制排序，防止 Lightweight Charts 崩潰
+            # [核心修復] 去除重複日期並強制排序，防止 K 線圖表崩潰
             df_plot = df_plot.drop_duplicates(subset=['日期'])
             df_t_plot = df_t_plot.drop_duplicates(subset=['日期'])
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True).reset_index(drop=True)
 
             if not df_plot.empty:
-                # 抓取當沖資料並合併
-                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", df_plot['日期'].min(), user_stock_id)
+                # 建立主時間軸序列
+                time_series = df_plot['日期'].astype(str).tolist()
+
+                # ========================================================
+                # 🔴 終極修復區：捨棄 Pandas Merge，改用絕對安全的 Dictionary 映射
+                # ========================================================
+                dt_vol_map = {}
+                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", time_series[0] if time_series else "2020-01-01", user_stock_id)
                 if not df_dt_chart.empty and 'date' in df_dt_chart.columns:
-                    df_dt_chart = df_dt_chart.drop_duplicates(subset=['date'])
                     vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume' if 'Volume' in df_dt_chart.columns else None
                     if vol_col:
-                        df_dt_chart['當沖總張數'] = (pd.to_numeric(df_dt_chart[vol_col], errors='coerce').fillna(0) / 1000).round().astype(int)
-                        df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
-                
-                # 🔴 確保空值填補，不會產生讓 JS 當機的 NaN
-                df_plot = df_plot.fillna(0)
+                        for _, r in df_dt_chart.iterrows():
+                            try:
+                                v_val = float(str(r[vol_col]).replace(',', '').strip()) / 1000
+                                dt_vol_map[str(r['date']).strip()] = int(round(v_val))
+                            except:
+                                pass
+
+                dt_volume_data = [
+                    {'time': t, 'value': float(dt_vol_map.get(t, 0))}
+                    for t in time_series
+                ]
+                # ========================================================
 
                 # 合併線性迴歸
                 lr_data_json = "{}"
                 if not df_lr_channel.empty:
                     df_lr_channel = df_lr_channel.drop_duplicates(subset=['日期'])
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
-                    df_plot = df_plot.fillna(0) # 再次清洗
-
-                # 🔴 最後確保排序正確
-                df_plot = df_plot.sort_values('日期', ascending=True).reset_index(drop=True)
+                    df_plot = df_plot.fillna(0) # 清洗確保沒有 NaN
 
                 if not df_lr_channel.empty:
                     df_plot_lr = df_plot[df_plot['LR_Upper'] != 0] # 過濾掉因 fillna(0) 產生的無效通道點
@@ -1587,9 +1596,6 @@ if run_btn:
                     pat_js = json.dumps(pat_list)
                     neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
-
-                # 開始抽取給 HTML 的 JSON 格式資料
-                time_series = df_plot['日期'].astype(str).tolist()
                 
                 kline_data = [
                     {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
@@ -1599,11 +1605,6 @@ if run_btn:
                 volume_data = [
                     {'time': t, 'value': float(v), 'color': '#404040' if c < o else '#b2b5be'}
                     for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
-                ]
-                
-                dt_volume_data = [
-                    {'time': t, 'value': float(dv), 'color': 'rgba(255, 82, 82, 0.9)'}
-                    for t, dv in zip(time_series, df_plot['當沖總張數'])
                 ]
 
                 def prep_ma(series, times):
@@ -1687,13 +1688,16 @@ if run_btn:
                         const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         vSeries.setData(vData);
 
-                        // 上層疊加當沖量 (橘紅)
-                        const dtSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+                        // 上層疊加當沖量 (橘紅)，在 API 層直接鎖定顏色，避免資料層格式錯誤
+                        const dtSeries = volChart.addHistogramSeries({ 
+                            color: '#ff5252', 
+                            priceFormat: { type: 'volume' } 
+                        });
                         dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            // 安全解析時間參數
+                            // 安全解析時間參數，防止 JS 崩潰
                             let tStr = null;
                             if (p && p.time) {
                                 if (typeof p.time === 'string') tStr = p.time;
@@ -1713,13 +1717,9 @@ if run_btn:
 
                         mainChart.subscribeCrosshairMove(p => {
                             updateLegend(p);
-                            if (p && p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
-                            else volChart.clearCrosshairPosition();
                         });
                         volChart.subscribeCrosshairMove(p => {
                             updateLegend(p);
-                            if (p && p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
-                            else mainChart.clearCrosshairPosition();
                         });
 
                         mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => volChart.timeScale().setVisibleLogicalRange(r));
