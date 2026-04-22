@@ -287,7 +287,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
@@ -319,7 +319,6 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = False, []
     out, ist = [], False
     for tr in trs:
         tds = tdp.findall(tr)
@@ -1202,7 +1201,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
     df_m['pct_800'] = df_m['pct_1000'] + df_m['800-1000張_比例(%)']
     df_m['pct_600'] = df_m['pct_800'] + df_m['600-800張_比例(%)']
     df_m['pct_400'] = df_m['pct_600'] + df_m['400-600張_比例(%)']
-    df_m['pct_200'] = df_m['pct_400'] + df_m['200-400張_比例(%)']
+    df_m['pct_200'] = df_m['pct_400'] + df_m['600-800張_比例(%)']
     df_m['pct_100'] = df_m['pct_200'] + df_m['100-200張_比例(%)']
 
     def get_pct(row, threshold):
@@ -1577,7 +1576,12 @@ if run_btn:
                 if not df_dt_chart.empty:
                     df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart.get('DayTradingVolume', df_dt_chart.get('Volume', 0))) / 1000).round().astype(int)
                     df_plot = pd.merge(df_plot, df_dt_chart[['date', '當沖總張數']].rename(columns={'date': '日期'}), on='日期', how='left')
-                df_plot['當沖總張數'] = df_plot.get('當沖總張數', 0).fillna(0)
+                
+                # 防錯機制：確保就算沒抓到當沖資料，也有預設的 0 可以用，避免圖表崩潰
+                if '當沖總張數' not in df_plot.columns:
+                    df_plot['當沖總張數'] = 0
+                else:
+                    df_plot['當沖總張數'] = df_plot['當沖總張數'].fillna(0)
 
                 volume_data = [
                     {'time': t, 'value': float(v), 'color': '#404040' if c < o else '#b2b5be'}
@@ -1676,6 +1680,7 @@ if run_btn:
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
+                            const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1]; // 這裡剛剛漏掉了，已經補回！
                             if (d) {
                                 const v = p.time ? vData.find(x => x.time === p.time) : vData[vData.length-1];
                                 const dt = p.time ? dtData.find(x => x.time === p.time) : dtData[dtData.length-1];
