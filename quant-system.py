@@ -10,6 +10,7 @@ import urllib.request
 import ssl
 import urllib3
 from io import StringIO
+import math
 import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -104,10 +105,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.26 終極除錯版)")
+st.title("全息量化系統 (V60.26 圖表強固版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.26：絕對防禦圖表崩潰機制，確保當沖資料與 K 線完美疊加。{usage_text}")
+st.caption(f"V60.26：徹底解決圖表套件對空值的神經質崩潰，確保當沖直條圖完美疊加。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -119,6 +120,18 @@ with col1:
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V60.26 決策引擎", use_container_width=True, key="run_engine")
+
+# ==========================================
+# 🔴 絕對安全清洗器：確保任何 NaN 都不會流入 JSON
+# ==========================================
+def strict_float(val, default=0.0):
+    try:
+        f = float(str(val).replace(',', '').strip())
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except:
+        return default
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -133,18 +146,6 @@ def safe_to_num(series, fill_val=0):
             return float(str(series).replace(',', '').replace('%', '').strip())
         except:
             return fill_val
-
-# ==========================================
-# 🔴 絕對防禦過濾器：杜絕任何 NaN/Inf 傳入 JSON
-# ==========================================
-def safe_float(val, default=0.0):
-    try:
-        f = float(str(val).replace(',', '').strip())
-        if np.isnan(f) or np.isinf(f):
-            return default
-        return f
-    except:
-        return default
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name_v50(tid):
@@ -366,7 +367,7 @@ def scrape_fubon_pledge(df_pr, tid):
             pm = m
             pdts.append(f"{py}-{ds.replace('/', '-')}")
         elif len(ds) >= 7 and '/' in ds: 
-            pts = split('/')
+            pts = ds.split('/')
             py, pm = int(pts[0]) + 1911, int(pts[1])
             pdts.append(f"{py}-{pts[1].strip()}-{pts[2].strip()}")
         else: pdts.append(ds)
@@ -1499,14 +1500,14 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
-        # 🔴【修正2】：直接在這邊提前抓取當沖資料，並且抓滿 K 線的天數，供圖表和表格共用
-        dt_start = dates[kline_days-1] if len(dates) >= kline_days else dates[-1]
-        df_dt_raw = fetch_finmind_v50("TaiwanStockDayTrading", dt_start, user_stock_id)
+        # 🔴 【修正2】：全域對齊當沖資料，強制抓滿所有天數
+        dt_start_date = dates[kline_days-1] if len(dates) >= kline_days else dates[-1]
+        df_dt_raw = fetch_finmind_v50("TaiwanStockDayTrading", dt_start_date, user_stock_id)
 
         df_twse, _ = scrape_block_v50(user_stock_id, dates)
         df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
         
-        # 表格直接吃提早抓好的當沖 raw data
+        # 把剛剛抓到的全域當沖資料餵給下方的表格
         df_day_trade = process_day_trading(df_dt_raw)
         
         df_inst = process_inst(fetch_finmind_v50("TaiwanStockInstitutionalInvestorsBuySell", d_end, user_stock_id))
@@ -1554,80 +1555,90 @@ if run_btn:
 
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
-            
-            # 🔴【修正1】：清洗 K 線資料，剔除「收盤價為 0 或異常」的日子，防止 JS 繪圖引擎死機
             df_plot = df_price.head(kline_days).copy()
-            df_plot = df_plot[df_plot['收盤價(元)'] > 0] 
-            
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             
+            # 去除重複日期並強制排序，防止 K 線圖表崩潰
             df_plot = df_plot.drop_duplicates(subset=['日期'])
             df_t_plot = df_t_plot.drop_duplicates(subset=['日期'])
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True).reset_index(drop=True)
 
             if not df_plot.empty:
+                # 建立主時間軸序列
                 time_series = df_plot['日期'].astype(str).tolist()
 
-                # 建立安全的當沖對應字典
+                # ========================================================
+                # 🔴 絕對防禦機制：確保 100% 沒有 NaN 或無效字串混入
+                # ========================================================
                 dt_vol_map = {}
                 if not df_dt_raw.empty and 'date' in df_dt_raw.columns:
                     vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_raw.columns else 'Volume' if 'Volume' in df_dt_raw.columns else None
                     if vol_col:
                         for _, r in df_dt_raw.iterrows():
-                            val = safe_float(str(r[vol_col]).replace(',', '').strip()) / 1000
-                            dt_vol_map[str(r['date']).strip()] = int(round(val))
+                            val = strict_float(r[vol_col]) / 1000.0
+                            dt_vol_map[str(r['date']).strip()] = val
 
+                kline_data = []
+                volume_data = []
                 dt_volume_data = []
-                for t in time_series:
-                    dt_volume_data.append({'time': t, 'value': float(dt_vol_map.get(t, 0.0))})
+                ma_short_data = []
+                ma_mid_data = []
+                ma_long_data = []
 
-                lr_data_json = "{}"
+                for _, r in df_plot.iterrows():
+                    t = str(r['日期']).strip()
+                    if not t or t == 'nan': continue
+                    
+                    o = strict_float(r.get('開盤價(元)', 0))
+                    h = strict_float(r.get('最高價(元)', 0))
+                    l = strict_float(r.get('最低價(元)', 0))
+                    c = strict_float(r.get('收盤價(元)', 0))
+                    v = strict_float(r.get('成交量(張)', 0))
+                    
+                    if o == 0 and c == 0: continue
+                    
+                    kline_data.append({'time': t, 'open': o, 'high': h, 'low': l, 'close': c})
+                    volume_data.append({'time': t, 'value': v, 'color': '#404040' if c < o else '#b2b5be'})
+                    
+                    dt_v = strict_float(dt_vol_map.get(t, 0))
+                    dt_volume_data.append({'time': t, 'value': dt_v, 'color': 'rgba(255, 82, 82, 0.9)'})
+                    
+                    s_ma = strict_float(r.get(f'MA{ma_short}', 0))
+                    m_ma = strict_float(r.get(f'MA{ma_mid}(中線)', 0))
+                    l_ma = strict_float(r.get(f'MA{ma_long}(長線)', 0))
+                    
+                    if s_ma > 0: ma_short_data.append({'time': t, 'value': s_ma})
+                    if m_ma > 0: ma_mid_data.append({'time': t, 'value': m_ma})
+                    if l_ma > 0: ma_long_data.append({'time': t, 'value': l_ma})
+
+                ma_data_dict = {
+                    "ma_short": ma_short_data,
+                    "ma_mid": ma_mid_data,
+                    "ma_long": ma_long_data
+                }
+
+                lr_data = {"upper": [], "mid": [], "lower": []}
                 if not df_lr_channel.empty:
                     df_lr_channel = df_lr_channel.drop_duplicates(subset=['日期'])
-                    df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
+                    for _, r in df_lr_channel.iterrows():
+                        t = str(r['日期']).strip()
+                        up = strict_float(r.get('LR_Upper', 0))
+                        md = strict_float(r.get('LR_Mid', 0))
+                        dn = strict_float(r.get('LR_Lower', 0))
+                        if up > 0:
+                            lr_data['upper'].append({'time': t, 'value': up})
+                            lr_data['mid'].append({'time': t, 'value': md})
+                            lr_data['lower'].append({'time': t, 'value': dn})
 
-                # 強制清洗所有空值為0
-                df_plot = df_plot.replace([np.inf, -np.inf], np.nan).fillna(0)
-
-                if not df_lr_channel.empty:
-                    df_plot_lr = df_plot[df_plot['LR_Upper'] != 0]
-                    lr_data = {
-                        "upper": [{"time": str(t), "value": safe_float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
-                        "mid": [{"time": str(t), "value": safe_float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
-                        "lower": [{"time": str(t), "value": safe_float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Lower'])]
-                    }
-                    lr_data_json = json.dumps(lr_data)
-
-                pat_js = "[]"
-                neck_js = "[]"
-                pat_color_js = "'transparent'"
+                pat_js, neck_js, pat_color_js = "[]", "[]", "'transparent'"
                 if pat_data:
-                    pat_list = [{"time": str(x), "value": safe_float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
-                    neck_list = [{"time": str(x), "value": safe_float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
+                    pat_list = [{"time": str(x), "value": strict_float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
+                    neck_list = [{"time": str(x), "value": strict_float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
                     pat_list = sorted(pat_list, key=lambda k: k['time'])
                     neck_list = sorted(neck_list, key=lambda k: k['time'])
-                    pat_js = json.dumps(pat_list)
-                    neck_js = json.dumps(neck_list)
+                    pat_js = json.dumps(pat_list, allow_nan=False)
+                    neck_js = json.dumps(neck_list, allow_nan=False)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
-                
-                kline_data = [
-                    {'time': t, 'open': safe_float(o), 'high': safe_float(h), 'low': safe_float(l), 'close': safe_float(c)}
-                    for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
-                ]
-
-                volume_data = [
-                    {'time': t, 'value': safe_float(v), 'color': '#404040' if c < o else '#b2b5be'}
-                    for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
-                ]
-
-                def prep_ma(series, times):
-                    return [{'time': t, 'value': round(safe_float(v), 2)} for t, v in zip(times, series) if safe_float(v) != 0]
-
-                ma_data = {
-                    "ma_short": prep_ma(df_plot[f'MA{ma_short}'], time_series),
-                    "ma_mid": prep_ma(df_plot[f'MA{ma_mid}(中線)'], time_series),
-                    "ma_long": prep_ma(df_plot[f'MA{ma_long}(長線)'], time_series)
-                }
 
                 html_template = """
                 <!DOCTYPE html>
@@ -1648,12 +1659,20 @@ if run_btn:
                         <div id="chart-main"><div id="legend" class="legend"></div></div>
                         <div id="chart-vol"></div>
                     </div>
+                    
+                    <script type="application/json" id="kline-json">KLINE_DATA_STR</script>
+                    <script type="application/json" id="volume-json">VOLUME_DATA_STR</script>
+                    <script type="application/json" id="dt-volume-json">DT_VOLUME_DATA_STR</script>
+                    <script type="application/json" id="ma-json">MA_DATA_STR</script>
+                    <script type="application/json" id="lr-json">LR_DATA_STR</script>
+
                     <script>
                     try {
-                        const kData = KLINE_DATA;
-                        const vData = VOLUME_DATA;
-                        const dtData = DT_VOLUME_DATA;
-                        const ma = MA_DATA;
+                        const kData = JSON.parse(document.getElementById('kline-json').textContent);
+                        const vData = JSON.parse(document.getElementById('volume-json').textContent);
+                        const dtData = JSON.parse(document.getElementById('dt-volume-json').textContent);
+                        const ma = JSON.parse(document.getElementById('ma-json').textContent);
+                        const lr = JSON.parse(document.getElementById('lr-json').textContent);
 
                         const mainOptions = {
                             autoSize: true,
@@ -1681,11 +1700,10 @@ if run_btn:
                         candleSeries.setData(kData);
 
                         const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
-                        mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
-                        mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
-                        mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
+                        if (ma.ma_short && ma.ma_short.length > 0) mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
+                        if (ma.ma_mid && ma.ma_mid.length > 0) mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
+                        if (ma.ma_long && ma.ma_long.length > 0) mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
 
-                        const lr = LR_DATA;
                         if (lr && lr.upper && lr.upper.length > 0) {
                             mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
                             mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
@@ -1703,13 +1721,13 @@ if run_btn:
                         }
 
                         const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        vSeries.setData(vData);
+                        if (vData && vData.length > 0) vSeries.setData(vData);
 
                         const dtSeries = volChart.addHistogramSeries({ 
                             color: 'rgba(255, 82, 82, 0.9)', 
                             priceFormat: { type: 'volume' } 
                         });
-                        dtSeries.setData(dtData);
+                        if (dtData && dtData.length > 0) dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
@@ -1740,19 +1758,18 @@ if run_btn:
                         document.getElementById('chart-wrapper').style.display = 'none';
                         const errorDiv = document.getElementById('error-log');
                         errorDiv.style.display = 'block';
-                        errorDiv.innerHTML = "<h3>🚨 JavaScript 繪圖引擎渲染錯誤！</h3>";
-                        errorDiv.innerHTML += "<p>請直接將以下紅色錯誤訊息複製給 AI，我們就能直接抓出問題點：</p>";
-                        errorDiv.innerHTML += "<pre>" + error.stack + "</pre>";
+                        errorDiv.innerHTML = "<h3>🚨 JSON 圖表崩潰攔截器被觸發！</h3>";
+                        errorDiv.innerHTML += "<p>錯誤原因：</p><pre>" + error.message + "\\n" + error.stack + "</pre>";
                     }
                     </script>
                 </body>
                 </html>
                 """
-                html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
-                                         .replace("VOLUME_DATA", json.dumps(volume_data))\
-                                         .replace("DT_VOLUME_DATA", json.dumps(dt_volume_data))\
-                                         .replace("MA_DATA", json.dumps(ma_data))\
-                                         .replace("LR_DATA", lr_data_json)\
+                html_code = html_template.replace("KLINE_DATA_STR", json.dumps(kline_data, allow_nan=False))\
+                                         .replace("VOLUME_DATA_STR", json.dumps(volume_data, allow_nan=False))\
+                                         .replace("DT_VOLUME_DATA_STR", json.dumps(dt_volume_data, allow_nan=False))\
+                                         .replace("MA_DATA_STR", json.dumps(ma_data_dict, allow_nan=False))\
+                                         .replace("LR_DATA_STR", json.dumps(lr_data, allow_nan=False))\
                                          .replace("PAT_DATA", pat_js)\
                                          .replace("NECK_DATA", neck_js)\
                                          .replace("PAT_COLOR", pat_color_js)
@@ -1994,19 +2011,3 @@ if run_btn:
             p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
-
-        st.divider()
-        st.markdown("<div class='category-title'>系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
-        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
-            st.info("這裡傾印了供你人工或稽核技術面與主力戰情所需的近 60 天核心基礎資料。")
-            dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
-            
-            df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
-            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
-            
-            df_tdcc_dump = df_s_wide.head(10).copy() if not df_s_wide.empty else pd.DataFrame()
-            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
-            
-            st.code(dump_text, language="text")
