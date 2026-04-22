@@ -104,10 +104,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.26 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.26 終極除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，並包含 JS 圖表崩潰攔截器。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -1549,6 +1549,7 @@ if run_btn:
 
                 # ========================================================
                 # 🔴 終極修復區：捨棄 Pandas Merge，改用絕對安全的 Dictionary 映射
+                # 保證所有時間對齊，且沒有任何空值 (NaN) 破壞 JavaScript
                 # ========================================================
                 dt_vol_map = {}
                 df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", time_series[0] if time_series else "2020-01-01", user_stock_id)
@@ -1566,6 +1567,12 @@ if run_btn:
                     {'time': t, 'value': float(dt_vol_map.get(t, 0))}
                     for t in time_series
                 ]
+                
+                # [執行過程觀測區]：把最終準備餵給 JS 的資料印在畫面上
+                with st.expander("🚨 圖表 Debug 資訊 (若下方圖表空白，請點此展開)"):
+                    st.warning("若圖表無法顯示，代表底下的 JSON 資料存在問題。")
+                    st.write(f"資料筆數: K線={len(time_series)}, 當沖={len(dt_volume_data)}")
+                    st.json(dt_volume_data[:10]) # 印出前10筆驗證
                 # ========================================================
 
                 # 合併線性迴歸
@@ -1626,12 +1633,17 @@ if run_btn:
                         #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
                         #chart-vol { flex: 0.8; position: relative;}
                         .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
+                        #error-log { display: none; color: #d32f2f; font-family: monospace; padding: 20px; background: #ffebee; border: 1px solid #ef5350; overflow: auto; flex: 1; }
                     </style>
                 </head>
                 <body>
-                    <div id="chart-main"><div id="legend" class="legend"></div></div>
-                    <div id="chart-vol"></div>
+                    <div id="error-log"></div>
+                    <div id="chart-wrapper" style="display: flex; flex-direction: column; height: 100%; width: 100%;">
+                        <div id="chart-main"><div id="legend" class="legend"></div></div>
+                        <div id="chart-vol"></div>
+                    </div>
                     <script>
+                    try {
                         const kData = KLINE_DATA;
                         const vData = VOLUME_DATA;
                         const dtData = DT_VOLUME_DATA;
@@ -1688,9 +1700,9 @@ if run_btn:
                         const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         vSeries.setData(vData);
 
-                        // 上層疊加當沖量 (橘紅)，在 API 層直接鎖定顏色，避免資料層格式錯誤
+                        // 上層疊加當沖量 (橘紅)，加上 { color } 獨立設定確保 API 不報錯
                         const dtSeries = volChart.addHistogramSeries({ 
-                            color: '#ff5252', 
+                            color: 'rgba(255, 82, 82, 0.9)', 
                             priceFormat: { type: 'volume' } 
                         });
                         dtSeries.setData(dtData);
@@ -1715,15 +1727,21 @@ if run_btn:
                         };
                         updateLegend(null);
 
-                        mainChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
-                        });
-                        volChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
-                        });
+                        mainChart.subscribeCrosshairMove(p => { updateLegend(p); });
+                        volChart.subscribeCrosshairMove(p => { updateLegend(p); });
 
                         mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => volChart.timeScale().setVisibleLogicalRange(r));
                         volChart.timeScale().subscribeVisibleLogicalRangeChange(r => mainChart.timeScale().setVisibleLogicalRange(r));
+                    
+                    } catch (error) {
+                        // 攔截所有錯誤並印在畫面上
+                        document.getElementById('chart-wrapper').style.display = 'none';
+                        const errorDiv = document.getElementById('error-log');
+                        errorDiv.style.display = 'block';
+                        errorDiv.innerHTML = "<h3>🚨 圖表渲染崩潰！</h3>";
+                        errorDiv.innerHTML += "<p>這代表 Python 餵進來的 JSON 資料有問題，請將以下紅字複製給 AI：</p>";
+                        errorDiv.innerHTML += "<pre>" + error.stack + "</pre>";
+                    }
                     </script>
                 </body>
                 </html>
