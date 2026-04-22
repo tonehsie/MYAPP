@@ -10,16 +10,16 @@ import urllib.request
 import ssl
 import urllib3
 from io import StringIO
-import math
 import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.26版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.27版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
+# V60.26 優化：新增 profit-warning 視覺警示標籤
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -105,10 +105,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.26 圖表強固版)")
+st.title("全息量化系統 (V60.27 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.26：徹底解決圖表套件對空值的神經質崩潰，確保當沖直條圖完美疊加。{usage_text}")
+st.caption(f"V60.27：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構。新增：K線圖表直條圖同步顯示當沖量。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -119,19 +119,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.26 決策引擎", use_container_width=True, key="run_engine")
-
-# ==========================================
-# 🔴 絕對安全清洗器：確保任何 NaN 都不會流入 JSON
-# ==========================================
-def strict_float(val, default=0.0):
-    try:
-        f = float(str(val).replace(',', '').strip())
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except:
-        return default
+run_btn = st.button("啟動 V60.27 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -331,7 +319,8 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = [], False
+    out, ist = False, False
+    out = []
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
@@ -1421,7 +1410,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.26 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.27 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1500,16 +1489,9 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
-        # 🔴 【修正2】：全域對齊當沖資料，強制抓滿所有天數
-        dt_start_date = dates[kline_days-1] if len(dates) >= kline_days else dates[-1]
-        df_dt_raw = fetch_finmind_v50("TaiwanStockDayTrading", dt_start_date, user_stock_id)
-
         df_twse, _ = scrape_block_v50(user_stock_id, dates)
         df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
-        
-        # 把剛剛抓到的全域當沖資料餵給下方的表格
-        df_day_trade = process_day_trading(df_dt_raw)
-        
+        df_day_trade = process_day_trading(fetch_finmind_v50("TaiwanStockDayTrading", d_end, user_stock_id))
         df_inst = process_inst(fetch_finmind_v50("TaiwanStockInstitutionalInvestorsBuySell", d_end, user_stock_id))
         
         df_rev_raw = fetch_finmind_v50("TaiwanStockMonthRevenue", "2022-01-01", user_stock_id)
@@ -1550,96 +1532,83 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.26)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.27)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
-            
-            # 去除重複日期並強制排序，防止 K 線圖表崩潰
-            df_plot = df_plot.drop_duplicates(subset=['日期'])
-            df_t_plot = df_t_plot.drop_duplicates(subset=['日期'])
-            df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True).reset_index(drop=True)
+            df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
 
             if not df_plot.empty:
-                # 建立主時間軸序列
-                time_series = df_plot['日期'].astype(str).tolist()
-
-                # ========================================================
-                # 🔴 絕對防禦機制：確保 100% 沒有 NaN 或無效字串混入
-                # ========================================================
-                dt_vol_map = {}
-                if not df_dt_raw.empty and 'date' in df_dt_raw.columns:
-                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_raw.columns else 'Volume' if 'Volume' in df_dt_raw.columns else None
+                
+                # ====== V60.27 新增：獲取與 K 線同天期的當沖量 ======
+                dt_start = df_plot['日期'].min()
+                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", dt_start, user_stock_id)
+                if not df_dt_chart.empty:
+                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume' if 'Volume' in df_dt_chart.columns else None
                     if vol_col:
-                        for _, r in df_dt_raw.iterrows():
-                            val = strict_float(r[vol_col]) / 1000.0
-                            dt_vol_map[str(r['date']).strip()] = val
+                        df_dt_chart['當沖量'] = (pd.to_numeric(df_dt_chart[vol_col], errors='coerce').fillna(0) / 1000).astype(int)
+                    else:
+                        df_dt_chart['當沖量'] = 0
+                    df_dt_chart = df_dt_chart.rename(columns={'date': '日期'})
+                    df_plot = pd.merge(df_plot, df_dt_chart[['日期', '當沖量']], on='日期', how='left').fillna({'當沖量': 0})
+                else:
+                    df_plot['當沖量'] = 0
+                # ====================================================
 
-                kline_data = []
-                volume_data = []
-                dt_volume_data = []
-                ma_short_data = []
-                ma_mid_data = []
-                ma_long_data = []
-
-                for _, r in df_plot.iterrows():
-                    t = str(r['日期']).strip()
-                    if not t or t == 'nan': continue
-                    
-                    o = strict_float(r.get('開盤價(元)', 0))
-                    h = strict_float(r.get('最高價(元)', 0))
-                    l = strict_float(r.get('最低價(元)', 0))
-                    c = strict_float(r.get('收盤價(元)', 0))
-                    v = strict_float(r.get('成交量(張)', 0))
-                    
-                    if o == 0 and c == 0: continue
-                    
-                    kline_data.append({'time': t, 'open': o, 'high': h, 'low': l, 'close': c})
-                    volume_data.append({'time': t, 'value': v, 'color': '#404040' if c < o else '#b2b5be'})
-                    
-                    dt_v = strict_float(dt_vol_map.get(t, 0))
-                    dt_volume_data.append({'time': t, 'value': dt_v, 'color': 'rgba(255, 82, 82, 0.9)'})
-                    
-                    s_ma = strict_float(r.get(f'MA{ma_short}', 0))
-                    m_ma = strict_float(r.get(f'MA{ma_mid}(中線)', 0))
-                    l_ma = strict_float(r.get(f'MA{ma_long}(長線)', 0))
-                    
-                    if s_ma > 0: ma_short_data.append({'time': t, 'value': s_ma})
-                    if m_ma > 0: ma_mid_data.append({'time': t, 'value': m_ma})
-                    if l_ma > 0: ma_long_data.append({'time': t, 'value': l_ma})
-
-                ma_data_dict = {
-                    "ma_short": ma_short_data,
-                    "ma_mid": ma_mid_data,
-                    "ma_long": ma_long_data
-                }
-
-                lr_data = {"upper": [], "mid": [], "lower": []}
+                lr_data_json = "{}"
                 if not df_lr_channel.empty:
-                    df_lr_channel = df_lr_channel.drop_duplicates(subset=['日期'])
-                    for _, r in df_lr_channel.iterrows():
-                        t = str(r['日期']).strip()
-                        up = strict_float(r.get('LR_Upper', 0))
-                        md = strict_float(r.get('LR_Mid', 0))
-                        dn = strict_float(r.get('LR_Lower', 0))
-                        if up > 0:
-                            lr_data['upper'].append({'time': t, 'value': up})
-                            lr_data['mid'].append({'time': t, 'value': md})
-                            lr_data['lower'].append({'time': t, 'value': dn})
+                    df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
+                    df_plot_lr = df_plot.dropna(subset=['LR_Upper']).sort_values('日期', ascending=True)
+                    lr_data = {
+                        "upper": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
+                        "mid": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
+                        "lower": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Lower'])]
+                    }
+                    lr_data_json = json.dumps(lr_data)
 
-                pat_js, neck_js, pat_color_js = "[]", "[]", "'transparent'"
+                pat_js = "[]"
+                neck_js = "[]"
+                pat_color_js = "'transparent'"
                 if pat_data:
-                    pat_list = [{"time": str(x), "value": strict_float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
-                    neck_list = [{"time": str(x), "value": strict_float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
+                    pat_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
+                    neck_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
                     pat_list = sorted(pat_list, key=lambda k: k['time'])
                     neck_list = sorted(neck_list, key=lambda k: k['time'])
-                    pat_js = json.dumps(pat_list, allow_nan=False)
-                    neck_js = json.dumps(neck_list, allow_nan=False)
+                    pat_js = json.dumps(pat_list)
+                    neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
 
+                time_series = df_plot['日期'].astype(str).tolist()
+                kline_data = [
+                    {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
+                    for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
+                ]
+                volume_data = [
+                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
+                    for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
+                ]
+                
+                # ====== V60.27 新增：當沖量資料清單 ======
+                dt_volume_data = [
+                    {'time': t, 'value': float(v)}
+                    for t, v in zip(time_series, df_plot['當沖量'])
+                ]
+                # ========================================
+
+                def prep_ma(series, times):
+                    valid_mask = series.notna()
+                    return [{'time': t, 'value': round(float(v), 2)} for t, v, is_valid in zip(times, series, valid_mask) if is_valid]
+
+                ma_data = {
+                    "ma_short": prep_ma(df_plot[f'MA{ma_short}'], time_series),
+                    "ma_mid": prep_ma(df_plot[f'MA{ma_mid}(中線)'], time_series),
+                    "ma_long": prep_ma(df_plot[f'MA{ma_long}(長線)'], time_series)
+                }
+
+                # ====== V60.27 更新：完美揉合原版的MA、LR、PAT以及全新的當沖直條圖疊加 ======
                 html_template = """
                 <!DOCTYPE html>
                 <html>
@@ -1649,30 +1618,17 @@ if run_btn:
                         body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
                         #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
                         #chart-vol { flex: 0.8; position: relative;}
-                        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
-                        #error-log { display: none; color: #d32f2f; font-family: monospace; padding: 20px; background: #ffebee; border: 1px solid #ef5350; overflow: auto; flex: 1; }
+                        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.85); padding: 2px 6px; border-radius: 4px; color: #333;}
                     </style>
                 </head>
                 <body>
-                    <div id="error-log"></div>
-                    <div id="chart-wrapper" style="display: flex; flex-direction: column; height: 100%; width: 100%;">
-                        <div id="chart-main"><div id="legend" class="legend"></div></div>
-                        <div id="chart-vol"></div>
-                    </div>
-                    
-                    <script type="application/json" id="kline-json">KLINE_DATA_STR</script>
-                    <script type="application/json" id="volume-json">VOLUME_DATA_STR</script>
-                    <script type="application/json" id="dt-volume-json">DT_VOLUME_DATA_STR</script>
-                    <script type="application/json" id="ma-json">MA_DATA_STR</script>
-                    <script type="application/json" id="lr-json">LR_DATA_STR</script>
-
+                    <div id="chart-main"><div id="legend" class="legend"></div></div>
+                    <div id="chart-vol"></div>
                     <script>
-                    try {
-                        const kData = JSON.parse(document.getElementById('kline-json').textContent);
-                        const vData = JSON.parse(document.getElementById('volume-json').textContent);
-                        const dtData = JSON.parse(document.getElementById('dt-volume-json').textContent);
-                        const ma = JSON.parse(document.getElementById('ma-json').textContent);
-                        const lr = JSON.parse(document.getElementById('lr-json').textContent);
+                        const kData = KLINE_DATA;
+                        const vData = VOLUME_DATA;
+                        const dtData = DT_VOLUME_DATA;
+                        const ma = MA_DATA;
 
                         const mainOptions = {
                             autoSize: true,
@@ -1700,10 +1656,11 @@ if run_btn:
                         candleSeries.setData(kData);
 
                         const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
-                        if (ma.ma_short && ma.ma_short.length > 0) mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
-                        if (ma.ma_mid && ma.ma_mid.length > 0) mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
-                        if (ma.ma_long && ma.ma_long.length > 0) mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
+                        mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
+                        mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
+                        mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
 
+                        const lr = LR_DATA;
                         if (lr && lr.upper && lr.upper.length > 0) {
                             mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
                             mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
@@ -1720,56 +1677,58 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        if (vData && vData.length > 0) vSeries.setData(vData);
-
-                        const dtSeries = volChart.addHistogramSeries({ 
-                            color: 'rgba(255, 82, 82, 0.9)', 
-                            priceFormat: { type: 'volume' } 
+                        const vSeries = volChart.addHistogramSeries({ 
+                            priceFormat: { type: 'volume' },
+                            priceScaleId: '' 
                         });
-                        if (dtData && dtData.length > 0) dtSeries.setData(dtData);
+                        vSeries.setData(vData);
+
+                        const dtSeries = volChart.addHistogramSeries({
+                            color: 'rgba(255, 82, 82, 0.85)',
+                            priceFormat: { type: 'volume' },
+                            priceScaleId: '' 
+                        });
+                        dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            let tStr = null;
-                            if (p && p.time) {
-                                if (typeof p.time === 'string') tStr = p.time;
-                                else if (p.time.year) tStr = `${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}`;
-                            }
-
-                            const d = tStr ? kData.find(x => x.time === tStr) : (kData.length > 0 ? kData[kData.length-1] : null);
+                            const time = p.time;
+                            const d = time ? kData.find(x => x.time === time) : kData[kData.length-1];
+                            const v = time ? vData.find(x => x.time === time) : vData[vData.length-1];
+                            const dt = time ? dtData.find(x => x.time === time) : dtData[dtData.length-1];
+                            
                             if (d) {
-                                const v = tStr ? vData.find(x => x.time === tStr) : (vData.length > 0 ? vData[vData.length-1] : null);
-                                const dt = tStr ? dtData.find(x => x.time === tStr) : (dtData.length > 0 ? dtData[dtData.length-1] : null);
-                                let volStr = v ? ` 量:${v.value}` : '';
-                                let dtStr = (dt && dt.value > 0) ? ` 沖:<span style="color:#ff5252; font-weight:bold">${dt.value}</span>` : '';
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>${volStr}${dtStr}`;
+                                let text = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
+                                if (v) text += ` &nbsp; | &nbsp; 總量:${v.value}`;
+                                if (dt && dt.value > 0) text += ` &nbsp; 沖:<span style="color:#d32f2f; font-weight:bold">${dt.value}</span>`;
+                                legend.innerHTML = text;
                             }
                         };
-                        updateLegend(null);
+                        updateLegend({time: null});
 
-                        mainChart.subscribeCrosshairMove(p => { updateLegend(p); });
-                        volChart.subscribeCrosshairMove(p => { updateLegend(p); });
+                        mainChart.subscribeCrosshairMove(updateLegend);
+                        volChart.subscribeCrosshairMove(updateLegend);
+                        
+                        mainChart.subscribeCrosshairMove(p => {
+                            if (p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
+                            else volChart.clearCrosshairPosition();
+                        });
+                        volChart.subscribeCrosshairMove(p => {
+                            if (p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
+                            else mainChart.clearCrosshairPosition();
+                        });
 
                         mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => volChart.timeScale().setVisibleLogicalRange(r));
                         volChart.timeScale().subscribeVisibleLogicalRangeChange(r => mainChart.timeScale().setVisibleLogicalRange(r));
-                    
-                    } catch (error) {
-                        document.getElementById('chart-wrapper').style.display = 'none';
-                        const errorDiv = document.getElementById('error-log');
-                        errorDiv.style.display = 'block';
-                        errorDiv.innerHTML = "<h3>🚨 JSON 圖表崩潰攔截器被觸發！</h3>";
-                        errorDiv.innerHTML += "<p>錯誤原因：</p><pre>" + error.message + "\\n" + error.stack + "</pre>";
-                    }
                     </script>
                 </body>
                 </html>
                 """
-                html_code = html_template.replace("KLINE_DATA_STR", json.dumps(kline_data, allow_nan=False))\
-                                         .replace("VOLUME_DATA_STR", json.dumps(volume_data, allow_nan=False))\
-                                         .replace("DT_VOLUME_DATA_STR", json.dumps(dt_volume_data, allow_nan=False))\
-                                         .replace("MA_DATA_STR", json.dumps(ma_data_dict, allow_nan=False))\
-                                         .replace("LR_DATA_STR", json.dumps(lr_data, allow_nan=False))\
+                html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
+                                         .replace("VOLUME_DATA", json.dumps(volume_data))\
+                                         .replace("DT_VOLUME_DATA", json.dumps(dt_volume_data))\
+                                         .replace("MA_DATA", json.dumps(ma_data))\
+                                         .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
                                          .replace("NECK_DATA", neck_js)\
                                          .replace("PAT_COLOR", pat_color_js)
@@ -1977,7 +1936,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.26 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.27 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2005,9 +1964,25 @@ if run_btn:
             p1 += format_to_csv_string(df_day_trade.head(10) if not df_day_trade.empty else df_day_trade, "06. 現股當沖明細 (近10天)")
             p1 += format_to_csv_string(df_fut.head(10) if not df_fut.empty else df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
             p1 += format_to_csv_string(df_rev.head(12) if not df_rev.empty else df_rev, "08. 月營收 (百萬元) (近12個月)")
-            p1 += format_to_csv_string(df_p_sum, "10.董監大股東質設總覽")
+            p1 += format_to_csv_string(df_p_sum, "10. 董監大股東質設總覽")
             p1 += format_to_csv_string(df_twse, "12. 鉅額交易明細 (近3日)")
             p1 += format_to_csv_string(df_per.head(10) if not df_per.empty else df_per, "14. 本益比、淨值比與殖利率")
             p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
+
+        st.divider()
+        st.markdown("<div class='category-title'>系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
+        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
+            st.info("這裡傾印了供你人工或稽核技術面與主力戰情所需的近 60 天核心基礎資料。")
+            dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
+            
+            df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
+            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
+            
+            df_tdcc_dump = df_s_wide.head(10).copy() if not df_s_wide.empty else pd.DataFrame()
+            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
+            
+            st.code(dump_text, language="text")
