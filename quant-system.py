@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.28版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.29版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -104,10 +104,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.28 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.29 全併發極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.28：精確呈現當沖真實比例，極細均線專業視覺優化。{usage_text}")
+st.caption(f"V60.29：導入全併發多執行緒網路引擎，破除 API 串行排隊瓶頸，速度暴增。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -118,7 +118,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.28 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.29 併發引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -158,29 +158,88 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except: pass
     return pd.DataFrame()
 
+# V60.29 核心：併發大腦 (取代所有串列與迴圈請求)
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_branch_data_v50(dl, tid):
-    if not dl: return pd.DataFrame()
-    all_d = []
+def fetch_heavy_data_sync(user_stock_id, dates, max_len):
+    b_results = []
+    a_results = {}
+    cb_info_list = []
+
+    tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+    d_end = dates[max_len-1] if max_len > 0 else dates[0]
+    dt_sd = (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d")
+
+    api_targets = [
+        ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
+        ("TaiwanStockMarginPurchaseShortSale", d_end, None, user_stock_id),
+        ("TaiwanStockDayTrading", dt_sd, None, user_stock_id),
+        ("TaiwanStockInstitutionalInvestorsBuySell", d_end, None, user_stock_id),
+        ("TaiwanStockMonthRevenue", "2022-01-01", None, user_stock_id),
+        ("TaiwanFuturesInstitutionalInvestors", d_end, None, "TX"),
+        ("TaiwanStockDividend", "2015-01-01", None, user_stock_id),
+        ("TaiwanStockPER", d_end, None, user_stock_id),
+        ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
+        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None)
+    ]
+
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
-        def fs(d):
-            try: 
-                r = session.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, timeout=15)
-                if r.status_code == 200: 
-                    res_data = r.json().get("data", [])
-                    return res_data if isinstance(res_data, list) else []
+
+        def fetch_api(dataset, sd, ed, tid):
+            url = "https://api.finmindtrade.com/api/v4/data"
+            p = {"dataset": dataset, "start_date": sd}
+            if tid: p["data_id"] = tid
+            if ed: p["end_date"] = ed
+            try:
+                r = session.get(url, params=p, timeout=20)
+                if r.status_code == 200:
+                    return dataset, r.json().get("data", [])
+            except: pass
+            return dataset, []
+
+        def fetch_branch(d, tid):
+            url = "https://api.finmindtrade.com/api/v4/data"
+            p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
+            try:
+                r = session.get(url, params=p, timeout=20)
+                if r.status_code == 200:
+                    return r.json().get("data", [])
             except: pass
             return []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
-            for r in ex.map(fs, dl):
-                if r: all_d.extend(r)
-    df = pd.DataFrame(all_d)
-    if not df.empty:
+
+        # 開啟最高 25 條執行緒，一口氣將分點資料與其他 API 射向 FinMind
+        with concurrent.futures.ThreadPoolExecutor(max_workers=25) as executor:
+            b_futures = [executor.submit(fetch_branch, d, user_stock_id) for d in dates[:max_len]]
+            a_futures = [executor.submit(fetch_api, ds, sd, ed, tid) for ds, sd, ed, tid in api_targets]
+
+            for future in concurrent.futures.as_completed(a_futures):
+                ds, data = future.result()
+                a_results[ds] = pd.DataFrame(data)
+
+            for future in concurrent.futures.as_completed(b_futures):
+                res = future.result()
+                if res: b_results.extend(res)
+
+            # 處理 CBAS 連續請求
+            df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
+            if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
+                cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
+                target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
+                
+                if len(target_cbs) > 0:
+                    cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
+                    for f in concurrent.futures.as_completed(cb_futures):
+                        _, cb_data = f.result()
+                        if cb_data: cb_info_list.extend(cb_data)
+
+    df_b = pd.DataFrame(b_results)
+    if not df_b.empty:
         for c in ['buy', 'sell', 'price']:
-            if c in df.columns: df[c] = safe_to_num(df[c])
-            else: df[c] = 0.0
-    return df
+            if c in df_b.columns: df_b[c] = safe_to_num(df_b[c])
+            else: df_b[c] = 0.0
+
+    df_cb_info = pd.DataFrame(cb_info_list)
+    return df_b, a_results, df_cb_info
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_block_v50(tid, ad):
@@ -1408,7 +1467,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.28 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.29 全併發決策引擎 (請稍候，正全速載入中)..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1441,17 +1500,26 @@ if run_btn:
         if enable_pattern:
             pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
         
-        dynamic_dict, s_val, chip_eng, _ = scrape_director_v50(user_stock_id)
-        df_b_raw = fetch_branch_data_v50(dates[:max_len], user_stock_id)
-        
+        # [V60.29 核心] 開啟最高速多執行緒池，同時抓取爬蟲與所有 API
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as main_executor:
+            f_dir = main_executor.submit(scrape_director_v50, user_stock_id)
+            f_ple = main_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
+            f_blk = main_executor.submit(scrape_block_v50, user_stock_id, dates)
+            f_hvy = main_executor.submit(fetch_heavy_data_sync, user_stock_id, dates, max_len)
+
+            dynamic_dict, s_val, chip_eng, _ = f_dir.result()
+            df_p_sum, df_p_det = f_ple.result()
+            df_twse, _ = f_blk.result()
+            df_b_raw, ds_dict, df_cb_info = f_hvy.result()
+
         if df_b_raw.empty:
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
             st.stop()
             
         tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         
-        tdcc_start_date = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
-        df_s_raw = fetch_finmind_v50("TaiwanStockHoldingSharesPer", tdcc_start_date, user_stock_id)
+        # 從併發取得的資料字典中提取 DataFrame
+        df_s_raw = ds_dict.get("TaiwanStockHoldingSharesPer", pd.DataFrame())
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
@@ -1487,16 +1555,11 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
-        df_twse, _ = scrape_block_v50(user_stock_id, dates)
-        df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
+        df_margin = process_margin(ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame()))
+        df_day_trade = process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()))
+        df_inst = process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame()))
         
-        # [V60.28] 為 K線圖表專屬擷取長天期當沖數據
-        df_day_trade_raw = fetch_finmind_v50("TaiwanStockDayTrading", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
-        df_day_trade = process_day_trading(df_day_trade_raw)
-        
-        df_inst = process_inst(fetch_finmind_v50("TaiwanStockInstitutionalInvestorsBuySell", d_end, user_stock_id))
-        
-        df_rev_raw = fetch_finmind_v50("TaiwanStockMonthRevenue", "2022-01-01", user_stock_id)
+        df_rev_raw = ds_dict.get("TaiwanStockMonthRevenue", pd.DataFrame())
         df_rev = pd.DataFrame()
         if not df_rev_raw.empty:
             df_rev_raw['營收月份'] = df_rev_raw['revenue_year'].astype(str) + "-" + df_rev_raw['revenue_month'].astype(str).str.zfill(2)
@@ -1510,21 +1573,14 @@ if run_btn:
         df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_60 = process_branch_v25(df_b_raw, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len)
         
-        df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
-        df_fut = process_fut_inst(fetch_finmind_v50("TaiwanFuturesInstitutionalInvestors", d_end, "TX"))
-        df_div = process_div(fetch_finmind_v50("TaiwanStockDividend", "2015-01-01", user_stock_id))
-        df_per = process_per(fetch_finmind_v50("TaiwanStockPER", d_end, user_stock_id))
-        df_disp = process_disp(fetch_finmind_v50("TaiwanStockDispositionSecuritiesPeriod", (datetime.date.today()-datetime.timedelta(days=180)).strftime("%Y-%m-%d"), user_stock_id))
+        df_fut = process_fut_inst(ds_dict.get("TaiwanFuturesInstitutionalInvestors", pd.DataFrame()))
+        df_div = process_div(ds_dict.get("TaiwanStockDividend", pd.DataFrame()))
+        df_per = process_per(ds_dict.get("TaiwanStockPER", pd.DataFrame()))
+        df_disp = process_disp(ds_dict.get("TaiwanStockDispositionSecuritiesPeriod", pd.DataFrame()))
         
-        df_cbas_raw = fetch_finmind_v50("TaiwanStockConvertibleBondDailyOverview", dates[0])
-        df_cb_info_list = []
+        df_cbas_raw = ds_dict.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
         if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
             cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
-            target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
-            for cid in target_cbs:
-                info_df = fetch_finmind_v50("TaiwanStockConvertibleBondInfo", "2000-01-01", tid=cid)
-                if not info_df.empty: df_cb_info_list.append(info_df)
-            df_cb_info = pd.concat(df_cb_info_list, ignore_index=True) if df_cb_info_list else pd.DataFrame()
             df_cbas = process_cbas(df_cbas_raw[cb_mask], curr_price, df_cb_info)
         else:
             df_cbas = pd.DataFrame()
@@ -1534,16 +1590,16 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.28)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.29 併發版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
-            st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}極細均線)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             
-            # [V60.28] 整合當沖總張數作為疊加成交量
+            df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())
             if not df_day_trade_raw.empty:
                 df_dt_chart = df_day_trade_raw.copy()
                 df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
@@ -1588,7 +1644,6 @@ if run_btn:
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
                 
-                # [V60.28] 雙色成交量資料
                 total_vol_data = [
                     {'time': t, 'value': float(v), 'color': '#E0E3EB'}
                     for t, v in zip(time_series, df_plot['成交量(張)'])
@@ -1654,7 +1709,6 @@ if run_btn:
                         });
                         candleSeries.setData(kData);
 
-                        // [V60.28] 極細均線優化 (lineWidth: 1)
                         const lineOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
                         mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
                         mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
@@ -1677,7 +1731,6 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        // [V60.28] 當沖成交量疊加
                         const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         totalVolSeries.setData(tVol);
                         const dayTradeVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
@@ -1924,7 +1977,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.28 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.29 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
