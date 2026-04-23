@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.27版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.28版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -98,16 +98,16 @@ pattern_order = st.sidebar.slider("形態辨識靈敏度 (Order)", 2, 20, 5, 1)
 
 st.sidebar.divider()
 st.sidebar.markdown("### 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算純淨加權均價", value=True)
+filter_day_trade = st.sidebar.checkbox("剔除散戶與當沖，計算純淨加權均價", value=True)
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.27 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.28 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.27：完美整合 TradingView 雙色成交量疊加技術，精確呈現當沖隔日沖比例。{usage_text}")
+st.caption(f"V60.28：精確呈現當沖真實比例，極細均線專業視覺優化。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -118,7 +118,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.27 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.28 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -797,7 +797,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                         f_impact = (f_vol_exact / max(1, total_lots)) * 100 
                     
             p_chg = round(raw_chg - f_impact, 2)
-            d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
+            d_math.append({"日期": d_str, "原始變動": raw_chg, "當沖干擾": round(f_impact, 2), "純淨變動": p_chg})
             
             lev = 100 / (100 - safe_dead_ratio) if 0 <= safe_dead_ratio < 100 else 1
             adv = []
@@ -806,7 +806,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"[強勢軋空] 站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
                 elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"[底位建倉] 跌破月線但主力吃貨{p_chg}%")
                 elif p_chg < -1.0: adv.append(f"[主力撤退] 大戶實質流出{abs(p_chg)}%")
-                if f_impact > 1.2: adv.append(f"[隔日沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
+                if f_impact > 1.2: adv.append(f"[當沖/短沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
                 
         prev_row = row
         out.append({"日期": d_str, "大戶原持股(%)": round(current_large_pct, 2), "原始大戶變動(%)": raw_chg, "純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "盤整"})
@@ -815,8 +815,8 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     df = pd.merge(df, ddf, on='日期', how='left')
     df['專家雷達診斷'] = df['診斷']
     df['純淨大戶變動(%)'] = df['純淨變動']
-    df['隔日沖虛胖(%)'] = df['雜訊']
-    res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
+    df['當沖虛胖(%)'] = df['雜訊']
+    res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
     res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
     return res_df, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
@@ -1408,7 +1408,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.27 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.28 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1484,13 +1484,13 @@ if run_btn:
             df_combined_radar = pd.merge(df_s_dyn, df_v27_clean, on=['日期'], how='inner')
             if not df_combined_radar.empty:
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
-                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
+                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
         df_twse, _ = scrape_block_v50(user_stock_id, dates)
         df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
         
-        # [V60.27] 為 K線圖表專屬擷取長天期當沖數據
+        # [V60.28] 為 K線圖表專屬擷取長天期當沖數據
         df_day_trade_raw = fetch_finmind_v50("TaiwanStockDayTrading", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         df_day_trade = process_day_trading(df_day_trade_raw)
         
@@ -1534,7 +1534,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.27)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.28)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1543,7 +1543,7 @@ if run_btn:
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             
-            # [V60.27] 整合當沖總張數作為疊加成交量
+            # [V60.28] 整合當沖總張數作為疊加成交量
             if not df_day_trade_raw.empty:
                 df_dt_chart = df_day_trade_raw.copy()
                 df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
@@ -1588,14 +1588,14 @@ if run_btn:
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
                 
-                # [V60.27] 雙色成交量資料
+                # [V60.28] 雙色成交量資料
                 total_vol_data = [
                     {'time': t, 'value': float(v), 'color': '#E0E3EB'}
                     for t, v in zip(time_series, df_plot['成交量(張)'])
                 ]
-                overnight_vol_data = [
-                    {'time': t, 'value': float(ov), 'color': '#FF9800'}
-                    for t, ov in zip(time_series, df_plot['當沖總張數'])
+                day_trade_vol_data = [
+                    {'time': t, 'value': float(dtv), 'color': '#FF9800'}
+                    for t, dtv in zip(time_series, df_plot['當沖總張數'])
                 ]
 
                 def prep_ma(series, times):
@@ -1626,7 +1626,7 @@ if run_btn:
                     <script>
                         const kData = KLINE_DATA;
                         const tVol = TOTAL_VOL;
-                        const oVol = OVERNIGHT_VOL;
+                        const dtVol = DAYTRADE_VOL;
                         const ma = MA_DATA;
 
                         const mainOptions = {
@@ -1654,7 +1654,8 @@ if run_btn:
                         });
                         candleSeries.setData(kData);
 
-                        const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
+                        // [V60.28] 極細均線優化 (lineWidth: 1)
+                        const lineOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
                         mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
                         mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
                         mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
@@ -1676,20 +1677,20 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        // [V60.27] 成交量疊加
+                        // [V60.28] 當沖成交量疊加
                         const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
                         totalVolSeries.setData(tVol);
-                        const overnightVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        overnightVolSeries.setData(oVol);
+                        const dayTradeVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+                        dayTradeVolSeries.setData(dtVol);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
                             const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
-                            const ov = p.time ? oVol.find(x => x.time === p.time) : oVol[oVol.length-1];
-                            if (d && ov) {
+                            const dtData = p.time ? dtVol.find(x => x.time === p.time) : dtVol[dtVol.length-1];
+                            if (d && dtData) {
                                 const tv = tVol.find(x => x.time === d.time);
                                 const tvVal = tv ? tv.value : 0;
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖/隔日沖:${Math.round(ov.value)}</span>`;
+                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
                             }
                         };
                         updateLegend({time: null});
@@ -1713,7 +1714,7 @@ if run_btn:
                 """
                 html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
                                          .replace("TOTAL_VOL", json.dumps(total_vol_data))\
-                                         .replace("OVERNIGHT_VOL", json.dumps(overnight_vol_data))\
+                                         .replace("DAYTRADE_VOL", json.dumps(day_trade_vol_data))\
                                          .replace("MA_DATA", json.dumps(ma_data))\
                                          .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
@@ -1801,7 +1802,7 @@ if run_btn:
         report_md += "#### 第二層：中線籌碼 (集保大戶與鎖碼流向)\n"
         report_md += "<ul>"
         report_md += f"<li>【大戶真實鎖碼率】：波段大戶吸納了約 {c_val_text} 的市場自由流通籌碼。</li>\n"
-        report_md += f"<li>【波段籌碼流向】：排除隔日沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
+        report_md += f"<li>【波段籌碼流向】：排除當沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
         if df_combined_display.empty: layer2_diag = "集保大戶數據不足 (可能為新上市或資料未滿兩週)，無法計算變動率。"
         elif radar_chg >= 1.0: layer2_diag = "中線大戶持續吃貨鎖碼，籌碼集中度顯著提升。"
         elif radar_chg <= -1.0: layer2_diag = "中線大戶出現逢高減碼或倒貨跡象，籌碼流向散戶。"
@@ -1923,7 +1924,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.27 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.28 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
