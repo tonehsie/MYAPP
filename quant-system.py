@@ -14,12 +14,12 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.26版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.27版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
-# V60.26 優化：新增 profit-warning 視覺警示標籤
+# V60.26/V60.27 優化：新增 profit-warning 視覺警示標籤與當沖圖表疊加
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -105,10 +105,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.26 O(1) 迴圈極速版)")
+st.title("全息量化系統 (V60.27 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
+st.caption(f"V60.27：導入字典防呆對齊架構，內建除蟲雷達，K線圖表直條圖同步精準疊加當沖量。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -119,7 +119,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.26 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.27 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -319,7 +319,8 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = [], False
+    out, ist = False, False
+    out = []
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
@@ -1356,7 +1357,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# V60.26 優化：HTML 渲染加入無本獲利的警示高亮
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1410,7 +1410,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.26 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.27 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1532,7 +1532,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.26)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.27)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1542,6 +1542,58 @@ if run_btn:
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
 
             if not df_plot.empty:
+                
+                # ====== 終極暴力防呆版：獲取當沖量與對齊 ======
+                dt_start = df_plot['日期'].min()
+                df_dt_chart = fetch_finmind_v50("TaiwanStockDayTrading", dt_start, user_stock_id)
+                
+                # 1. 建立當沖字典 (完全避開 Pandas 合併產生的 NaN 風險)
+                dt_dict = {}
+                if not df_dt_chart.empty:
+                    vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume' if 'Volume' in df_dt_chart.columns else None
+                    if vol_col:
+                        for _, row in df_dt_chart.iterrows():
+                            # 確保日期格式一致，並轉換成千股(張)
+                            d_str = str(row.get('date', '')).strip()
+                            try:
+                                v_val = float(str(row[vol_col]).replace(',', '')) / 1000
+                                dt_dict[d_str] = int(v_val)
+                            except:
+                                pass
+
+                # 2. 組合基礎圖表資料
+                time_series = df_plot['日期'].astype(str).tolist()
+                kline_data = [
+                    {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
+                    for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
+                ]
+                volume_data = [
+                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
+                    for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
+                ]
+                
+                # 3. 強制對齊當沖資料：用時間軸去查字典，查不到絕對給 0
+                dt_volume_data = []
+                for t in time_series:
+                    dt_val = dt_dict.get(t, 0) # 找不到就給 0
+                    # 確保就算總成交量是 0，當沖量也合乎邏輯 (不能大於總量)
+                    total_vol = next((item['value'] for item in volume_data if item['time'] == t), 0)
+                    final_dt_val = min(dt_val, total_vol) if total_vol > 0 else 0
+                    
+                    dt_volume_data.append({'time': t, 'value': final_dt_val})
+
+                # ========================================
+                # 🛠️ 專屬除蟲區塊 (幫助你釐清問題在哪)
+                # ========================================
+                with st.expander("🛠️ 當沖數據與圖表除蟲雷達 (如果圖沒出來先看這)", expanded=False):
+                    st.write(f"資料筆數檢查 -> K線: {len(kline_data)} 筆 | 總量: {len(volume_data)} 筆 | 當沖: {len(dt_volume_data)} 筆")
+                    if len(dt_volume_data) > 0 and all(d['value'] == 0 for d in dt_volume_data):
+                        st.error("診斷：給前端的當沖數值全部都是 0。代表 API 沒給這檔近期的當沖資料，或日期格式未對齊。")
+                    else:
+                        st.success("診斷：前端資料已成功包含大於 0 的當沖數值，圖表應可正常渲染橘紅色當沖柱！")
+                    st.write("API 抓回來的當沖原始字典:", dt_dict if dt_dict else "空值 (API 無回傳)")
+                # ========================================
+
                 lr_data_json = "{}"
                 if not df_lr_channel.empty:
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
@@ -1565,16 +1617,6 @@ if run_btn:
                     neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
 
-                time_series = df_plot['日期'].astype(str).tolist()
-                kline_data = [
-                    {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
-                    for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
-                ]
-                volume_data = [
-                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
-                    for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
-                ]
-
                 def prep_ma(series, times):
                     valid_mask = series.notna()
                     return [{'time': t, 'value': round(float(v), 2)} for t, v, is_valid in zip(times, series, valid_mask) if is_valid]
@@ -1594,7 +1636,7 @@ if run_btn:
                         body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
                         #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
                         #chart-vol { flex: 0.8; position: relative;}
-                        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
+                        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.85); padding: 2px 6px; border-radius: 4px; color: #333;}
                     </style>
                 </head>
                 <body>
@@ -1603,6 +1645,7 @@ if run_btn:
                     <script>
                         const kData = KLINE_DATA;
                         const vData = VOLUME_DATA;
+                        const dtData = DT_VOLUME_DATA;
                         const ma = MA_DATA;
 
                         const mainOptions = {
@@ -1652,25 +1695,43 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+                        const vSeries = volChart.addHistogramSeries({ 
+                            priceFormat: { type: 'volume' },
+                            priceScaleId: '' 
+                        });
                         vSeries.setData(vData);
+
+                        const dtSeries = volChart.addHistogramSeries({
+                            color: 'rgba(255, 82, 82, 0.85)',
+                            priceFormat: { type: 'volume' },
+                            priceScaleId: '' 
+                        });
+                        dtSeries.setData(dtData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
+                            const time = p.time;
+                            const d = time ? kData.find(x => x.time === time) : kData[kData.length-1];
+                            const v = time ? vData.find(x => x.time === time) : vData[vData.length-1];
+                            const dt = time ? dtData.find(x => x.time === time) : dtData[dtData.length-1];
+                            
                             if (d) {
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
+                                let text = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
+                                if (v) text += ` &nbsp; | &nbsp; 總量:${v.value}`;
+                                if (dt && dt.value > 0) text += ` &nbsp; 沖:<span style="color:#d32f2f; font-weight:bold">${dt.value}</span>`;
+                                legend.innerHTML = text;
                             }
                         };
                         updateLegend({time: null});
 
+                        mainChart.subscribeCrosshairMove(updateLegend);
+                        volChart.subscribeCrosshairMove(updateLegend);
+                        
                         mainChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
                             if (p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
                             else volChart.clearCrosshairPosition();
                         });
                         volChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
                             if (p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
                             else mainChart.clearCrosshairPosition();
                         });
@@ -1683,6 +1744,7 @@ if run_btn:
                 """
                 html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
                                          .replace("VOLUME_DATA", json.dumps(volume_data))\
+                                         .replace("DT_VOLUME_DATA", json.dumps(dt_volume_data))\
                                          .replace("MA_DATA", json.dumps(ma_data))\
                                          .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
@@ -1892,7 +1954,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.26 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.27 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
