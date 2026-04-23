@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.31版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.32版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -105,10 +105,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.31 終極穩固版)")
+st.title("全息量化系統 (V60.32 真實併發與極致排版版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.31：深度優化 Payload 載入量，修復 UI Cache 衝突與例外防護。{usage_text}")
+st.caption(f"V60.32：修復 UI 快取衝突，實現真實即時進度條。優化 K 線 YY/MM/DD 時間軸格式。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -119,7 +119,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.31 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.32 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -154,17 +154,14 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except: pass
     return pd.DataFrame()
 
-# [V60.31 優化] 移除 UI 快取干擾，純粹執行資料併發
-@st.cache_data(ttl=3600, show_spinner=False)
-def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
+# 【V60.32 核心修復】完全移除快取標記，確保進度條能即時回報畫面
+def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
     b_results = []
     a_results = {}
     cb_info_list = []
 
     tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
     d_end = dates[max_len-1] if max_len > 0 else dates[0]
-    
-    # [V60.31 優化] Payload Diet: 當沖數據只抓 700 天 (配合 K線 600天極限)，節省 35% 傳輸量
     dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
 
     api_targets = [
@@ -179,6 +176,13 @@ def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
         ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None)
     ]
+
+    total_tasks = max_len + len(api_targets)
+    
+    # 建立動態 UI 佔位符
+    prog_container = st.empty()
+    text_container = st.empty()
+    prog_bar = prog_container.progress(0.0)
 
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
@@ -203,6 +207,7 @@ def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
             except: pass
             return []
 
+        # 啟動 20 條高併發執行緒
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             future_to_type = {}
             for d in dates[:max_len]:
@@ -210,7 +215,16 @@ def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
             for ds, sd, ed, tid in api_targets:
                 future_to_type[executor.submit(fetch_api, ds, sd, ed, tid)] = 'api'
 
+            completed = 0
+            # 使用 as_completed 確保哪一條執行緒先回來，就先更新畫面進度
             for future in concurrent.futures.as_completed(future_to_type):
+                completed += 1
+                prog_val = min(1.0, completed / total_tasks)
+                
+                # UI 即時更新指令
+                prog_bar.progress(prog_val)
+                text_container.markdown(f"<div class='progress-text'>⚡ 正在與 FinMind 伺服器同步巨量資料... (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+
                 f_type = future_to_type[future]
                 if f_type == 'branch':
                     res = future.result()
@@ -219,15 +233,22 @@ def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
                     ds, data = future.result()
                     a_results[ds] = pd.DataFrame(data)
 
+            # 處理額外的 CBAS 掃描
             df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
             if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
                 cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
                 target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
+                
                 if len(target_cbs) > 0:
+                    text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
                     cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
                     for f in concurrent.futures.as_completed(cb_futures):
                         _, cb_data = f.result()
                         if cb_data: cb_info_list.extend(cb_data)
+
+    # 隱藏進度條
+    prog_container.empty()
+    text_container.empty()
 
     df_b = pd.DataFrame(b_results)
     if not df_b.empty:
@@ -236,20 +257,6 @@ def _fetch_heavy_data_cache_core(user_stock_id, dates, max_len):
             else: df_b[c] = 0.0
 
     df_cb_info = pd.DataFrame(cb_info_list)
-    return df_b, a_results, df_cb_info
-
-def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
-    # [V60.31] UI 進度條獨立於快取之外，解決 Thread context missing 問題
-    prog_container = st.empty()
-    text_container = st.empty()
-    prog_bar = prog_container.progress(0.1)
-    text_container.markdown(f"<div class='progress-text'>⚡ 正在與 FinMind 伺服器建立全併發連線...</div>", unsafe_allow_html=True)
-    
-    df_b, a_results, df_cb_info = _fetch_heavy_data_cache_core(user_stock_id, dates, max_len)
-    
-    prog_bar.progress(1.0)
-    prog_container.empty()
-    text_container.empty()
     return df_b, a_results, df_cb_info
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1478,7 +1485,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.31 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.32 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
@@ -1486,7 +1493,6 @@ if run_btn:
             
         industry, address = get_company_profile(user_stock_id)
         
-        # [V60.31] Payload 縮減：歷史股價由 1095 天降為 700 天
         df_p_raw = fetch_finmind_v50("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: 
             st.error("查無歷史股價資料。")
@@ -1600,7 +1606,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.31)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.32)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1694,8 +1700,25 @@ if run_btn:
                         const dtVol = DAYTRADE_VOL;
                         const ma = MA_DATA;
 
+                        // 【V60.32 優化】自定義時間軸顯示格式 (YY/MM/DD)
+                        const commonLocalization = {
+                            timeFormatter: businessDayOrTimestamp => {
+                                if (businessDayOrTimestamp.year) {
+                                    const y = String(businessDayOrTimestamp.year).slice(-2);
+                                    const m = String(businessDayOrTimestamp.month).padStart(2, '0');
+                                    const d = String(businessDayOrTimestamp.day).padStart(2, '0');
+                                    return `${y}/${m}/${d}`;
+                                }
+                                if (typeof businessDayOrTimestamp === 'string') {
+                                    return businessDayOrTimestamp.substring(2).replace(/-/g, '/');
+                                }
+                                return businessDayOrTimestamp;
+                            }
+                        };
+
                         const mainOptions = {
                             autoSize: true,
+                            localization: commonLocalization,
                             layout: { background: { color: '#ffffff' }, textColor: '#333' },
                             grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
                             rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
@@ -1704,6 +1727,7 @@ if run_btn:
 
                         const volOptions = {
                             autoSize: true,
+                            localization: commonLocalization,
                             layout: { background: { color: '#ffffff' }, textColor: '#333' },
                             grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
                             rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
@@ -1753,7 +1777,9 @@ if run_btn:
                             if (d && dtData) {
                                 const tv = tVol.find(x => x.time === d.time);
                                 const tvVal = tv ? tv.value : 0;
-                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
+                                // 【V60.32 優化】將左上角的 Legend 日期也改為 YY/MM/DD
+                                const shortDate = d.time.substring(2).replace(/-/g, '/');
+                                legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
                             }
                         };
                         updateLegend({time: null});
@@ -1987,7 +2013,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.31 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.32 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
