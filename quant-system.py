@@ -836,7 +836,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     arr_dates_str = np.sort(df_branch_raw['date'].unique()) if not df_branch_raw.empty else np.array([])
     arr_dates_dt = pd.to_datetime(arr_dates_str) if len(arr_dates_str) > 0 else []
 
-    out, d_math, d_fri = [], []
+    out, d_math, d_fri = [], [], []
     prev_row = None
     
     for i, row in df.iterrows():
