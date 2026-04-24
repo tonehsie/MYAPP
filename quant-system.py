@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.38版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.39版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -74,7 +74,7 @@ def get_generic_session():
 FM_SESSION = get_finmind_session()
 GENERIC_SESSION = get_generic_session()
 
-# 增強版靜態字典，涵蓋 Float 與 Int，完美契合 Pandas to_numeric 轉換後的型態
+_num_re = re.compile(r'\d+')
 _LEVEL_MAP = {
     1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張",
     6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張",
@@ -139,10 +139,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.38 終極向量化與除錯版)")
+st.title("全息量化系統 (V60.39 語法修復版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.38：清除死程式碼，導入純 Pandas 向量化運算取代迴圈，大幅提升資料清洗與形態辨識極限效能。{usage_text}")
+st.caption(f"V60.39：修復 process_inst 模組中多餘的括號語法錯誤，系統穩定運行。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -152,7 +152,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.38 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.39 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1046,7 +1046,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if df_price.empty or len(df_price) < order * 2: return {}
     df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
     
-    # 【優化點 3】：將緩慢的 Pandas .iloc 呼叫轉為高速 C Array 取值
     lows_vals = df['最低價(元)'].values
     highs_vals = df['最高價(元)'].values
     dates_vals = df['日期'].values
@@ -1196,13 +1195,13 @@ def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數', na=False)].copy()
     
-    # 【優化點 1】：真向量化映射 (Vectorized Extract & Map) 取代 apply
     raw_str = df['HoldingSharesLevel'].astype(str).str.replace(' ', '', regex=False).str.replace(',', '', regex=False)
     is_total = raw_str.isin(["17", "17.0", "合計", "總計"])
     
+    # 【優化點 1】：真向量化映射
     nums = raw_str.str.extract(r'(\d+)', expand=False)
-    nums_int = pd.to_numeric(nums, errors='coerce')
-    df['LevelClean'] = nums_int.map(_LEVEL_MAP)
+    nums_num = pd.to_numeric(nums, errors='coerce')
+    df['LevelClean'] = nums_num.map(_LEVEL_MAP)
     df.loc[is_total, 'LevelClean'] = "合計"
     df['LevelClean'] = df['LevelClean'].fillna(raw_str)
     
@@ -1328,7 +1327,7 @@ def process_inst(df):
     ds_s = safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))
     out['自營商(自行)買賣超(張)'] = ((ds_b - ds_s) / 1000).round().astype(int)
     dh_b = safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length)))
-    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length))))
+    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length)))
     out['自營商(避險)買賣超(張)'] = ((dh_b - dh_s) / 1000).round().astype(int)
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
@@ -1411,6 +1410,7 @@ def render_clean_html_table(df, title=""):
         return
     text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號']
     
+    # 【優化點 2】：提取欄位與樣式預先計算 O(N*M) -> O(1)
     cols = df.columns.tolist()
     col_align = {col: "text-left" if any(k in str(col) for k in text_keywords) else "text-right" for col in cols}
     
