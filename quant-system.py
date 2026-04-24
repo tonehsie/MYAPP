@@ -14,11 +14,12 @@ import streamlit.components.v1 as components
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.32版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.26版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
+# V60.26 優化：新增 profit-warning 視覺警示標籤
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 480px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -45,7 +46,6 @@ CSS = """
 .ai-report-box ul { margin-bottom: 20px; }
 .ai-report-box li { margin-bottom: 8px; font-size: 1.05rem; color: #333; }
 .ai-conclusion { background-color: #fff3cd; padding: 15px; border-radius: 6px; border: 1px solid #ffe69c; font-weight: 700; color: #856404; }
-.progress-text { font-size: 1.1rem; color: #1e3a8a; font-weight: bold; margin-bottom: 5px; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -99,16 +99,16 @@ pattern_order = st.sidebar.slider("形態辨識靈敏度 (Order)", 2, 20, 5, 1)
 
 st.sidebar.divider()
 st.sidebar.markdown("### 淨化籌碼引擎")
-filter_day_trade = st.sidebar.checkbox("剔除散戶與當沖，計算純淨加權均價", value=True)
+filter_day_trade = st.sidebar.checkbox("剔除散戶與隔日沖，計算純淨加權均價", value=True)
 st.sidebar.divider()
 ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10)
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.32 真實併發與極致排版版)")
+st.title("全息量化系統 (V60.26 O(1) 迴圈極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.32：修復 UI 快取衝突，實現真實即時進度條。優化 K 線 YY/MM/DD 時間軸格式。{usage_text}")
+st.caption(f"V60.26：徹底解決 Pandas 迴圈效能瓶頸，導入字典預處理架構，運算速度提升百倍以上。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     manual_text = fetch_github_manual(GITHUB_MANUAL_URL)
@@ -119,16 +119,21 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.32 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.26 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
-        try: return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
-        except: return pd.Series([fill_val] * len(series))
-    elif isinstance(series, (int, float)): return series
+        try:
+            return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
+        except:
+            return pd.Series([fill_val] * len(series))
+    elif isinstance(series, (int, float)):
+        return series
     else:
-        try: return float(str(series).replace(',', '').replace('%', '').strip())
-        except: return fill_val
+        try:
+            return float(str(series).replace(',', '').replace('%', '').strip())
+        except:
+            return fill_val
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name_v50(tid):
@@ -154,103 +159,29 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except: pass
     return pd.DataFrame()
 
-def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
-    b_results = []
-    a_results = {}
-    cb_info_list = []
-
-    tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
-    d_end = dates[max_len-1] if max_len > 0 else dates[0]
-    dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
-
-    api_targets = [
-        ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
-        ("TaiwanStockMarginPurchaseShortSale", d_end, None, user_stock_id),
-        ("TaiwanStockDayTrading", dt_sd, None, user_stock_id),
-        ("TaiwanStockInstitutionalInvestorsBuySell", d_end, None, user_stock_id),
-        ("TaiwanStockMonthRevenue", "2022-01-01", None, user_stock_id),
-        ("TaiwanFuturesInstitutionalInvestors", d_end, None, "TX"),
-        ("TaiwanStockDividend", "2015-01-01", None, user_stock_id),
-        ("TaiwanStockPER", d_end, None, user_stock_id),
-        ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
-        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None)
-    ]
-
-    total_tasks = max_len + len(api_targets)
-    
-    prog_container = st.empty()
-    text_container = st.empty()
-    prog_bar = prog_container.progress(0.0)
-
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_branch_data_v50(dl, tid):
+    if not dl: return pd.DataFrame()
+    all_d = []
     with requests.Session() as session:
         session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}"})
-
-        def fetch_api(dataset, sd, ed, tid):
-            url = "https://api.finmindtrade.com/api/v4/data"
-            p = {"dataset": dataset, "start_date": sd}
-            if tid: p["data_id"] = tid
-            if ed: p["end_date"] = ed
-            try:
-                r = session.get(url, params=p, timeout=20)
-                if r.status_code == 200: return dataset, r.json().get("data", [])
-            except: pass
-            return dataset, []
-
-        def fetch_branch(d, tid):
-            url = "https://api.finmindtrade.com/api/v4/data"
-            p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
-            try:
-                r = session.get(url, params=p, timeout=20)
-                if r.status_code == 200: return r.json().get("data", [])
+        def fs(d):
+            try: 
+                r = session.get("https://api.finmindtrade.com/api/v4/data", params={"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}, timeout=15)
+                if r.status_code == 200: 
+                    res_data = r.json().get("data", [])
+                    return res_data if isinstance(res_data, list) else []
             except: pass
             return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            future_to_type = {}
-            for d in dates[:max_len]:
-                future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
-            for ds, sd, ed, tid in api_targets:
-                future_to_type[executor.submit(fetch_api, ds, sd, ed, tid)] = 'api'
-
-            completed = 0
-            for future in concurrent.futures.as_completed(future_to_type):
-                completed += 1
-                prog_val = min(1.0, completed / total_tasks)
-                
-                prog_bar.progress(prog_val)
-                text_container.markdown(f"<div class='progress-text'>⚡ 正在與 FinMind 伺服器同步巨量資料... (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
-
-                f_type = future_to_type[future]
-                if f_type == 'branch':
-                    res = future.result()
-                    if res: b_results.extend(res)
-                else:
-                    ds, data = future.result()
-                    a_results[ds] = pd.DataFrame(data)
-
-            df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
-            if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
-                cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
-                target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
-                
-                if len(target_cbs) > 0:
-                    text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
-                    cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
-                    for f in concurrent.futures.as_completed(cb_futures):
-                        _, cb_data = f.result()
-                        if cb_data: cb_info_list.extend(cb_data)
-
-    prog_container.empty()
-    text_container.empty()
-
-    df_b = pd.DataFrame(b_results)
-    if not df_b.empty:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as ex:
+            for r in ex.map(fs, dl):
+                if r: all_d.extend(r)
+    df = pd.DataFrame(all_d)
+    if not df.empty:
         for c in ['buy', 'sell', 'price']:
-            if c in df_b.columns: df_b[c] = safe_to_num(df_b[c])
-            else: df_b[c] = 0.0
-
-    df_cb_info = pd.DataFrame(cb_info_list)
-    return df_b, a_results, df_cb_info
+            if c in df.columns: df[c] = safe_to_num(df[c])
+            else: df[c] = 0.0
+    return df
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_block_v50(tid, ad):
@@ -283,27 +214,16 @@ def scrape_block_v50(tid, ad):
     p = []
     for i in bd:
         date, src, row = i
-        num_vals = []
+        nums = []
         for c in row:
             c_str = re.sub(r'<[^>]+>', '', str(c)).replace(',', '').strip()
-            # 排除時間冒號格式，並確保可以轉換為數字
-            if c_str and ':' not in c_str and c_str.replace('.', '', 1).isdigit():
-                num_vals.append(float(c_str))
-        
-        # 依據台股鉅額交易明細表慣例，最後三個數字依序必為：成交量、成交價、成交金額
-        if len(num_vals) >= 3:
-            amt = num_vals[-1]
-            price = num_vals[-2]
-            vol = num_vals[-3]
-            
-            # 轉換單位為萬與張 (防呆機制：大於特定數值才除以倍數，避免原資料已是萬或張)
-            amt_wan = amt / 10000 if amt > 100000 else amt
-            vol_zhang = vol / 1000 if vol > 1000 else vol
-            
+            if c_str and ':' not in c_str and c_str.replace('.', '', 1).isdigit(): nums.append(float(c_str))
+        nums.sort(reverse=True)
+        if len(nums) >= 3:
+            amt = nums[0] / 10000 if nums[0] > 100000 else nums[0]
+            vol = nums[1] / 1000 if nums[1] > 1000 else nums[1]
             tt = next((re.sub(r'<[^>]+>', '', str(c)).strip() for c in row if any(x in str(c) for x in ["配對","交易","單一","組合","逐筆"])), "鉅額")
-            
-            p.append({"日期": date, "交易別": tt, "成交量(張)": int(vol_zhang), "成交價(元)": round(price, 2), "成交金額(萬元)": int(amt_wan)})
-            
+            p.append({"日期": date, "交易別": tt, "成交量(張)": int(vol), "成交價(元)": round(nums[2], 2), "成交金額(萬元)": int(amt)})
     return pd.DataFrame(p).sort_values("日期", ascending=False), list(set(dl))
 
 def safe_get_fubon(url):
@@ -878,7 +798,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                         f_impact = (f_vol_exact / max(1, total_lots)) * 100 
                     
             p_chg = round(raw_chg - f_impact, 2)
-            d_math.append({"日期": d_str, "原始變動": raw_chg, "當沖干擾": round(f_impact, 2), "純淨變動": p_chg})
+            d_math.append({"日期": d_str, "原始變動": raw_chg, "隔日沖干擾": round(f_impact, 2), "純淨變動": p_chg})
             
             lev = 100 / (100 - safe_dead_ratio) if 0 <= safe_dead_ratio < 100 else 1
             adv = []
@@ -887,7 +807,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"[強勢軋空] 站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
                 elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"[底位建倉] 跌破月線但主力吃貨{p_chg}%")
                 elif p_chg < -1.0: adv.append(f"[主力撤退] 大戶實質流出{abs(p_chg)}%")
-                if f_impact > 1.2: adv.append(f"[當沖/短沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
+                if f_impact > 1.2: adv.append(f"[隔日沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
                 
         prev_row = row
         out.append({"日期": d_str, "大戶原持股(%)": round(current_large_pct, 2), "原始大戶變動(%)": raw_chg, "純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "盤整"})
@@ -896,8 +816,8 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     df = pd.merge(df, ddf, on='日期', how='left')
     df['專家雷達診斷'] = df['診斷']
     df['純淨大戶變動(%)'] = df['純淨變動']
-    df['當沖虛胖(%)'] = df['雜訊']
-    res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
+    df['隔日沖虛胖(%)'] = df['雜訊']
+    res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '隔日沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
     res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
     return res_df, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
@@ -1436,6 +1356,7 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+# V60.26 優化：HTML 渲染加入無本獲利的警示高亮
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1489,15 +1410,15 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.32 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.26 決策引擎..."):
         name = get_stock_name_v50(user_stock_id)
         if not name: 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
             st.stop()
             
         industry, address = get_company_profile(user_stock_id)
-        
-        df_p_raw = fetch_finmind_v50("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d"), user_stock_id)
+            
+        df_p_raw = fetch_finmind_v50("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=1095)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: 
             st.error("查無歷史股價資料。")
             st.stop()
@@ -1522,24 +1443,17 @@ if run_btn:
         if enable_pattern:
             pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as bg_executor:
-            f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
-            f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
-            f_blk = bg_executor.submit(scrape_block_v50, user_stock_id, dates)
-
-            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len)
-
-            dynamic_dict, s_val, chip_eng, _ = f_dir.result()
-            df_p_sum, df_p_det = f_ple.result()
-            df_twse, _ = f_blk.result()
-
+        dynamic_dict, s_val, chip_eng, _ = scrape_director_v50(user_stock_id)
+        df_b_raw = fetch_branch_data_v50(dates[:max_len], user_stock_id)
+        
         if df_b_raw.empty:
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
             st.stop()
             
         tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
         
-        df_s_raw = ds_dict.get("TaiwanStockHoldingSharesPer", pd.DataFrame())
+        tdcc_start_date = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+        df_s_raw = fetch_finmind_v50("TaiwanStockHoldingSharesPer", tdcc_start_date, user_stock_id)
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
         current_total_shares = df_s_wide['總張數'].iloc[0] if not df_s_wide.empty else 0
@@ -1572,16 +1486,17 @@ if run_btn:
             df_combined_radar = pd.merge(df_s_dyn, df_v27_clean, on=['日期'], how='inner')
             if not df_combined_radar.empty:
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
-                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
+                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '隔日沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8)
 
-        df_margin = process_margin(ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame()))
-        df_day_trade = process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()))
-        df_inst = process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame()))
+        df_twse, _ = scrape_block_v50(user_stock_id, dates)
+        df_margin = process_margin(fetch_finmind_v50("TaiwanStockMarginPurchaseShortSale", d_end, user_stock_id))
+        df_day_trade = process_day_trading(fetch_finmind_v50("TaiwanStockDayTrading", d_end, user_stock_id))
+        df_inst = process_inst(fetch_finmind_v50("TaiwanStockInstitutionalInvestorsBuySell", d_end, user_stock_id))
         
-        df_rev_raw = ds_dict.get("TaiwanStockMonthRevenue", pd.DataFrame())
+        df_rev_raw = fetch_finmind_v50("TaiwanStockMonthRevenue", "2022-01-01", user_stock_id)
         df_rev = pd.DataFrame()
-        if not df_rev_raw.empty and 'revenue_year' in df_rev_raw.columns:
+        if not df_rev_raw.empty:
             df_rev_raw['營收月份'] = df_rev_raw['revenue_year'].astype(str) + "-" + df_rev_raw['revenue_month'].astype(str).str.zfill(2)
             df_rev = df_rev_raw.rename(columns={"revenue":"月營收(百萬元)"})[['營收月份','月營收(百萬元)']].tail(24)
             df_rev['月營收(百萬元)'] = (safe_to_num(df_rev['月營收(百萬元)'])/1000000).round().astype(int)
@@ -1593,14 +1508,21 @@ if run_btn:
         df_b_10 = process_branch_v25(df_b_raw, 10, dates, tags, df_p_raw, stickiness_threshold, max_len)
         df_b_60 = process_branch_v25(df_b_raw, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len)
         
-        df_fut = process_fut_inst(ds_dict.get("TaiwanFuturesInstitutionalInvestors", pd.DataFrame()))
-        df_div = process_div(ds_dict.get("TaiwanStockDividend", pd.DataFrame()))
-        df_per = process_per(ds_dict.get("TaiwanStockPER", pd.DataFrame()))
-        df_disp = process_disp(ds_dict.get("TaiwanStockDispositionSecuritiesPeriod", pd.DataFrame()))
+        df_p_sum, df_p_det = scrape_fubon_pledge(df_p_raw, user_stock_id)
+        df_fut = process_fut_inst(fetch_finmind_v50("TaiwanFuturesInstitutionalInvestors", d_end, "TX"))
+        df_div = process_div(fetch_finmind_v50("TaiwanStockDividend", "2015-01-01", user_stock_id))
+        df_per = process_per(fetch_finmind_v50("TaiwanStockPER", d_end, user_stock_id))
+        df_disp = process_disp(fetch_finmind_v50("TaiwanStockDispositionSecuritiesPeriod", (datetime.date.today()-datetime.timedelta(days=180)).strftime("%Y-%m-%d"), user_stock_id))
         
-        df_cbas_raw = ds_dict.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
+        df_cbas_raw = fetch_finmind_v50("TaiwanStockConvertibleBondDailyOverview", dates[0])
+        df_cb_info_list = []
         if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
             cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
+            target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
+            for cid in target_cbs:
+                info_df = fetch_finmind_v50("TaiwanStockConvertibleBondInfo", "2000-01-01", tid=cid)
+                if not info_df.empty: df_cb_info_list.append(info_df)
+            df_cb_info = pd.concat(df_cb_info_list, ignore_index=True) if df_cb_info_list else pd.DataFrame()
             df_cbas = process_cbas(df_cbas_raw[cb_mask], curr_price, df_cb_info)
         else:
             df_cbas = pd.DataFrame()
@@ -1610,29 +1532,14 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.32)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.26)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
-            st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}極細均線)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}均線)</div>", unsafe_allow_html=True)
             df_plot = df_price.head(kline_days).copy()
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
-            
-            df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())
-            if not df_day_trade_raw.empty:
-                df_dt_chart = df_day_trade_raw.copy()
-                df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
-                vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume'
-                if vol_col in df_dt_chart.columns:
-                    df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart[vol_col]) / 1000).round().astype(int)
-                    df_plot = pd.merge(df_plot, df_dt_chart[['日期', '當沖總張數']], on='日期', how='left')
-                else:
-                    df_plot['當沖總張數'] = 0
-            else:
-                df_plot['當沖總張數'] = 0
-                
-            df_plot['當沖總張數'] = df_plot['當沖總張數'].fillna(0)
 
             if not df_plot.empty:
                 lr_data_json = "{}"
@@ -1663,14 +1570,9 @@ if run_btn:
                     {'time': t, 'open': float(o), 'high': float(h), 'low': float(l), 'close': float(c)}
                     for t, o, h, l, c in zip(time_series, df_plot['開盤價(元)'], df_plot['最高價(元)'], df_plot['最低價(元)'], df_plot['收盤價(元)'])
                 ]
-                
-                total_vol_data = [
-                    {'time': t, 'value': float(v), 'color': '#E0E3EB'}
-                    for t, v in zip(time_series, df_plot['成交量(張)'])
-                ]
-                day_trade_vol_data = [
-                    {'time': t, 'value': float(dtv), 'color': '#FF9800'}
-                    for t, dtv in zip(time_series, df_plot['當沖總張數'])
+                volume_data = [
+                    {'time': t, 'value': float(v), 'color': '#cccccc' if c >= o else '#000000'}
+                    for t, v, c, o in zip(time_series, df_plot['成交量(張)'], df_plot['收盤價(元)'], df_plot['開盤價(元)'])
                 ]
 
                 def prep_ma(series, times):
@@ -1700,29 +1602,11 @@ if run_btn:
                     <div id="chart-vol"></div>
                     <script>
                         const kData = KLINE_DATA;
-                        const tVol = TOTAL_VOL;
-                        const dtVol = DAYTRADE_VOL;
+                        const vData = VOLUME_DATA;
                         const ma = MA_DATA;
-
-                        // 【V60.32 優化】自定義時間軸顯示格式 (YY/MM/DD)
-                        const commonLocalization = {
-                            timeFormatter: businessDayOrTimestamp => {
-                                if (businessDayOrTimestamp.year) {
-                                    const y = String(businessDayOrTimestamp.year).slice(-2);
-                                    const m = String(businessDayOrTimestamp.month).padStart(2, '0');
-                                    const d = String(businessDayOrTimestamp.day).padStart(2, '0');
-                                    return `${y}/${m}/${d}`;
-                                }
-                                if (typeof businessDayOrTimestamp === 'string') {
-                                    return businessDayOrTimestamp.substring(2).replace(/-/g, '/');
-                                }
-                                return businessDayOrTimestamp;
-                            }
-                        };
 
                         const mainOptions = {
                             autoSize: true,
-                            localization: commonLocalization,
                             layout: { background: { color: '#ffffff' }, textColor: '#333' },
                             grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
                             rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
@@ -1731,7 +1615,6 @@ if run_btn:
 
                         const volOptions = {
                             autoSize: true,
-                            localization: commonLocalization,
                             layout: { background: { color: '#ffffff' }, textColor: '#333' },
                             grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
                             rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
@@ -1747,7 +1630,7 @@ if run_btn:
                         });
                         candleSeries.setData(kData);
 
-                        const lineOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
+                        const lineOpt = { lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
                         mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
                         mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
                         mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
@@ -1769,28 +1652,21 @@ if run_btn:
                             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
                         }
 
-                        const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        totalVolSeries.setData(tVol);
-                        const dayTradeVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        dayTradeVolSeries.setData(dtVol);
+                        const vSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+                        vSeries.setData(vData);
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
                             const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
-                            const dtData = p.time ? dtVol.find(x => x.time === p.time) : dtVol[dtVol.length-1];
-                            if (d && dtData) {
-                                const tv = tVol.find(x => x.time === d.time);
-                                const tvVal = tv ? tv.value : 0;
-                                // 【V60.32 優化】將左上角的 Legend 日期也改為 YY/MM/DD
-                                const shortDate = d.time.substring(2).replace(/-/g, '/');
-                                legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
+                            if (d) {
+                                legend.innerHTML = `<b>${d.time}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span>`;
                             }
                         };
                         updateLegend({time: null});
 
                         mainChart.subscribeCrosshairMove(p => {
                             updateLegend(p);
-                            if (p.time) volChart.setCrosshairPosition(0, p.time, totalVolSeries);
+                            if (p.time) volChart.setCrosshairPosition(0, p.time, vSeries);
                             else volChart.clearCrosshairPosition();
                         });
                         volChart.subscribeCrosshairMove(p => {
@@ -1806,8 +1682,7 @@ if run_btn:
                 </html>
                 """
                 html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
-                                         .replace("TOTAL_VOL", json.dumps(total_vol_data))\
-                                         .replace("DAYTRADE_VOL", json.dumps(day_trade_vol_data))\
+                                         .replace("VOLUME_DATA", json.dumps(volume_data))\
                                          .replace("MA_DATA", json.dumps(ma_data))\
                                          .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
@@ -1895,7 +1770,7 @@ if run_btn:
         report_md += "#### 第二層：中線籌碼 (集保大戶與鎖碼流向)\n"
         report_md += "<ul>"
         report_md += f"<li>【大戶真實鎖碼率】：波段大戶吸納了約 {c_val_text} 的市場自由流通籌碼。</li>\n"
-        report_md += f"<li>【波段籌碼流向】：排除當沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
+        report_md += f"<li>【波段籌碼流向】：排除隔日沖雜訊後，最新一週波段大戶實質持股 {chg_text}。</li>\n"
         if df_combined_display.empty: layer2_diag = "集保大戶數據不足 (可能為新上市或資料未滿兩週)，無法計算變動率。"
         elif radar_chg >= 1.0: layer2_diag = "中線大戶持續吃貨鎖碼，籌碼集中度顯著提升。"
         elif radar_chg <= -1.0: layer2_diag = "中線大戶出現逢高減碼或倒貨跡象，籌碼流向散戶。"
@@ -2017,7 +1892,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.32 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.26 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
