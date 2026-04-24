@@ -52,7 +52,7 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 建立專屬 FinMind 的連線池，避免 Token 污染 Yahoo 或其他網站
+# 建立專屬 FinMind 的連線池
 @st.cache_resource
 def get_finmind_session():
     session = requests.Session()
@@ -65,14 +65,12 @@ def get_finmind_session():
 
 FM_SESSION = get_finmind_session()
 
-# 預編譯正則與字典以優化效能
 _num_re = re.compile(r'\d+')
 _LEVEL_MAP = {1:"1-999股", 2:"1-5張", 3:"5-10張", 4:"10-15張", 5:"15-20張", 6:"20-30張", 7:"30-40張", 8:"40-50張", 9:"50-100張", 10:"100-200張", 11:"200-400張", 12:"400-600張", 13:"600-800張", 14:"800-1000張", 15:"1000張以上"}
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_github_manual(url):
     try:
-        # 使用乾淨的 requests，避免 GitHub 擋掉 Bearer Token
         r = requests.get(url, timeout=5)
         if r.status_code == 200:
             r.encoding = 'utf-8'
@@ -128,7 +126,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("全息量化系統 (V60.33 真實併發與極速除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.33：修復名稱查詢被防火牆阻擋的 Bug，增加上櫃備援尋找。大幅優化底層效能。{usage_text}")
+st.caption(f"V60.33：徹底脫離 Yahoo 依賴，100% 採用 FinMind 底層資料，解決 WAF 防火牆阻擋問題。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -149,37 +147,41 @@ def safe_to_num(series, fill_val=0):
         try: return float(str(series).replace(',', '').replace('%', '').strip())
         except: return fill_val
 
-# 【Bug Fix】使用乾淨的 requests，避免被 Yahoo 防火牆阻擋。並加入上櫃 (.TWO) 備援
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_stock_name_v50(tid):
-    try:
-        r = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}.TW", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-        if r.status_code == 200:
-            m = re.search(r'<title>(.*?)\s*\(', r.text)
-            if m: return m.group(1).strip()
-            
-        r2 = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}.TWO", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-        if r2.status_code == 200:
-            m = re.search(r'<title>(.*?)\s*\(', r2.text)
-            if m: return m.group(1).strip()
-    except: pass
-    return ""
-
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
+    r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
+    r.raise_for_status() 
+    data = r.json().get("data")
+    if data is None:
+        raise ValueError("FinMind 回傳資料為空")
+    return data
+
+# 完全由 FinMind 提取基本資料，捨棄 Yahoo
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_basic_info_finmind(tid):
+    name, ind = "未知名稱", "未知產業"
     try:
-        r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
-        if r.status_code == 200: return r.json().get("data", [])
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": "TaiwanStockInfo", "data_id": tid, "start_date": "2000-01-01"}
+        data = cached_finmind_api_call(url, tuple(sorted(p.items())))
+        if data:
+            df = pd.DataFrame(data)
+            if not df.empty:
+                if 'stock_name' in df.columns: name = df['stock_name'].iloc[0]
+                if 'industry_category' in df.columns: ind = df['industry_category'].iloc[0]
     except: pass
-    return []
+    return name, ind
 
 def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     url = "https://api.finmindtrade.com/api/v4/data"
     p = {"dataset": ds, "start_date": sd}
     if tid: p["data_id"] = tid
     if ed: p["end_date"] = ed
-    data = cached_finmind_api_call(url, tuple(sorted(p.items())))
-    return pd.DataFrame(data) if data else pd.DataFrame()
+    try:
+        data = cached_finmind_api_call(url, tuple(sorted(p.items())))
+        return pd.DataFrame(data) if data else pd.DataFrame()
+    except:
+        return pd.DataFrame()
 
 def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
     b_results = []
@@ -214,14 +216,20 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
         p = {"dataset": dataset, "start_date": sd}
         if tid: p["data_id"] = tid
         if ed: p["end_date"] = ed
-        return dataset, cached_finmind_api_call(url, tuple(sorted(p.items())))
+        try:
+            return dataset, cached_finmind_api_call(url, tuple(sorted(p.items())))
+        except:
+            return dataset, []
 
     def fetch_branch(d, tid):
         url = "https://api.finmindtrade.com/api/v4/data"
         p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
-        return cached_finmind_api_call(url, tuple(sorted(p.items())))
+        try:
+            return cached_finmind_api_call(url, tuple(sorted(p.items())))
+        except:
+            return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         future_to_type = {}
         for d in dates[:max_len]:
             future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
@@ -329,23 +337,6 @@ def scrape_director_v50(tid):
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
     return {}, 0.0, "雙引擎皆失敗(請手動)", []
-
-# 【Bug Fix】修正 TaiwanStockInfo 過濾問題，並恢復 requests.get
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_company_profile(tid):
-    ind, addr = "未知產業", "查無地址"
-    try:
-        f = fetch_finmind_v50("TaiwanStockInfo", "2020-01-01")
-        if not f.empty and 'stock_id' in f.columns:
-            m = f[f['stock_id'] == str(tid)]
-            if not m.empty: ind = m['industry_category'].iloc[0]
-            
-        r = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}/profile", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-        if r.status_code == 200:
-            m = re.search(r'公司地址\|+([^|]+)', re.sub(r'<[^>]+>', '|', r.text))
-            if m: addr = m.group(1).strip()
-    except: pass
-    return ind, addr
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -998,30 +989,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
-def clean_level_by_math(x):
-    s = str(x).replace(',','').replace(' ','')
-    if s in ["17","17.0","合計","總計"]: return "合計"
-    n = _num_re.findall(s)
-    if not n: return s
-    v = int(n[0])
-    if len(n)==1 and v<=15: return _LEVEL_MAP.get(v,s)
-    u = int(n[-1])
-    if u<=999: return "1-999股"
-    elif u<=5000: return "1-5張"
-    elif u<=10000: return "5-10張"
-    elif u<=15000: return "10-15張"
-    elif u<=20000: return "15-20張"
-    elif u<=30000: return "20-30張"
-    elif u<=40000: return "30-40張"
-    elif u<=50000: return "40-50張"
-    elif u<=100000: return "50-100張"
-    elif u<=200000: return "100-200張"
-    elif u<=400000: return "200-400張"
-    elif u<=600000: return "400-600張"
-    elif u<=800000: return "600-800張"
-    elif u<=1000000: return "800-1000張" 
-    else: return "1000張以上" 
-
 def process_price(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
@@ -1206,7 +1173,32 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數')].copy()
-    df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
+    
+    def fast_clean_level(s):
+        s = str(s).replace(',','').replace(' ','')
+        if s in ["17","17.0","合計","總計"]: return "合計"
+        n = _num_re.findall(s)
+        if not n: return s
+        v = int(n[0])
+        if len(n)==1 and v<=15: return _LEVEL_MAP.get(v,s)
+        u = int(n[-1])
+        if u<=999: return "1-999股"
+        elif u<=5000: return "1-5張"
+        elif u<=10000: return "5-10張"
+        elif u<=15000: return "10-15張"
+        elif u<=20000: return "15-20張"
+        elif u<=30000: return "20-30張"
+        elif u<=40000: return "30-40張"
+        elif u<=50000: return "40-50張"
+        elif u<=100000: return "50-100張"
+        elif u<=200000: return "100-200張"
+        elif u<=400000: return "200-400張"
+        elif u<=600000: return "400-600張"
+        elif u<=800000: return "600-800張"
+        elif u<=1000000: return "800-1000張" 
+        else: return "1000張以上" 
+        
+    df['LevelClean'] = df['HoldingSharesLevel'].apply(fast_clean_level)
     df['unit'] = (safe_to_num(df.get('unit', 0)) / 1000).round().astype(int)
     df['people'] = safe_to_num(df['people']).astype(int)
     dates = sorted(df['date'].unique(), reverse=True)[:15]
@@ -1454,13 +1446,13 @@ if run_btn:
         st.stop()
 
     with st.spinner(f"正在啟動 V60.33 決策引擎..."):
-        name = get_stock_name_v50(user_stock_id)
-        if not name: 
-            st.error(f"查無股票代號 {user_stock_id} 的基本資料。")
+        
+        # 【優化點】：完全由 FinMind 提取個股名稱與產業別，徹底擺脫 Yahoo 阻擋
+        name, industry = get_basic_info_finmind(user_stock_id)
+        if name == "未知名稱": 
+            st.error(f"查無股票代號 {user_stock_id} 的基本資料。請確認代號是否正確或 FinMind API 是否正常連線。")
             st.stop()
             
-        industry, address = get_company_profile(user_stock_id)
-        
         df_p_raw = fetch_finmind_v50("TaiwanStockPrice", (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d"), user_stock_id)
         if df_p_raw.empty: 
             st.error("查無歷史股價資料。")
@@ -1499,7 +1491,7 @@ if run_btn:
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
             st.stop()
             
-        tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stickiness_threshold, max_len, dates)
+        tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh=stickiness_threshold, global_days=max_len, dates_list=dates)
         
         df_s_raw = ds_dict.get("TaiwanStockHoldingSharesPer", pd.DataFrame())
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
@@ -1570,7 +1562,8 @@ if run_btn:
         market_cap_str = "計算中..."
         if not df_price.empty and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
             
-        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【公司地址】 {address} ｜ 【董監死籌碼】 {director_holding_str}"
+        # UI 移除未提供的公司地址
+        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
         st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.33)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
