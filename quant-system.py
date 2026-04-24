@@ -52,9 +52,9 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 建立全域高可靠連線池 (優化斷線與重試機制)
+# 建立專屬 FinMind 的連線池，避免 Token 污染 Yahoo 或其他網站
 @st.cache_resource
-def get_global_session():
+def get_finmind_session():
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
     retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
@@ -63,7 +63,7 @@ def get_global_session():
     session.mount('https://', adapter)
     return session
 
-GLOBAL_SESSION = get_global_session()
+FM_SESSION = get_finmind_session()
 
 # 預編譯正則與字典以優化效能
 _num_re = re.compile(r'\d+')
@@ -72,7 +72,8 @@ _LEVEL_MAP = {1:"1-999股", 2:"1-5張", 3:"5-10張", 4:"10-15張", 5:"15-20張",
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_github_manual(url):
     try:
-        r = GLOBAL_SESSION.get(url, timeout=5)
+        # 使用乾淨的 requests，避免 GitHub 擋掉 Bearer Token
+        r = requests.get(url, timeout=5)
         if r.status_code == 200:
             r.encoding = 'utf-8'
             return r.text
@@ -82,7 +83,7 @@ def fetch_github_manual(url):
 @st.cache_data(ttl=300, show_spinner=False)
 def get_api_usage(token):
     try:
-        r = GLOBAL_SESSION.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
+        r = requests.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
         if r.status_code == 200:
             data = r.json()
             return data.get("user_count", 0), data.get("api_request_limit", 0)
@@ -124,10 +125,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.33 真實併發與極速優化版)")
+st.title("全息量化系統 (V60.33 真實併發與極速除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.33：底層重構完成，迴圈與快取命中率已達最佳化，處理效能提升百倍。{usage_text}")
+st.caption(f"V60.33：修復名稱查詢被防火牆阻擋的 Bug，增加上櫃備援尋找。大幅優化底層效能。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -148,21 +149,26 @@ def safe_to_num(series, fill_val=0):
         try: return float(str(series).replace(',', '').replace('%', '').strip())
         except: return fill_val
 
+# 【Bug Fix】使用乾淨的 requests，避免被 Yahoo 防火牆阻擋。並加入上櫃 (.TWO) 備援
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_stock_name_v50(tid):
     try:
-        r = GLOBAL_SESSION.get(f"https://tw.stock.yahoo.com/quote/{tid}.TW", timeout=5)
+        r = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}.TW", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         if r.status_code == 200:
             m = re.search(r'<title>(.*?)\s*\(', r.text)
-            return m.group(1).strip() if m else ""
+            if m: return m.group(1).strip()
+            
+        r2 = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}.TWO", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        if r2.status_code == 200:
+            m = re.search(r'<title>(.*?)\s*\(', r2.text)
+            if m: return m.group(1).strip()
     except: pass
     return ""
 
-# 【效能升級】：將 API 單一請求快取，讓高併發遇到舊資料瞬間回傳，不需重新網路連線
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
     try:
-        r = GLOBAL_SESSION.get(url, params=dict(params_tuple), timeout=20)
+        r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
         if r.status_code == 200: return r.json().get("data", [])
     except: pass
     return []
@@ -293,9 +299,8 @@ def scrape_director_v50(tid):
                 mc = next((c for c in df.columns if '月別' in str(c)), None)
                 if tc and mc:
                     lt = 0.0
-                    # 【效能升級】：捨棄 iterrows，改用 records dict 迭代
                     for ro in df.to_dict('records'):
-                        m, v = str(ro[mc]).replace('/', '-').strip(), str(ro[tc]).replace(',', '').strip()
+                        m, v = str(ro.get(mc, '')).replace('/', '-').strip(), str(ro.get(tc, '')).replace(',', '').strip()
                         if re.match(r'^\d{4}-\d{2}$', m) and v not in ['-', '', 'nan']:
                             try:
                                 val = float(v)
@@ -325,15 +330,17 @@ def scrape_director_v50(tid):
     except: pass
     return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
+# 【Bug Fix】修正 TaiwanStockInfo 過濾問題，並恢復 requests.get
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_company_profile(tid):
     ind, addr = "未知產業", "查無地址"
     try:
-        # 【效能升級】：精準指定 data_id，避免抓取整張大表
-        f = fetch_finmind_v50("TaiwanStockInfo", "2020-01-01", tid=tid)
-        if not f.empty and 'industry_category' in f.columns:
-            ind = f['industry_category'].iloc[0]
-        r = GLOBAL_SESSION.get(f"https://tw.stock.yahoo.com/quote/{tid}/profile", timeout=5)
+        f = fetch_finmind_v50("TaiwanStockInfo", "2020-01-01")
+        if not f.empty and 'stock_id' in f.columns:
+            m = f[f['stock_id'] == str(tid)]
+            if not m.empty: ind = m['industry_category'].iloc[0]
+            
+        r = requests.get(f"https://tw.stock.yahoo.com/quote/{tid}/profile", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         if r.status_code == 200:
             m = re.search(r'公司地址\|+([^|]+)', re.sub(r'<[^>]+>', '|', r.text))
             if m: addr = m.group(1).strip()
@@ -402,7 +409,6 @@ def scrape_fubon_pledge(df_pr, tid):
         
     prd = {pd.to_datetime(r['date']).strftime('%Y-%m-%d'): r['close'] for _, r in df_pr.iterrows()}
     pps, mcs = [], []
-    # 【效能升級】：捨棄 iterrows，改用 records dict 迭代
     for r in df_all.to_dict('records'):
         fp, mc = "-", "-"
         if r['設質(張)'] > 0:
@@ -444,7 +450,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p.loc[(~cond_normal) & (df_p['actual_spread'] > 0), 'pos'] = 1.0
     df_p.loc[(~cond_normal) & (df_p['actual_spread'] < 0), 'pos'] = 0.0
     
-    # 【效能升級】：利用 dict 映射提升處理速度
     pos_dict = df_p.set_index('date')['pos'].to_dict()
     latest_close = df_p['close'].iloc[0] if not df_p.empty else 0
 
@@ -519,7 +524,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}")
     g['b_str'] = np.where(cond_loss, "(虧) " + b_strs, b_strs)
-    # 使用預先轉換的 mapping dict
     g['pos'] = g['last_date'].map(pos_dict).fillna(0.5).round(2)
     
     res_df = pd.DataFrame({
@@ -672,7 +676,6 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
             }
             
             for i, d in enumerate(display_dates):
-                # 【效能升級】：捨棄緩慢的 loc 查表，改用原生的 in 判斷
                 v = p.at[trader, d] if trader in p.index and d in p.columns else 0
                 row_dict[f"T-{i}" if i > 0 else "今日(T)"] = f"+{v}" if v > 0 else str(v)
             out.append(row_dict)
@@ -799,7 +802,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     out, d_math, d_fri = [], [], []
     prev_row = None
     
-    # 【效能升級】：捨棄緩慢的 iterrows，轉換為 records dict 大幅提升解析速度
     for row in df.to_dict('records'):
         d_str = row['日期']
         d_dt = row['dt_end']
@@ -897,7 +899,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
-    # 【效能升級】：預先抓取集合（Set）進行條件判斷，大幅度降低字串比對次數
     smart_set = {"[波段鐵粉]", "[常駐造市]", "[逢高派發]", "[長線倒貨]"}
     short_set = {"[短線狙擊]", "[低檔回補]", "[快閃散戶]"}
     df_b['is_smart'] = df_b['tag'].isin(smart_set)
@@ -947,7 +948,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         short_grouped = short_dict.get(d, pd.DataFrame(columns=['securities_trader', 'bs', 'ss', 'net_vol']))
         
         if d == actual_dates[0]:
-            # 【效能升級】：捨棄 iterrows
             for r in smart_grouped.to_dict('records'):
                 if r['net_vol'] != 0: audit_smart_money.append({"日期": d, "分點": r['securities_trader'], "標籤": r['tag'], "淨買超(張)": r['net_vol']})
         
@@ -998,7 +998,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
-# 【效能升級】：採用全域變數減少函式重複初始化的效能損耗
 def clean_level_by_math(x):
     s = str(x).replace(',','').replace(' ','')
     if s in ["17","17.0","合計","總計"]: return "合計"
@@ -1044,7 +1043,6 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
     cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
     cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
-    # 【效能升級】：合併判定式，減少資源佔用
     df_ta['技術面診斷'] = np.select([cond_up, cond_down], ["站上中線防守", "跌破中線防守"], default="盤整")
     return df_ta.sort_values('日期', ascending=False)
 
@@ -1258,7 +1256,6 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         return row_dict.get('pct_1000', 0)
 
     out = []
-    # 【效能升級】：捨棄 iterrows，改用 records dict 迭代
     for row in df_m.to_dict('records'):
         p = row.get('收盤價(元)', 0)
         if pd.isna(p) or p <= 0: continue
@@ -1414,7 +1411,6 @@ def render_clean_html_table(df, title=""):
     for col in df.columns: html += f"<th>{col}</th>"
     html += "</tr></thead><tbody>"
     
-    # 【效能升級】：UI 渲染全面採用 records dict，避開 Pandas 緩慢的索引操作
     for row in df.to_dict('records'):
         html += "<tr>"
         for col in df.columns:
