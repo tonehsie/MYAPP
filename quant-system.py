@@ -126,7 +126,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("全息量化系統 (V60.33 真實併發與極速除錯版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.33：徹底脫離 Yahoo 依賴，100% 採用 FinMind 底層資料，解決 WAF 防火牆阻擋問題。{usage_text}")
+st.caption(f"V60.33：徹底脫離 Yahoo 依賴防阻擋，封裝前端 JS 防呆機制，提升運行極限穩健度。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -156,7 +156,6 @@ def cached_finmind_api_call(url, params_tuple):
         raise ValueError("FinMind 回傳資料為空")
     return data
 
-# 完全由 FinMind 提取基本資料，捨棄 Yahoo
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_basic_info_finmind(tid):
     name, ind = "未知名稱", "未知產業"
@@ -1045,7 +1044,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "三重底" in mode or is_auto:
         if len(lows) >= 3:
             l1, l2, l3 = lows[-3], lows[-2], lows[-1]
-            if abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-l3[1])/l2[1] < tol:
+            if l1[1] > 0 and l2[1] > 0 and abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-l3[1])/l2[1] < tol:
                 b_h = [h for h in highs if l1[2] < h[2] < l3[2]]
                 if b_h:
                     h_max = max(b_h, key=lambda x: x[1])
@@ -1058,7 +1057,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "三重頂" in mode or is_auto:
         if len(highs) >= 3:
             h1, h2, h3 = highs[-3], highs[-2], highs[-1]
-            if abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-h3[1])/h2[1] < tol:
+            if h1[1] > 0 and h2[1] > 0 and abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-h3[1])/h2[1] < tol:
                 b_l = [l for l in lows if h1[2] < l[2] < h3[2]]
                 if b_l:
                     l_min = min(b_l, key=lambda x: x[1])
@@ -1071,7 +1070,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "頭肩底" in mode or is_auto:
         if len(lows) >= 3:
             l1, l2, l3 = lows[-3], lows[-2], lows[-1]
-            if l2[1] < l1[1] and l2[1] < l3[1] and abs(l1[1]-l3[1])/l1[1] < 0.05: 
+            if l1[1] > 0 and l2[1] < l1[1] and l2[1] < l3[1] and abs(l1[1]-l3[1])/l1[1] < 0.05: 
                 b_h1 = [h for h in highs if l1[2] < h[2] < l2[2]]
                 b_h2 = [h for h in highs if l2[2] < h[2] < l3[2]]
                 if b_h1 and b_h2:
@@ -1085,7 +1084,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     if "頭肩頂" in mode or is_auto:
         if len(highs) >= 3:
             h1, h2, h3 = highs[-3], highs[-2], highs[-1]
-            if h2[1] > h1[1] and h2[1] > h3[1] and abs(h1[1]-h3[1])/h1[1] < 0.05: 
+            if h1[1] > 0 and h2[1] > h1[1] and h2[1] > h3[1] and abs(h1[1]-h3[1])/h1[1] < 0.05: 
                 b_l1 = [l for l in lows if h1[2] < l[2] < h2[2]]
                 b_l2 = [l for l in lows if h2[2] < l[2] < h3[2]]
                 if b_l1 and b_l2:
@@ -1100,7 +1099,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
         if len(lows) >= 2:
             l1, l2 = lows[-2], lows[-1]
             between_highs = [h for h in highs if l1[2] < h[2] < l2[2]]
-            if between_highs:
+            if between_highs and l1[1] > 0:
                 h1 = max(between_highs, key=lambda x: x[1])
                 diff = abs(l1[1] - l2[1]) / l1[1]
                 if diff <= tol or "W底" in mode:
@@ -1115,7 +1114,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
         if len(highs) >= 2:
             h1, h2 = highs[-2], highs[-1]
             between_lows = [l for l in lows if h1[2] < l[2] < h2[2]]
-            if between_lows:
+            if between_lows and h1[1] > 0:
                 l1 = min(between_lows, key=lambda x: x[1])
                 diff = abs(h1[1] - h2[1]) / h1[1]
                 if diff <= tol or "M頭" in mode:
@@ -1130,8 +1129,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
         if len(highs) >= 2 and len(lows) >= 2:
             h1, h2 = highs[-2], highs[-1]
             l1, l2 = lows[-2], lows[-1]
-            h_diff = (h2[1] - h1[1]) / h1[1]
-            l_diff = (l2[1] - l1[1]) / l1[1]
+            h_diff = (h2[1] - h1[1]) / h1[1] if h1[1] > 0 else 0
+            l_diff = (l2[1] - l1[1]) / l1[1] if l1[1] > 0 else 0
             p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
             if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto):
                 p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理 (等待突破)"
@@ -1154,7 +1153,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             l1 = lows[-1]
             h_before = [h for h in highs if h[2] < l1[2]] 
             h_after = [h for h in highs if h[2] > l1[2]]
-            if h_before and h_after:
+            if h_before and h_after and l1[1] > 0:
                 hb, ha = h_before[-1], h_after[0]
                 if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: 
                     status = "已突破下降趨勢" if current_price > ha[1] else "反轉進行中"
@@ -1447,7 +1446,6 @@ if run_btn:
 
     with st.spinner(f"正在啟動 V60.33 決策引擎..."):
         
-        # 【優化點】：完全由 FinMind 提取個股名稱與產業別，徹底擺脫 Yahoo 阻擋
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。請確認代號是否正確或 FinMind API 是否正常連線。")
@@ -1562,7 +1560,6 @@ if run_btn:
         market_cap_str = "計算中..."
         if not df_price.empty and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
             
-        # UI 移除未提供的公司地址
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
         st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.33)")
@@ -1730,14 +1727,22 @@ if run_btn:
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            const d = p.time ? kData.find(x => x.time === p.time) : kData[kData.length-1];
-                            const dtData = p.time ? dtVol.find(x => x.time === p.time) : dtVol[dtVol.length-1];
-                            if (d && dtData) {
-                                const tv = tVol.find(x => x.time === d.time);
-                                const tvVal = tv ? tv.value : 0;
-                                const shortDate = d.time.substring(2).replace(/-/g, '/');
-                                legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
+                            let d, dtData;
+                            if (p.time) {
+                                d = kData.find(x => x.time === p.time);
+                                dtData = dtVol.find(x => x.time === p.time);
+                            } else {
+                                d = kData[kData.length-1];
+                                dtData = dtVol[dtVol.length-1];
                             }
+                            
+                            // 【除錯防護】：避免滑鼠移到無資料點時觸發 JS undefined 報錯崩潰
+                            if (!d || !dtData) return;
+
+                            const tv = tVol.find(x => x.time === d.time);
+                            const tvVal = tv ? tv.value : 0;
+                            const shortDate = d.time.substring(2).replace(/-/g, '/');
+                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
                         };
                         updateLegend({time: null});
 
