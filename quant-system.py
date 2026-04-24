@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.33版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.34版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -52,7 +52,6 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 建立專屬 FinMind 的連線池
 @st.cache_resource
 def get_finmind_session():
     session = requests.Session()
@@ -123,10 +122,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.33 真實併發與極速除錯版)")
+st.title("全息量化系統 (V60.34 前後端雙核心極速版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.33：徹底脫離 Yahoo 依賴防阻擋，封裝前端 JS 防呆機制，提升運行極限穩健度。{usage_text}")
+st.caption(f"V60.34：前端圖表 O(1) Map 渲染優化，後端記憶體零拷貝 (Zero-Copy) 重構。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -136,7 +135,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.33 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.34 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -335,7 +334,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手 কথ動)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -743,7 +742,7 @@ def get_smart_threshold(price, total_lots, dead_float):
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    df = df_wide.sort_values('日期', ascending=True).copy()
+    df = df_wide.sort_values('日期', ascending=True)
     df['dt_end'] = pd.to_datetime(df['日期'])
     
     if not df_price.empty:
@@ -1002,7 +1001,7 @@ def process_price(df):
 
 def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     if df_price.empty or len(df_price) < 30: return pd.DataFrame()
-    df_ta = df_price.sort_values('日期', ascending=True).copy()
+    df_ta = df_price.sort_values('日期', ascending=True)
     df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
     df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
     df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
@@ -1014,7 +1013,7 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
 
 def process_linear_regression(df_price, lr_days):
     if df_price.empty or len(df_price) < 2: return pd.DataFrame()
-    df_lr = df_price.head(lr_days).copy().sort_values('日期', ascending=True)
+    df_lr = df_price.head(lr_days).sort_values('日期', ascending=True)
     y = df_lr['收盤價(元)'].values
     x = np.arange(len(y))
     A = np.vstack([x, np.ones(len(x))]).T
@@ -1028,7 +1027,7 @@ def process_linear_regression(df_price, lr_days):
 
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     if df_price.empty or len(df_price) < order * 2: return {}
-    df = df_price.head(kline_days).copy().sort_values('日期', ascending=True).reset_index(drop=True)
+    df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
     highs, lows = [], []
     for i in range(order, len(df) - order):
         if df['最低價(元)'].iloc[i] == df['最低價(元)'].iloc[i-order:i+order+1].min():
@@ -1396,15 +1395,19 @@ def render_clean_html_table(df, title=""):
         st.warning("此區塊查無數據。")
         return
     text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號']
+    
+    # 【效能升級】：提早將 columns 轉為 list，消除雙層迴圈內的 Pandas 屬性取值效能耗損
+    cols = df.columns.tolist()
+    
     html = ""
     if title: html += f"<div class='section-title'>{title}</div>"
     html += "<div class='table-container'><table><thead><tr>"
-    for col in df.columns: html += f"<th>{col}</th>"
+    for col in cols: html += f"<th>{col}</th>"
     html += "</tr></thead><tbody>"
     
     for row in df.to_dict('records'):
         html += "<tr>"
-        for col in df.columns:
+        for col in cols:
             val = row.get(col, "-")
             align_class = "text-left" if any(k in str(col) for k in text_keywords) else "text-right"
             display_val = "-"
@@ -1444,7 +1447,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.33 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.34 決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1562,7 +1565,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.33)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.34)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1655,6 +1658,11 @@ if run_btn:
                         const tVol = TOTAL_VOL;
                         const dtVol = DAYTRADE_VOL;
                         const ma = MA_DATA;
+                        
+                        // 【效能升級】：前端 O(1) Map 快取渲染
+                        const kDataMap = new Map(kData.map(x => [x.time, x]));
+                        const tVolMap = new Map(tVol.map(x => [x.time, x.value]));
+                        const dtVolMap = new Map(dtVol.map(x => [x.time, x.value]));
 
                         const commonLocalization = {
                             timeFormatter: businessDayOrTimestamp => {
@@ -1727,22 +1735,22 @@ if run_btn:
 
                         const legend = document.getElementById('legend');
                         const updateLegend = (p) => {
-                            let d, dtData;
+                            let d, dtVal, tvVal;
                             if (p.time) {
-                                d = kData.find(x => x.time === p.time);
-                                dtData = dtVol.find(x => x.time === p.time);
+                                d = kDataMap.get(p.time);
+                                dtVal = dtVolMap.get(p.time);
+                                tvVal = tVolMap.get(p.time);
                             } else {
                                 d = kData[kData.length-1];
-                                dtData = dtVol[dtVol.length-1];
+                                dtVal = dtVol[dtVol.length-1].value;
+                                tvVal = tVol[tVol.length-1].value;
                             }
                             
-                            // 【除錯防護】：避免滑鼠移到無資料點時觸發 JS undefined 報錯崩潰
-                            if (!d || !dtData) return;
+                            // 【防護機制】：避免滑鼠移到無資料點時 JS 崩潰
+                            if (!d || dtVal === undefined || tvVal === undefined) return;
 
-                            const tv = tVol.find(x => x.time === d.time);
-                            const tvVal = tv ? tv.value : 0;
                             const shortDate = d.time.substring(2).replace(/-/g, '/');
-                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtData.value)}</span>`;
+                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`;
                         };
                         updateLegend({time: null});
 
@@ -1974,7 +1982,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.33 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.34 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
