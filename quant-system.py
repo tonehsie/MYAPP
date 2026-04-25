@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.43版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.44版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -136,10 +136,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.43 C-Level優化版)")
+st.title("全息量化系統 (V60.44 終極效能過濾版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.43：導入底層 C-Level 索引對射矩陣運算，解決大量資料回溯時的記憶體暴增與效能瓶頸。{usage_text}")
+st.caption(f"V60.44：全面導入 Filter-Before-Process 前置時間切片過濾機制，消滅冗餘計算與記憶體浪費。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -149,7 +149,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.43 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.44 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -632,10 +632,10 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
 
     return vwap, full_net_accum, active_buyers, c_value, core_branch_names
 
+# 【V60.44 優化】合併 Boolean Mask 過濾，消滅中介 DataFrame 拷貝
 def get_core_period_net(df_raw, rank_dates, core_names):
     if df_raw.empty or not rank_dates or not core_names: return 0
-    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
-    df_rank = df_rank[df_rank['securities_trader'].isin(core_names)]
+    df_rank = df_raw[df_raw['date'].isin(rank_dates) & df_raw['securities_trader'].isin(core_names)]
     net_shares = df_rank['buy'].sum() - df_rank['sell'].sum()
     return int(round(net_shares / 1000))
 
@@ -755,7 +755,6 @@ def get_smart_threshold(price, total_lots, dead_float):
     al = min(levels, key=lambda x: abs(x - raw_threshold))
     return al
 
-# 【V60.43 優化】導入 df.values 與 Column Index Mapping 進行極速 C-Level 運算
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df_wide.sort_values('日期', ascending=True).copy()
@@ -798,7 +797,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
 
     out, d_math, d_fri = [], [], []
     
-    # 【V60.43 C-Level 索引提速區】
     cols = df.columns.tolist()
     idx_date = cols.index('日期')
     idx_dt_end = cols.index('dt_end')
@@ -890,12 +888,16 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
     return res_df, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
+# 【V60.44 優化】Filter-Before-Process 提前過濾時間區間，阻止中介 DataFrame 生成
 def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
     out = []
-    branch_grouped = df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')
     
-    for d in actual_dates[:period_days]:
+    target_dates = set(actual_dates[:period_days])
+    df_filtered = df_raw[df_raw['date'].isin(target_dates)]
+    branch_grouped = df_filtered[['date', 'securities_trader', 'buy', 'sell']].groupby('date')
+    
+    for d in target_dates:
         if d not in branch_grouped.groups: continue
         df_d = branch_grouped.get_group(d)
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
@@ -918,12 +920,16 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         elif active_count > 500 and firepower < 1.0: diag.append("籌碼極度發散 (熱門當沖雷區)")
         
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "中性換手"})
-    return pd.DataFrame(out)
+    return pd.DataFrame(out).sort_values('日期', ascending=False)
 
+# 【V60.44 優化】Filter-Before-Process 提前過濾，並精簡中介變數拷貝
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
-    df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'}).copy()
+    
+    target_dates = set(actual_dates[:period_days])
+    df_b = df_branch_raw[df_branch_raw['date'].isin(target_dates)][['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
+    
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
     smart_set = {"[波段鐵粉]", "[常駐造市]", "[逢高派發]", "[長線倒貨]"}
@@ -1055,7 +1061,6 @@ def clean_level_by_math(x):
     elif u <= 1000000: return "800-1000張"
     else: return "1000張以上" 
 
-# 【V60.43 防禦性重構】加入 HoldingSharesLevel 欄位遺失的錯誤攔截防護網
 def process_tdcc(df):
     if df.empty or 'HoldingSharesLevel' not in df.columns: 
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1099,7 +1104,6 @@ def process_tdcc(df):
     df_ppl = pd.merge(df_t[['date', '總人數(人)']], p_p[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
     return df_w, df_unit, df_ppl
 
-# 【V60.43 C-Level 索引提速區】
 def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
     df_s, df_p = df_share_wide.copy(), df_price.copy()
@@ -1319,6 +1323,7 @@ def process_linear_regression(df_price, lr_days):
     df_lr['LR_Lower'] = y_pred - 2 * std_err
     return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
 
+# 【V60.44 優化】形態辨識 JSON 崩潰防禦：全面套用 float 轉型，排除不合法 NaN
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     if df_price.empty or len(df_price) < order * 2: return {}
     df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
@@ -1330,9 +1335,9 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
     highs, lows = [], []
     for i in range(order, len(df) - order):
         if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]):
-            lows.append((dates_vals[i], lows_vals[i], i))
+            lows.append((dates_vals[i], float(lows_vals[i]), i))
         if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]):
-            highs.append((dates_vals[i], highs_vals[i], i))
+            highs.append((dates_vals[i], float(highs_vals[i]), i))
             
     if len(lows) < 2 or len(highs) < 2: return {}
 
@@ -1530,7 +1535,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.43 極速運算引擎..."):
+    with st.spinner(f"正在啟動 V60.44 極速過濾引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1619,9 +1624,11 @@ if run_btn:
         
         df_rev_raw = ds_dict.get("TaiwanStockMonthRevenue", pd.DataFrame())
         df_rev = pd.DataFrame()
-        if not df_rev_raw.empty and 'revenue_year' in df_rev_raw.columns:
-            df_rev_raw['營收月份'] = df_rev_raw['revenue_year'].astype(str) + "-" + df_rev_raw['revenue_month'].astype(str).str.zfill(2)
-            df_rev = df_rev_raw.rename(columns={"revenue":"月營收(百萬元)"})[['營收月份','月營收(百萬元)']].tail(24)
+        if not df_rev_raw.empty and 'revenue_year' in df_rev_raw.columns and 'revenue_month' in df_rev_raw.columns:
+            # 【V60.44 優化】防呆處理 NaN，避免字串相加變成 'nan-nan' 崩潰
+            df_rev_clean = df_rev_raw.dropna(subset=['revenue_year', 'revenue_month']).copy()
+            df_rev_clean['營收月份'] = df_rev_clean['revenue_year'].astype(int).astype(str) + "-" + df_rev_clean['revenue_month'].astype(int).astype(str).str.zfill(2)
+            df_rev = df_rev_clean.rename(columns={"revenue":"月營收(百萬元)"})[['營收月份','月營收(百萬元)']].tail(24)
             df_rev['月營收(百萬元)'] = (safe_to_num(df_rev['月營收(百萬元)'])/1000000).round().astype(int)
             df_rev = df_rev.sort_values('營收月份', ascending=False)
 
@@ -1648,7 +1655,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.43)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.44)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -2063,7 +2070,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.43 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.44 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
