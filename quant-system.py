@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.40版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.41版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -136,10 +136,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.40 終極防護修復版)")
+st.title("全息量化系統 (V60.41 極致核心優化版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.40：徹底解決集保資料級距丟失歸零問題，優化大數據渲染效能。{usage_text}")
+st.caption(f"V60.41：深度優化記憶體使用率，修正大量運算時的群組字典膨脹問題，防禦 NaN 圖表崩潰。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -149,10 +149,12 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.40 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.41 決策引擎", use_container_width=True, key="run_engine")
 
+# 【V60.41 優化】大幅加速數值轉換，避免耗時的轉型操作
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
+        if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
         try: return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
         except: return pd.Series([fill_val] * len(series))
     elif isinstance(series, (int, float)): return series
@@ -456,7 +458,8 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     pos_dict = df_p.set_index('date')['pos'].to_dict()
     latest_close = df_p['close'].iloc[0] if not df_p.empty else 0
 
-    df = df_b_raw.copy()
+    # 【V60.41 優化】只取需要的欄位，防止拖累記憶體
+    df = df_b_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].copy()
     df['date_dt'] = pd.to_datetime(df['date'])
     df['net_shares'] = df['buy'] - df['sell']
     
@@ -585,7 +588,8 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
 
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if df_b_raw.empty: return 0.0, 0, 0, 0.0, []
-    df = df_b_raw.copy()
+    # 【V60.41 優化】提取需要的欄位
+    df = df_b_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].copy()
     df['tag'] = df['securities_trader'].map(tags).fillna("[隨波逐流]")
     
     if is_filter_active: 
@@ -689,7 +693,8 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
 def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, stick_thresh, global_days):
     if df_raw.empty or df_price_raw.empty: return pd.DataFrame()
     latest_close = df_price_raw.sort_values('date', ascending=False)['close'].iloc[0]
-    df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
+    # 【V60.41 優化】提取需要的欄位
+    df = df_raw.loc[df_raw['date'].isin(actual_dates[:period]), ['date', 'securities_trader', 'buy', 'sell', 'price']].copy()
     if df.empty: return pd.DataFrame()
     
     df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
@@ -797,6 +802,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         if not df_fake.empty:
             df_fake_daily = df_fake.groupby(['date', 'securities_trader'])[['buy', 'sell']].sum().reset_index()
             df_fake_daily['net_buy_exact'] = (df_fake_daily['buy'] - df_fake_daily['sell']) / 1000
+            # 【V60.41 優化】保留效能安全的轉換
             fake_dict = df_fake_daily.groupby('date').apply(lambda x: x[['securities_trader', 'net_buy_exact']].to_dict('records')).to_dict()
 
     arr_dates_str = np.sort(df_branch_raw['date'].unique()) if not df_branch_raw.empty else np.array([])
@@ -867,13 +873,15 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
     return res_df, pd.DataFrame(d_math), pd.DataFrame(d_fri)
 
+# 【V60.41 優化】取消 dict(tuple) 轉換，改用安全的 groupby.get_group
 def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
     out = []
-    branch_grouped = dict(tuple(df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')))
+    branch_grouped = df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')
+    
     for d in actual_dates[:period_days]:
-        if d not in branch_grouped: continue
-        df_d = branch_grouped[d]
+        if d not in branch_grouped.groups: continue
+        df_d = branch_grouped.get_group(d)
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
         
         buy_count = buy_branches['securities_trader'].nunique()
@@ -896,10 +904,11 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "中性換手"})
     return pd.DataFrame(out)
 
+# 【V60.41 優化】取消 dict(tuple) 轉換，改用安全的 groupby.get_group 避免記憶體溢出
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
-    df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
+    df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'}).copy()
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
     smart_set = {"[波段鐵粉]", "[常駐造市]", "[逢高派發]", "[長線倒貨]"}
@@ -913,18 +922,16 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     df_b['sell_amt'] = df_b['valid_ss'] * df_b['pr']
 
     df_smart_all = df_b[df_b['is_smart']].groupby(['date', 'securities_trader', 'tag']).agg(
-        bs=('bs','sum'), 
-        ss=('ss','sum'), 
-        buy_amt=('buy_amt','sum'), 
-        sell_amt=('sell_amt','sum')
+        bs=('bs','sum'), ss=('ss','sum'), buy_amt=('buy_amt','sum'), sell_amt=('sell_amt','sum')
     ).reset_index()
-    
     df_smart_all['net_vol'] = ((df_smart_all['bs'] - df_smart_all['ss']) / 1000).round().astype(int)
-    smart_dict = dict(tuple(df_smart_all.groupby('date'))) if not df_smart_all.empty else {}
+    
+    smart_group = df_smart_all.groupby('date') if not df_smart_all.empty else None
 
     df_short_all = df_b[df_b['is_short']].groupby(['date', 'securities_trader']).agg(bs=('bs','sum'), ss=('ss','sum')).reset_index()
     df_short_all['net_vol'] = ((df_short_all['bs'] - df_short_all['ss']) / 1000).round().astype(int)
-    short_dict = dict(tuple(df_short_all.groupby('date'))) if not df_short_all.empty else {}
+    
+    short_group = df_short_all.groupby('date') if not df_short_all.empty else None
 
     price_dict = df_price.set_index('日期').to_dict('index') if not df_price.empty else {}
     diff_dict = df_branch_diff.set_index('日期').to_dict('index') if not df_branch_diff.empty else {}
@@ -947,10 +954,10 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         concentration = diff_row.get('籌碼集中度(%)', 0)
         eye_diag = diff_row.get('鷹眼診斷', "")
 
-        smart_grouped = smart_dict.get(d, pd.DataFrame(columns=['securities_trader', 'tag', 'bs', 'ss', 'buy_amt', 'sell_amt', 'net_vol']))
-        short_grouped = short_dict.get(d, pd.DataFrame(columns=['securities_trader', 'bs', 'ss', 'net_vol']))
+        smart_grouped = smart_group.get_group(d) if smart_group and d in smart_group.groups else pd.DataFrame(columns=['securities_trader', 'tag', 'bs', 'ss', 'buy_amt', 'sell_amt', 'net_vol'])
+        short_grouped = short_group.get_group(d) if short_group and d in short_group.groups else pd.DataFrame(columns=['securities_trader', 'bs', 'ss', 'net_vol'])
         
-        if d == actual_dates[0]:
+        if d == actual_dates[0] and not smart_grouped.empty:
             for r in smart_grouped.to_dict('records'):
                 if r['net_vol'] != 0: audit_smart_money.append({"日期": d, "分點": r['securities_trader'], "標籤": r['tag'], "淨買超(張)": r['net_vol']})
         
@@ -1001,201 +1008,10 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
-def process_price(df):
-    if df.empty: return pd.DataFrame()
-    df_out = df.copy()
-    if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_Volume']) / 1000).round().astype(int)
-    elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_volume']) / 1000).round().astype(int)
-    else: df_out['成交量(張)'] = 0
-    df_out = df_out.rename(columns={"date":"日期","close":"收盤價(元)","spread":"漲跌(元)","open":"開盤價(元)","max":"最高價(元)","min":"最低價(元)"})
-    df_out = df_out.loc[:, ~df_out.columns.duplicated()]
-    df_out["斷頭價(0.78)"] = (df_out["收盤價(元)"] * 0.78).round(2)
-    cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
-    return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
-
-def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
-    if df_price.empty or len(df_price) < 30: return pd.DataFrame()
-    df_ta = df_price.sort_values('日期', ascending=True).copy()
-    df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
-    df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
-    df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
-    cond_up = df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)']
-    cond_down = df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']
-    df_ta['技術面診斷'] = np.select([cond_up, cond_down], ["站上中線防守", "跌破中線防守"], default="盤整")
-    return df_ta.sort_values('日期', ascending=False)
-
-def process_linear_regression(df_price, lr_days):
-    if df_price.empty or len(df_price) < 2: return pd.DataFrame()
-    df_lr = df_price.head(lr_days).sort_values('日期', ascending=True)
-    y = df_lr['收盤價(元)'].values
-    x = np.arange(len(y))
-    A = np.vstack([x, np.ones(len(x))]).T
-    m, c = np.linalg.lstsq(A, y, rcond=None)[0]
-    y_pred = m * x + c
-    std_err = np.std(y - y_pred)
-    df_lr['LR_Mid'] = y_pred
-    df_lr['LR_Upper'] = y_pred + 2 * std_err
-    df_lr['LR_Lower'] = y_pred - 2 * std_err
-    return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
-
-def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
-    if df_price.empty or len(df_price) < order * 2: return {}
-    df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
-    
-    lows_vals = df['最低價(元)'].values
-    highs_vals = df['最高價(元)'].values
-    dates_vals = df['日期'].values
-    
-    highs, lows = [], []
-    for i in range(order, len(df) - order):
-        if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]):
-            lows.append((dates_vals[i], lows_vals[i], i))
-        if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]):
-            highs.append((dates_vals[i], highs_vals[i], i))
-            
-    if len(lows) < 2 or len(highs) < 2: return {}
-
-    last_date = dates_vals[-1]
-    tol = 0.03
-    is_auto = "Auto" in mode
-    
-    if "三重底" in mode or is_auto:
-        if len(lows) >= 3:
-            l1, l2, l3 = lows[-3], lows[-2], lows[-1]
-            if l1[1] > 0 and l2[1] > 0 and abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-l3[1])/l2[1] < tol:
-                b_h = [h for h in highs if l1[2] < h[2] < l3[2]]
-                if b_h:
-                    h_max = max(b_h, key=lambda x: x[1])
-                    status = "已突破頸線" if current_price > h_max[1] else "成型中"
-                    return {
-                        'name': '三重底', 'shape_x': [l1[0], b_h[0][0], l2[0], b_h[-1][0], l3[0]], 'shape_y': [l1[1], b_h[0][1], l2[1], b_h[-1][1], l3[1]],
-                        'neck_x': [l1[0], last_date], 'neck_y': [h_max[1], h_max[1]], 'color': '#9c27b0', 'desc': f"三重底 ({status})", 'signal': 'bullish'
-                    }
-    
-    if "三重頂" in mode or is_auto:
-        if len(highs) >= 3:
-            h1, h2, h3 = highs[-3], highs[-2], highs[-1]
-            if h1[1] > 0 and h2[1] > 0 and abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-h3[1])/h2[1] < tol:
-                b_l = [l for l in lows if h1[2] < l[2] < h3[2]]
-                if b_l:
-                    l_min = min(b_l, key=lambda x: x[1])
-                    status = "已跌破頸線" if current_price < l_min[1] else "成型中"
-                    return {
-                        'name': '三重頂', 'shape_x': [h1[0], b_l[0][0], h2[0], b_l[-1][0], h3[0]], 'shape_y': [h1[1], b_l[0][1], h2[1], b_l[-1][1], h3[1]],
-                        'neck_x': [h1[0], last_date], 'neck_y': [l_min[1], l_min[1]], 'color': '#d32f2f', 'desc': f"三重頂 ({status})", 'signal': 'bearish'
-                    }
-
-    if "頭肩底" in mode or is_auto:
-        if len(lows) >= 3:
-            l1, l2, l3 = lows[-3], lows[-2], lows[-1]
-            if l1[1] > 0 and l2[1] < l1[1] and l2[1] < l3[1] and abs(l1[1]-l3[1])/l1[1] < 0.05: 
-                b_h1 = [h for h in highs if l1[2] < h[2] < l2[2]]
-                b_h2 = [h for h in highs if l2[2] < h[2] < l3[2]]
-                if b_h1 and b_h2:
-                    h1, h2 = max(b_h1, key=lambda x: x[1]), max(b_h2, key=lambda x: x[1])
-                    status = "已突破頸線" if current_price > max(h1[1], h2[1]) else "打右肩中"
-                    return {
-                        'name': '頭肩底', 'shape_x': [l1[0], h1[0], l2[0], h2[0], l3[0]], 'shape_y': [l1[1], h1[1], l2[1], h2[1], l3[1]],
-                        'neck_x': [h1[0], last_date], 'neck_y': [h1[1], h2[1]], 'color': '#e91e63', 'desc': f"頭肩底 ({status})", 'signal': 'bullish'
-                    }
-                    
-    if "頭肩頂" in mode or is_auto:
-        if len(highs) >= 3:
-            h1, h2, h3 = highs[-3], highs[-2], highs[-1]
-            if h1[1] > 0 and h2[1] > h1[1] and h2[1] > h3[1] and abs(h1[1]-h3[1])/h1[1] < 0.05: 
-                b_l1 = [l for l in lows if h1[2] < l[2] < h2[2]]
-                b_l2 = [l for l in lows if h2[2] < l[2] < h3[2]]
-                if b_l1 and b_l2:
-                    l1, l2 = min(b_l1, key=lambda x: x[1]), min(b_l2, key=lambda x: x[1])
-                    status = "已跌破頸線" if current_price < min(l1[1], l2[1]) else "做右肩中"
-                    return {
-                        'name': '頭肩頂', 'shape_x': [h1[0], l1[0], h2[0], l2[0], h3[0]], 'shape_y': [h1[1], l1[1], h2[1], l2[1], h3[1]],
-                        'neck_x': [l1[0], last_date], 'neck_y': [l1[1], l2[1]], 'color': '#d32f2f', 'desc': f"頭肩頂 ({status})", 'signal': 'bearish'
-                    }
-
-    if "W底" in mode or is_auto:
-        if len(lows) >= 2:
-            l1, l2 = lows[-2], lows[-1]
-            between_highs = [h for h in highs if l1[2] < h[2] < l2[2]]
-            if between_highs and l1[1] > 0:
-                h1 = max(between_highs, key=lambda x: x[1])
-                diff = abs(l1[1] - l2[1]) / l1[1]
-                if diff <= tol or "W底" in mode:
-                    status = "已突破頸線" if current_price > h1[1] else "成型中"
-                    desc = f"標準 W底 ({status})" if diff <= tol else f"強制標示 W底 ({status})"
-                    return {
-                        'name': 'W底', 'shape_x': [l1[0], h1[0], l2[0]], 'shape_y': [l1[1], h1[1], l2[1]],
-                        'neck_x': [l1[0], last_date], 'neck_y': [h1[1], h1[1]], 'color': '#9c27b0', 'desc': desc, 'signal': 'bullish'
-                    }
-
-    if "M頭" in mode or is_auto:
-        if len(highs) >= 2:
-            h1, h2 = highs[-2], highs[-1]
-            between_lows = [l for l in lows if h1[2] < l[2] < h2[2]]
-            if between_lows and h1[1] > 0:
-                l1 = min(between_lows, key=lambda x: x[1])
-                diff = abs(h1[1] - h2[1]) / h1[1]
-                if diff <= tol or "M頭" in mode:
-                    status = "已跌破頸線" if current_price < l1[1] else "成型中"
-                    desc = f"標準 M頭 ({status})" if diff <= tol else f"強制標示 M頭 ({status})"
-                    return {
-                        'name': 'M頭', 'shape_x': [h1[0], l1[0], h2[0]], 'shape_y': [h1[1], l1[1], h2[1]],
-                        'neck_x': [h1[0], last_date], 'neck_y': [l1[1], l1[1]], 'color': '#d32f2f', 'desc': desc, 'signal': 'bearish'
-                    }
-
-    if any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto:
-        if len(highs) >= 2 and len(lows) >= 2:
-            h1, h2 = highs[-2], highs[-1]
-            l1, l2 = lows[-2], lows[-1]
-            h_diff = (h2[1] - h1[1]) / h1[1] if h1[1] > 0 else 0
-            l_diff = (l2[1] - l1[1]) / l1[1] if l1[1] > 0 else 0
-            p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
-            if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto):
-                p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理 (等待突破)"
-            elif abs(h_diff) < tol and l_diff > tol and ("上升三角形" in mode or is_auto):
-                p_name, p_color, p_desc, p_sig = "上升三角形", "#4caf50", "上升三角形 (偏多醞釀)", "bullish"
-            elif h_diff < -tol and abs(l_diff) < tol and ("下降三角形" in mode or is_auto):
-                p_name, p_color, p_desc, p_sig = "下降三角形", "#f44336", "下降三角形 (偏空醞釀)", "bearish"
-            elif h_diff < -tol and l_diff > tol and ("對稱" in mode or "收斂" in mode or is_auto):
-                p_name, p_color, p_desc = "對稱三角形", "#ff9800", "對稱三角形 (收斂表態前)"
-            elif h_diff > tol and l_diff > tol and l_diff > h_diff and ("上升楔形" in mode or is_auto):
-                p_name, p_color, p_desc, p_sig = "上升楔形", "#ff5722", "上升楔形 (上漲力道衰退，偏空)", "bearish"
-            elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and ("下降楔形" in mode or is_auto):
-                p_name, p_color, p_desc, p_sig = "下降楔形", "#8bc34a", "下降楔形 (殺跌力道衰退，偏多)", "bullish"
-            if p_name or not is_auto:
-                if not p_name: p_name, p_color, p_desc = mode.split('：')[-1].strip(), "#999", f"強制標示 {mode.split('：')[-1]}"
-                return {'name': p_name, 'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], 'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]], 'color': p_color, 'desc': p_desc, 'signal': p_sig}
-                
-    if "V型反轉" in mode or is_auto:
-        if len(lows) >= 1 and len(highs) >= 2:
-            l1 = lows[-1]
-            h_before = [h for h in highs if h[2] < l1[2]] 
-            h_after = [h for h in highs if h[2] > l1[2]]
-            if h_before and h_after and l1[1] > 0:
-                hb, ha = h_before[-1], h_after[0]
-                if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: 
-                    status = "已突破下降趨勢" if current_price > ha[1] else "反轉進行中"
-                    return {
-                        'name': 'V型反轉', 
-                        'shape_x': [hb[0], l1[0], ha[0]], 
-                        'shape_y': [hb[1], l1[1], ha[1]], 
-                        'neck_x': [hb[0], ha[0]], 
-                        'neck_y': [hb[1], ha[1]], 
-                        'color': '#00bcd4', 
-                        'desc': f"深V反轉 ({status})", 
-                        'signal': 'bullish'
-                    }
-    return {}
-
-# ==========================================
-# 【 Bug Fix 】重構高容錯區間擷取函式，解決正則判定錯誤導致「1000張以上」被歸類為「1-5張」的致命 Bug
-# ==========================================
 def clean_level_by_math(x):
     s = str(x).replace(',', '').replace(' ', '').replace('.0', '')
     if s in ["17", "合計", "總計"]: return "合計"
     
-    # 針對最高級距的絕對快篩判定，防止後續數字解析落入陷阱
     if s == "16" or ("1000" in s and "以上" in s): 
         return "1000張以上"
         
@@ -1228,7 +1044,6 @@ def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數', na=False)].copy()
     
-    # 使用修正後的高容錯解析引擎
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     
     if 'HoldingShares' in df.columns:
@@ -1433,9 +1248,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
-# ==========================================
-# 【 效能優化 】重構 HTML 渲染邏輯，使用 list comprehension 避免 += 字串拼接耗時
-# ==========================================
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -1454,7 +1266,6 @@ def render_clean_html_table(df, title=""):
     html_parts.extend([f"<th>{col}</th>" for col in cols])
     html_parts.append("</tr></thead><tbody>")
     
-    # 使用更快的方式迭代並生成 HTML
     for row in df.itertuples(index=False):
         html_parts.append("<tr>")
         for i, col in enumerate(cols):
@@ -1499,7 +1310,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.40 決策引擎..."):
+    with st.spinner(f"正在啟動 V60.41 極致決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1617,7 +1428,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.40)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.41)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -1646,10 +1457,11 @@ if run_btn:
                 if not df_lr_channel.empty:
                     df_plot = pd.merge(df_plot, df_lr_channel, on='日期', how='left')
                     df_plot_lr = df_plot.dropna(subset=['LR_Upper']).sort_values('日期', ascending=True)
+                    # 【V60.41 優化】確保餵給前端的資料絕對不會出現 NaN
                     lr_data = {
-                        "upper": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
-                        "mid": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
-                        "lower": [{"time": str(t), "value": float(v)} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Lower'])]
+                        "upper": [{"time": str(t), "value": float(v) if pd.notna(v) else 0.0} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Upper'])],
+                        "mid": [{"time": str(t), "value": float(v) if pd.notna(v) else 0.0} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Mid'])],
+                        "lower": [{"time": str(t), "value": float(v) if pd.notna(v) else 0.0} for t, v in zip(df_plot_lr['日期'], df_plot_lr['LR_Lower'])]
                     }
                     lr_data_json = json.dumps(lr_data)
 
@@ -1887,7 +1699,7 @@ if run_btn:
             report_md += f"<li>【觸發形態】：{pat_data['desc']}。</li>\n"
             if pat_data['signal'] == 'bullish': pat_diag = "圖形結構偏多，若配合聰明錢流入，突破成功率極高。"
             elif pat_data['signal'] == 'bearish': pat_diag = "圖形結構偏空，上檔頸線或壓力沉重，提防假突破真倒貨。"
-            else: pat_diag = "圖形面臨收斂末端或箱型邊界，即將表態，請密切觀察突破方向與籌碼跟進狀況。"
+            else: pat_diag = "圖形面臨收斂末端或箱型邊界，即滿表態，請密切觀察突破方向與籌碼跟進狀況。"
             report_md += f"<li>解讀：{pat_diag}</li>"
         else:
             report_md += f"<li>【觸發形態】：目前設定下無明顯標準幾何形態。</li>\n"
@@ -2032,7 +1844,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.40 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.41 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
