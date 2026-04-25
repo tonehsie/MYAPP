@@ -78,10 +78,7 @@ _num_re = re.compile(r'\d+')
 _LEVEL_MAP = {
     1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張",
     6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張",
-    11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上",
-    1.0: "1-999股", 2.0: "1-5張", 3.0: "5-10張", 4.0: "10-15張", 5.0: "15-20張",
-    6.0: "20-30張", 7.0: "30-40張", 8.0: "40-50張", 9.0: "50-100張", 10.0: "100-200張",
-    11.0: "200-400張", 12.0: "400-600張", 13.0: "600-800張", 14.0: "800-1000張", 15.0: "1000張以上"
+    11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"
 }
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -142,7 +139,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("全息量化系統 (V60.40 終極防護修復版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.40：徹底解決集保資料級距丟失歸零問題，增強防呆機制確保系統磐石般穩定。{usage_text}")
+st.caption(f"V60.40：徹底解決集保資料級距丟失歸零問題，優化大數據渲染效能。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -1004,30 +1001,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
-def clean_level_by_math(x):
-    s = str(x).replace(',','').replace(' ','')
-    if s in ["17","17.0","合計","總計"]: return "合計"
-    n = _num_re.findall(s)
-    if not n: return s
-    v = int(n[0])
-    if len(n)==1 and v<=15: return _LEVEL_MAP.get(v,s)
-    u = int(n[-1])
-    if u<=999: return "1-999股"
-    elif u<=5000: return "1-5張"
-    elif u<=10000: return "5-10張"
-    elif u<=15000: return "10-15張"
-    elif u<=20000: return "15-20張"
-    elif u<=30000: return "20-30張"
-    elif u<=40000: return "30-40張"
-    elif u<=50000: return "40-50張"
-    elif u<=100000: return "50-100張"
-    elif u<=200000: return "100-200張"
-    elif u<=400000: return "200-400張"
-    elif u<=600000: return "400-600張"
-    elif u<=800000: return "600-800張"
-    elif u<=1000000: return "800-1000張" 
-    else: return "1000張以上" 
-
 def process_price(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
@@ -1215,39 +1188,49 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                     }
     return {}
 
-# 【 Bug Fix 】重新導回具備高容錯判斷的區間擷取函式，解決正則強制切索引導致 0 化的問題
+# ==========================================
+# 【 Bug Fix 】重構高容錯區間擷取函式，解決正則判定錯誤導致「1000張以上」被歸類為「1-5張」的致命 Bug
+# ==========================================
 def clean_level_by_math(x):
-    s = str(x).replace(',','').replace(' ','')
-    if s in ["17","17.0","合計","總計"]: return "合計"
+    s = str(x).replace(',', '').replace(' ', '').replace('.0', '')
+    if s in ["17", "合計", "總計"]: return "合計"
+    
+    # 針對最高級距的絕對快篩判定，防止後續數字解析落入陷阱
+    if s == "16" or ("1000" in s and "以上" in s): 
+        return "1000張以上"
+        
     n = _num_re.findall(s)
     if not n: return s
-    v = int(n[0])
-    if len(n)==1 and v<=15: return _LEVEL_MAP.get(v,s)
+    
+    if len(n) == 1:
+        v = int(n[0])
+        if v <= 15: return _LEVEL_MAP.get(v, s)
+        if v == 16: return "1000張以上"
+        
     u = int(n[-1])
-    if u<=999: return "1-999股"
-    elif u<=5000: return "1-5張"
-    elif u<=10000: return "5-10張"
-    elif u<=15000: return "10-15張"
-    elif u<=20000: return "15-20張"
-    elif u<=30000: return "20-30張"
-    elif u<=40000: return "30-40張"
-    elif u<=50000: return "40-50張"
-    elif u<=100000: return "50-100張"
-    elif u<=200000: return "100-200張"
-    elif u<=400000: return "200-400張"
-    elif u<=600000: return "400-600張"
-    elif u<=800000: return "600-800張"
-    elif u<=1000000: return "800-1000張" 
+    if u <= 999: return "1-999股"
+    elif u <= 5000: return "1-5張"
+    elif u <= 10000: return "5-10張"
+    elif u <= 15000: return "10-15張"
+    elif u <= 20000: return "15-20張"
+    elif u <= 30000: return "20-30張"
+    elif u <= 40000: return "30-40張"
+    elif u <= 50000: return "40-50張"
+    elif u <= 100000: return "50-100張"
+    elif u <= 200000: return "100-200張"
+    elif u <= 400000: return "200-400張"
+    elif u <= 600000: return "400-600張"
+    elif u <= 800000: return "600-800張"
+    elif u <= 1000000: return "800-1000張"
     else: return "1000張以上" 
 
 def process_tdcc(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     df = df[~df['HoldingSharesLevel'].astype(str).str.contains('差異數', na=False)].copy()
     
-    # 重新採用準確無誤的高容錯解析引擎，杜絕欄位消失
+    # 使用修正後的高容錯解析引擎
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     
-    # 加入防呆機制：自動偵測新舊版 FinMind 欄位名稱
     if 'HoldingShares' in df.columns:
         df['unit'] = (safe_to_num(df['HoldingShares']) / 1000).round().astype(int)
     elif 'unit' in df.columns:
@@ -1255,7 +1238,6 @@ def process_tdcc(df):
     else:
         df['unit'] = 0
 
-    # 加入防呆機制：防止 people 欄位為空時強制轉型導致 AttributeError 崩潰
     if 'people' in df.columns:
         df['people'] = safe_to_num(df['people']).astype(int)
     else:
@@ -1451,28 +1433,35 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
 
+# ==========================================
+# 【 效能優化 】重構 HTML 渲染邏輯，使用 list comprehension 避免 += 字串拼接耗時
+# ==========================================
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
         if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
         st.warning("此區塊查無數據。")
         return
+        
     text_keywords = ['日期', '分點', '標籤', '週期', '名稱', '姓名', '身份別', '條件', '措施', '診斷', '代號']
-    
     cols = df.columns.tolist()
     col_align = {col: "text-left" if any(k in str(col) for k in text_keywords) else "text-right" for col in cols}
     
-    html = ""
-    if title: html += f"<div class='section-title'>{title}</div>"
-    html += "<div class='table-container'><table><thead><tr>"
-    for col in cols: html += f"<th>{col}</th>"
-    html += "</tr></thead><tbody>"
+    html_parts = []
+    if title: 
+        html_parts.append(f"<div class='section-title'>{title}</div>")
+        
+    html_parts.append("<div class='table-container'><table><thead><tr>")
+    html_parts.extend([f"<th>{col}</th>" for col in cols])
+    html_parts.append("</tr></thead><tbody>")
     
-    for row in df.to_dict('records'):
-        html += "<tr>"
-        for col in cols:
-            val = row.get(col, "-")
+    # 使用更快的方式迭代並生成 HTML
+    for row in df.itertuples(index=False):
+        html_parts.append("<tr>")
+        for i, col in enumerate(cols):
+            val = row[i]
             align_class = col_align[col]
             display_val = "-"
+            
             if pd.notna(val) and str(val).strip() != "" and str(val).strip().lower() != "nan":
                 s = str(val).strip()
                 if "無本獲利" in s:
@@ -1491,10 +1480,11 @@ def render_clean_html_table(df, title=""):
                             f_val = float(s.replace(',', ''))
                             display_val = f"{f_val:,.2f}" if "." in s else f"{int(f_val):,}"
                     except: display_val = s
-            html += f"<td class='{align_class}'>{display_val}</td>"
-        html += "</tr>"
-    html += "</tbody></table></div>"
-    st.markdown(html, unsafe_allow_html=True)
+            html_parts.append(f"<td class='{align_class}'>{display_val}</td>")
+        html_parts.append("</tr>")
+        
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 def format_to_csv_string(df, title):
     header = f"▼▼▼ {title} ▼▼▼\n"
