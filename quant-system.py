@@ -1284,6 +1284,32 @@ def process_price(df):
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
     return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
 
+def calculate_disposition_thresholds(df_price, total_lots):
+    if df_price.empty or len(df_price) < 6: return None
+    df_asc = df_price.sort_values('日期', ascending=True).reset_index(drop=True)
+    closes = df_asc['收盤價(元)'].tolist()
+    lows = df_asc['最低價(元)'].tolist()
+    volumes_lots = df_asc['成交量(張)'].tolist()
+
+    res = {}
+    res['limit_6d'] = closes[-6] * 1.25 if len(closes) >= 6 else None
+    res['limit_amp'] = min(lows[-5:]) * 1.25 if len(lows) >= 5 else None
+    res['limit_30d'] = closes[-30] * 2.0 if len(closes) >= 30 else None
+    res['limit_60d'] = closes[-60] * 2.3 if len(closes) >= 60 else None
+    res['limit_90d'] = closes[-90] * 2.6 if len(closes) >= 90 else None
+
+    if total_lots > 0:
+        recent_5d_vol_lots = sum(volumes_lots[-5:])
+        max_volume_tomorrow_lots = (total_lots * 0.5) - recent_5d_vol_lots
+        res['current_5d_turnover'] = (recent_5d_vol_lots / total_lots) * 100
+        res['max_vol_6d'] = max_volume_tomorrow_lots
+        res['max_vol_1d'] = total_lots * 0.1
+    else:
+        res['current_5d_turnover'] = 0
+        res['max_vol_6d'] = None
+        res['max_vol_1d'] = None
+    return res
+
 def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     if df_price.empty or len(df_price) < 30: return pd.DataFrame()
     df_ta = df_price.sort_values('日期', ascending=True).copy()
@@ -1874,6 +1900,9 @@ if run_btn:
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
+        # 執行 V3 處置紅線預警系統計算
+        disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
+        
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
         
@@ -1973,7 +2002,30 @@ if run_btn:
         report_md += f"<li>解讀：{layer3_diag}</li>"
         report_md += "</ul>\n\n"
 
-        report_md += "#### 第四層：綜合兵推與最終操作定調\n"
+        report_md += "#### 第四層：處置紅線預警系統 (明日極限防線)\n"
+        report_md += "<ul>"
+        if disp_warn:
+            if disp_warn['limit_6d']: report_md += f"<li>🚨 【短線價格防線】：明日收盤價不可超過 <b>{disp_warn['limit_6d']:.2f}</b> 元 (6日漲幅限制)。</li>\n"
+            if disp_warn['limit_amp']: report_md += f"<li>🚨 【短線振幅防線】：明日最高價不可超過 <b>{disp_warn['limit_amp']:.2f}</b> 元 (6日振幅限制)。</li>\n"
+
+            long_term_warns = []
+            if disp_warn['limit_30d']: long_term_warns.append(f"30日不可越過 <b>{disp_warn['limit_30d']:.2f}</b>")
+            if disp_warn['limit_60d']: long_term_warns.append(f"60日不可越過 <b>{disp_warn['limit_60d']:.2f}</b>")
+            if disp_warn['limit_90d']: long_term_warns.append(f"90日不可越過 <b>{disp_warn['limit_90d']:.2f}</b>")
+            if long_term_warns:
+                report_md += f"<li>🧱 【中長線天花板】：{', '.join(long_term_warns)}。</li>\n"
+
+            if disp_warn['max_vol_6d'] is not None:
+                report_md += f"<li>📊 【週轉率防線】：過去5日已累積 <b>{disp_warn['current_5d_turnover']:.2f}%</b>。</li>\n"
+                if disp_warn['max_vol_6d'] <= 0:
+                    report_md += f"<li>💥 <span style='color:#d32f2f; font-weight:bold;'>【警告】：過去5天週轉率已爆表！明天只要成交大於 0 張必定觸發注意條件！</span></li>\n"
+                else:
+                    report_md += f"<li>⚖️ 【極限成交量】：明日盤中總成交不可超過 <b>{int(disp_warn['max_vol_6d']):,}</b> 張 (6日容許值)，或單日 <b>{int(disp_warn['max_vol_1d']):,}</b> 張。</li>\n"
+        else:
+            report_md += "<li>上市時間不足或無有效價格資料，無法估算處置紅線。</li>\n"
+        report_md += "</ul>\n\n"
+
+        report_md += "#### 第五層：綜合兵推與最終操作定調\n"
         
         pat_is_breakout = pat_data and pat_data['signal'] == 'bullish' and ('突破' in pat_data['desc'] or '深V' in pat_data['desc'])
         pat_is_breakdown = pat_data and pat_data['signal'] == 'bearish' and ('跌破' in pat_data['desc'] or '衰退' in pat_data['desc'])
@@ -2062,7 +2114,7 @@ if run_btn:
             render_clean_html_table(df_s_unit, "09-1. 集保分級 - 張數表")
             render_clean_html_table(df_s_ppl, "09-2. 集保分級 - 人數表")
             
-        render_clean_html_table(df_p_sum, "10. 董監大股東質設總覽")
+        render_clean_html_table(df_p_sum, "10.董監大股東質設總覽")
         with st.expander("點此展開董監大股東質設明細", expanded=False):
             render_clean_html_table(df_p_det, "11. 董監大股東質設明細")
             
