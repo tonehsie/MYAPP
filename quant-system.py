@@ -110,54 +110,6 @@ def calculate_disposition_thresholds(df_price, total_lots):
         res['max_vol_1d'] = None
     return res
 
-# --- 財務邏輯修正：純淨防守線 (C_Value 修正) ---
-def calculate_pure_defense_line_v54(df_b_raw, tags, is_filter_active, total_lots, dynamic_n):
-    if df_b_raw.empty: return 0.0, 0, 0, 0.0, []
-    df = df_b_raw.copy()
-    df['tag'] = df['securities_trader'].map(tags).fillna("[隨波逐流]")
-    
-    if is_filter_active: 
-        valid_df = df[~df['tag'].str.contains("短線狙擊|快閃散戶|長線倒貨|程式造市", na=False)].copy()
-    else: 
-        valid_df = df
-
-    if valid_df.empty: return 0.0, 0, 0, 0.0, []
-    
-    valid_df['valid_buy_amt'] = np.where(valid_df['price'] > 0, valid_df['buy'] * valid_df['price'], 0)
-    valid_df['valid_buy_vol'] = np.where(valid_df['price'] > 0, valid_df['buy'], 0)
-    valid_df['valid_sell_amt'] = np.where(valid_df['price'] > 0, valid_df['sell'] * valid_df['price'], 0)
-    
-    broker_stats = valid_df.groupby('securities_trader').agg(
-        buy_vol=('buy', 'sum'),
-        sell_vol=('sell', 'sum'),
-        buy_amt=('valid_buy_amt', 'sum'),
-        sell_amt=('valid_sell_amt', 'sum'),
-        valid_buy_vol=('valid_buy_vol', 'sum')
-    )
-    
-    broker_stats['net_vol'] = broker_stats['buy_vol'] - broker_stats['sell_vol']
-    top_buyers = broker_stats[broker_stats['net_vol'] > 0].sort_values('net_vol', ascending=False).head(dynamic_n)
-    
-    if top_buyers.empty: return 0.0, 0, 0, 0.0, []
-    
-    core_branch_names = top_buyers.index.tolist()
-    
-    # 倖存者偏差修正 (VWAP 計算)
-    top_buyers['net_amt'] = top_buyers['buy_amt'] - top_buyers['sell_amt']
-    top_buyers['avg_buy_price'] = (top_buyers['net_amt'] / top_buyers['net_vol'].replace(0, np.nan)).fillna(0)
-    top_buyers['avg_buy_price'] = np.where(top_buyers['avg_buy_price'] < 0, 0, top_buyers['avg_buy_price'])
-    
-    valid_top_buyers = top_buyers[top_buyers['avg_buy_price'] > 0]
-    total_net_vol = valid_top_buyers['net_vol'].sum()
-    
-    vwap = round((valid_top_buyers['avg_buy_price'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
-    full_net_accum = int(top_buyers['net_vol'].sum() / 1000)
-    
-    # 使用總股數作為分母，避免 C_Value 溢出
-    c_value = round((full_net_accum / total_lots) * 100, 2) if total_lots > 0 else 0.0
-
-    return vwap, full_net_accum, len(top_buyers), c_value, core_branch_names
-
 # --- 渲染 HTML 表格工具 ---
 def render_clean_html_table(df, title=""):
     if df is None or df.empty:
@@ -212,6 +164,19 @@ def format_to_csv_string(df, title):
     if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
+# --- 防彈版 API 額度查詢 ---
+def get_api_usage(token):
+    try:
+        import requests
+        r = requests.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict):
+                return data.get("user_count", 0), data.get("api_request_limit", 0)
+    except Exception:
+        pass
+    return "未知", "未知"
+
 # --- 側邊欄設定 ---
 st.sidebar.header("戰術參數控制面板")
 kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 10)
@@ -250,8 +215,12 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 
 # --- 主介面 ---
 st.title("全息量化系統 (V60.56 終極完全體)")
-user_count, api_limit = get_api_usage(FINMIND_TOKEN)
-usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
+try:
+    user_count, api_limit = get_api_usage(FINMIND_TOKEN)
+    usage_text = f" | FinMind 額度: {user_count} / {api_limit}"
+except Exception:
+    usage_text = " | FinMind 額度: 無法取得"
+
 st.caption(f"V60.56：修正主力均價倖存者偏差、加入重倉大戶與程式造市分離、校準隔日沖干擾與法人重疊防呆機制。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
@@ -264,7 +233,137 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V60.56 決策引擎", use_container_width=True, key="run_engine")
 
-# --- 其他輔助邏輯 (與 V60.55 雷同) ---
+# --- 其他輔助邏輯 ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_basic_info_finmind(tid):
+    name, ind = "未知名稱", "未知產業"
+    try:
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": "TaiwanStockInfo", "data_id": tid, "start_date": "2000-01-01"}
+        data = cached_finmind_api_call(url, tuple(sorted(p.items())))
+        if data:
+            df = pd.DataFrame(data)
+            if not df.empty:
+                if 'stock_name' in df.columns: name = df['stock_name'].iloc[0]
+                if 'industry_category' in df.columns: ind = df['industry_category'].iloc[0]
+    except: pass
+    return name, ind
+
+def fetch_finmind_v50(ds, sd, tid=None, ed=None):
+    url = "https://api.finmindtrade.com/api/v4/data"
+    p = {"dataset": ds, "start_date": sd}
+    if tid: p["data_id"] = tid
+    if ed: p["end_date"] = ed
+    try:
+        data = cached_finmind_api_call(url, tuple(sorted(p.items())))
+        return pd.DataFrame(data) if data else pd.DataFrame()
+    except:
+        return pd.DataFrame()
+
+def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
+    b_results = []
+    a_results = {}
+    cb_info_list = []
+
+    tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+    d_end = dates[max_len-1] if max_len > 0 else dates[0]
+    dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
+
+    api_targets = [
+        ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
+        ("TaiwanStockMarginPurchaseShortSale", d_end, None, user_stock_id),
+        ("TaiwanStockDayTrading", dt_sd, None, user_stock_id),
+        ("TaiwanStockInstitutionalInvestorsBuySell", d_end, None, user_stock_id),
+        ("TaiwanStockMonthRevenue", "2022-01-01", None, user_stock_id),
+        ("TaiwanFuturesInstitutionalInvestors", d_end, None, "TX"),
+        ("TaiwanStockDividend", "2015-01-01", None, user_stock_id),
+        ("TaiwanStockPER", d_end, None, user_stock_id),
+        ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
+        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None)
+    ]
+
+    total_tasks = max_len + len(api_targets)
+    
+    prog_container = st.empty()
+    text_container = st.empty()
+    prog_bar = prog_container.progress(0.0)
+
+    def fetch_api(dataset, sd, ed, tid):
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": dataset, "start_date": sd}
+        if tid: p["data_id"] = tid
+        if ed: p["end_date"] = ed
+        try:
+            return dataset, cached_finmind_api_call(url, tuple(sorted(p.items())))
+        except:
+            return dataset, []
+
+    def fetch_branch(d, tid):
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
+        try:
+            return cached_finmind_api_call(url, tuple(sorted(p.items())))
+        except:
+            return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_type = {}
+        for d in dates[:max_len]:
+            future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
+        for ds, sd, ed, tid in api_targets:
+            future_to_type[executor.submit(fetch_api, ds, sd, ed, tid)] = 'api'
+
+        completed = 0
+        for future in concurrent.futures.as_completed(future_to_type):
+            completed += 1
+            prog_val = min(1.0, completed / total_tasks)
+            prog_bar.progress(prog_val)
+            text_container.markdown(f"<div class='progress-text'>⚡ 正在與 FinMind 伺服器同步巨量資料... (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+
+            f_type = future_to_type[future]
+            if f_type == 'branch':
+                res = future.result()
+                if res: b_results.extend(res)
+            else:
+                ds, data = future.result()
+                a_results[ds] = pd.DataFrame(data)
+
+        df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
+        if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
+            cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
+            target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
+            
+            if len(target_cbs) > 0:
+                text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
+                cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
+                for f in concurrent.futures.as_completed(cb_futures):
+                    _, cb_data = f.result()
+                    if cb_data: cb_info_list.extend(cb_data)
+
+    prog_container.empty()
+    text_container.empty()
+
+    df_b = pd.DataFrame.from_records(b_results) if b_results else pd.DataFrame()
+    df_cb_info = pd.DataFrame(cb_info_list)
+    return df_b, a_results, df_cb_info
+
+def safe_get_fubon(url):
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        if hasattr(ssl, 'OP_LEGACY_SERVER_CONNECT'): ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as res: return res.read().decode('big5', errors='ignore')
+    except:
+        try:
+            res = GENERIC_SESSION.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10, verify=False)
+            if res.status_code == 200: 
+                res.encoding = 'big5'
+                return res.text
+        except: pass
+    return ""
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def scrape_director_v50(tid):
     dd, sv = {}, 0.0
@@ -460,7 +559,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
                                 (g['net_shares'].abs() / g['ts_shares'].replace(0, np.nan)) * 100)
     g['hoard_ratio'] = g['hoard_ratio'].fillna(0).round(1)
 
-    # 【財務修正 V60.55】實質成本計算 (倖存者偏差修正)
     g['net_amt'] = g['buy_amt'] - g['sell_amt']
     g['real_avg_b'] = np.where(g['net_shares'] > 0, g['net_amt'] / g['net_shares'].replace(0, np.nan), 0)
     g['real_avg_b'] = np.where(g['real_avg_b'] < 0, 0, g['real_avg_b'])
@@ -472,9 +570,8 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    # 【V60.56 新增邏輯】重倉大戶與程式造市
-    cond_whale = (g['stickiness'] < 15.0) & (g['net_60d'] >= 200) # 低黏著度但重押
-    cond_algo = (g['stickiness'] >= stick_thresh) & (((g['tb_shares'] + g['ts_shares']) / g['active_days']) < 10000) # 高黏著但均量低於10張
+    cond_whale = (g['stickiness'] < 15.0) & (g['net_60d'] >= 200)
+    cond_algo = (g['stickiness'] >= stick_thresh) & (((g['tb_shares'] + g['ts_shares']) / g['active_days']) < 10000)
     
     cond_dump = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
     cond_core = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
@@ -741,7 +838,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
     df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
-    # 【V60.56 新增】加入重倉大戶至聰明錢，嚴格剔除倒貨陣營與程式造市
     smart_set = {"[波段鐵粉]", "[常駐造市]", "[重倉大戶]"}
     short_set = {"[短線狙擊]", "[低檔回補]", "[快閃散戶]"}
     df_b['is_smart'] = df_b['tag'].isin(smart_set)
