@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V60.48版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V60.49版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -78,7 +78,7 @@ _num_re = re.compile(r'\d+')
 _LEVEL_MAP = {
     1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張",
     6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張",
-    11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"
+    11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張"
 }
 _LEVEL_CLEAN_CACHE = {}
 
@@ -137,10 +137,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V60.48 終極修復＋極速快取版)")
+st.title("全息量化系統 (V60.49 集保級距終極修復版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V60.48：已修復遺失的技術分析模組，並保留所有 Numpy/Pandas 向量化聚合與快取機制，消滅 Python 迴圈。{usage_text}")
+st.caption(f"V60.49：全面修復集保 15 至 21 級大戶資料遺失問題，完美聚合併保有向量快取極限效能。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -150,7 +150,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V60.48 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V60.49 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -345,7 +345,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
 
 def get_dead_chip_info(ds, parsed_dci, dd, sv, ce):
     if parsed_dci is not None:
@@ -991,7 +991,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("0 (無本獲利)" if smart_avg_cost == 0 and total_n > 0 else "-"), 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
-            "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "综合診斷": " | ".join(adv)
+            "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
         
     df_audit = pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
@@ -1002,17 +1002,18 @@ def clean_level_by_math(x):
     if s in _LEVEL_CLEAN_CACHE: return _LEVEL_CLEAN_CACHE[s]
     
     res = "合計"
-    if s not in ["17", "合計", "總計"]:
-        if s == "16" or ("1000" in s and "以上" in s): 
-            res = "1000張以上"
+    if s and s not in ["合計", "總計", "差異數"]:
+        if s.isdigit():
+            v = int(s)
+            if v == 99: res = "合計"
+            elif 1 <= v <= 14: res = _LEVEL_MAP.get(v, s)
+            elif v >= 15: res = "1000張以上"
+            else: res = s
         else:
             n = _num_re.findall(s)
             if not n: 
                 res = s
-            elif len(n) == 1:
-                v = int(n[0])
-                res = _LEVEL_MAP.get(v, s) if v <= 15 else ("1000張以上" if v == 16 else s)
-            else:
+            elif len(n) > 1:
                 u = int(n[-1])
                 if u <= 999: res = "1-999股"
                 elif u <= 5000: res = "1-5張"
@@ -1029,6 +1030,27 @@ def clean_level_by_math(x):
                 elif u <= 800000: res = "600-800張"
                 elif u <= 1000000: res = "800-1000張"
                 else: res = "1000張以上"
+            else:
+                v = int(n[0])
+                if v <= 21:
+                    if 1 <= v <= 14: res = _LEVEL_MAP.get(v, s)
+                    elif v >= 15: res = "1000張以上"
+                else:
+                    if v >= 1000000: res = "1000張以上"
+                    elif v >= 800000: res = "800-1000張"
+                    elif v >= 600000: res = "600-800張"
+                    elif v >= 400000: res = "400-600張"
+                    elif v >= 200000: res = "200-400張"
+                    elif v >= 100000: res = "100-200張"
+                    elif v >= 50000:  res = "50-100張"
+                    elif v >= 40000:  res = "40-50張"
+                    elif v >= 30000:  res = "30-40張"
+                    elif v >= 20000:  res = "20-30張"
+                    elif v >= 15000:  res = "15-20張"
+                    elif v >= 10000:  res = "10-15張"
+                    elif v >= 5000:   res = "5-10張"
+                    elif v >= 1000:   res = "1-5張"
+                    else: res = "1-999股"
                 
     _LEVEL_CLEAN_CACHE[s] = res
     return res
@@ -1515,7 +1537,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V60.48 極限向量快取引擎..."):
+    with st.spinner(f"正在啟動 V60.49 終極修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1652,7 +1674,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.48)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V60.49)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -2067,7 +2089,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V60.48 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V60.49 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
