@@ -47,6 +47,27 @@ CSS = """
 .ai-report-box li { margin-bottom: 8px; font-size: 1.05rem; color: #333; }
 .ai-conclusion { background-color: #fff3cd; padding: 15px; border-radius: 6px; border: 1px solid #ffe69c; font-weight: 700; color: #856404; }
 .progress-text { font-size: 1.1rem; color: #1e3a8a; font-weight: bold; margin-bottom: 5px; }
+
+@media (prefers-color-scheme: dark) {
+    .table-container table { background-color: #1e1e1e !important; color: #e0e0e0 !important; }
+    .table-container th, .table-container td { border-color: #444 !important; color: #e0e0e0 !important; }
+    .table-container th { background-color: #2d2d2d !important; color: #fff !important; }
+    .table-container th:first-child, .table-container td:first-child { background-color: #252525 !important; }
+    .info-box { background-color: #2d2d2d !important; color: #64b5f6 !important; border-left-color: #64b5f6 !important; }
+    .section-title { color: #64b5f6 !important; border-bottom-color: #64b5f6 !important; }
+    .category-title { color: #fff !important; }
+    .stTabs [data-baseweb='tab'] { background-color: #2d2d2d !important; color: #aaa !important; }
+    .stTabs [aria-selected='true'] { background-color: #1a237e !important; color: #64b5f6 !important; border-bottom-color: #64b5f6 !important; }
+    .ai-report-box { background-color: #252525 !important; border-color: #444 !important; border-left-color: #64b5f6 !important; color: #e0e0e0 !important; }
+    .ai-report-box h4 { color: #64b5f6 !important; border-bottom-color: #444 !important; }
+    .ai-report-box li { color: #e0e0e0 !important; }
+    .ai-conclusion { background-color: #3e2723 !important; border-color: #5d4037 !important; color: #ffb74d !important; }
+    .progress-text { color: #64b5f6 !important; }
+    .profit-warning { background-color: #4a148c !important; color: #e1bee7 !important; border-color: #7b1fa2 !important; }
+    .loss-warning { color: #ff7043 !important; }
+    .highlight-red { color: #ef5350 !important; }
+    .highlight-green { color: #66bb6a !important; }
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -361,7 +382,7 @@ def extract_fubon_table(ht, trg, cols):
     fh = ht[max(0, si - 500) : si + 35000]
     trs = re.compile(r'<tr[^>]*>([\s\S]*?)</tr>', re.IGNORECASE).findall(fh)
     tdp = re.compile(r'<t[dh][^>]*>([\s\S]*?)</t[dh]>', re.IGNORECASE)
-    out, ist = [], False
+    out, ist = False, []
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
@@ -503,7 +524,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    # 標籤邏輯
     cond_heavy = g['net_20d'].abs() >= 300
     cond_lock = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
     cond_cover = (g['net_60d'] <= -100) & (g['net_5d'] >= 200)
@@ -587,7 +607,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     df['tag'] = df['securities_trader'].map(tags).fillna("【路人雜訊】")
     
     if is_filter_active: 
-        # 💡 盲點一修復：剔除【避險造市】，防高頻微利交易稀釋大戶真實均價
         valid_df = df[~df['tag'].str.contains("【隔日突擊】|【跟風小戶】|【棄守提款】|【避險造市】", na=False)].copy()
     else: 
         valid_df = df
@@ -1762,6 +1781,13 @@ if run_btn:
                         #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
                         #chart-vol { flex: 0.8; position: relative;}
                         .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
+                        
+                        /* 圖表區深色模式自動反轉 */
+                        @media (prefers-color-scheme: dark) {
+                            body { background: #1e1e1e; }
+                            #chart-main { border-bottom: 2px solid #444; }
+                            .legend { background: rgba(30,30,30,0.7); color: #e0e0e0; }
+                        }
                     </style>
                 </head>
                 <body>
@@ -1792,30 +1818,36 @@ if run_btn:
                             }
                         };
 
+                        // 自動偵測系統的深色模式
+                        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                        const chartBgColor = isDark ? '#1e1e1e' : '#ffffff';
+                        const chartTxtColor = isDark ? '#e0e0e0' : '#333';
+                        const chartGridColor = isDark ? '#333333' : '#f5f5f5';
+
                         const mainOptions = {
                             autoSize: true,
                             localization: commonLocalization,
-                            layout: { background: { color: '#ffffff' }, textColor: '#333' },
-                            grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
-                            rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
+                            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
+                            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
+                            rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
                             timeScale: { visible: false }
                         };
 
                         const volOptions = {
                             autoSize: true,
                             localization: commonLocalization,
-                            layout: { background: { color: '#ffffff' }, textColor: '#333' },
-                            grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
-                            rightPriceScale: { borderColor: '#eee', autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
-                            timeScale: { borderColor: '#eee' }
+                            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
+                            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
+                            rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
+                            timeScale: { borderColor: chartGridColor }
                         };
 
                         const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), mainOptions);
                         const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), volOptions);
 
                         const candleSeries = mainChart.addCandlestickSeries({
-                            upColor: '#ffffff', borderUpColor: '#000000', wickUpColor: '#000000',
-                            downColor: '#000000', borderDownColor: '#000000', wickDownColor: '#000000'
+                            upColor: chartBgColor, borderUpColor: isDark ? '#fff' : '#000', wickUpColor: isDark ? '#fff' : '#000',
+                            downColor: isDark ? '#fff' : '#000', borderDownColor: isDark ? '#fff' : '#000', wickDownColor: isDark ? '#fff' : '#000'
                         });
                         candleSeries.setData(kData);
 
@@ -1826,9 +1858,9 @@ if run_btn:
 
                         const lr = LR_DATA;
                         if (lr && lr.upper && lr.upper.length > 0) {
-                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
-                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
-                            mainChart.addLineSeries({ color: 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.lower);
+                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
+                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.8)' : 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
+                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.lower);
                         }
 
                         const pat = PAT_DATA;
@@ -1862,7 +1894,7 @@ if run_btn:
                             if (!d || dtVal === undefined || tvVal === undefined) return;
 
                             const shortDate = d.time.substring(2).replace(/-/g, '/');
-                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:#000000">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`;
+                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${chartTxtColor}">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`;
                         };
                         updateLegend({time: null});
 
