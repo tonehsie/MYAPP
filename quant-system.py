@@ -136,7 +136,7 @@ st.sidebar.markdown("### AI 幾何形態與技術線")
 enable_pattern = st.sidebar.checkbox("啟動 AI 幾何形態掃描", value=True)
 
 pattern_mode = st.sidebar.selectbox("形態顯示模式", [
-    "全自動智能辨識 (Auto)", 
+    "全自動智慧辨識 (Auto)", 
     "反轉：W底 (雙重底)", "反轉：M頭 (雙重頂)", 
     "反轉：頭肩底", "反轉：頭肩頂", 
     "反轉：三重底", "反轉：三重頂",
@@ -559,7 +559,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         "囤出貨率(%)": g['hoard_ratio'],
         "總買(張)": g['tb'],
         "總賣(張)": g['ts'],
-        "淨留仓": g['net_lots'],
+        "淨留倉": g['net_lots'],
         "買均價": g['b_str'],
         "賣均價": np.where(g['avg_s'] > 0, g['avg_s'].round(2).astype(str), "-"),
         "收盤位階": g['pos']
@@ -1833,7 +1833,7 @@ if run_btn:
                             layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
                             grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
                             rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
-                            timeScale: { visible: false }
+                            timeScale: { visible: false, rightOffset: 10 }
                         };
 
                         const volOptions = {
@@ -1842,7 +1842,7 @@ if run_btn:
                             layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
                             grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
                             rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
-                            timeScale: { borderColor: chartGridColor }
+                            timeScale: { borderColor: chartGridColor, rightOffset: 10 }
                         };
 
                         const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), mainOptions);
@@ -2029,7 +2029,7 @@ if run_btn:
         report_md += f"<li>【防守價與乖離】：系統算出純淨加權防守價為 {vwap_str} 元 (已剔除避險造市)。今日收盤價 {curr_price} 元，主力成本乖離率 {bias:.1f}%。</li>\n"
         if latest_lr_upper > 0:
             report_md += f"<li>【線性迴歸通道】：{lr_days}日動態通道上軌 {latest_lr_upper:.2f}，中軌 {latest_lr_mid:.2f}，下軌 {latest_lr_lower:.2f}。</li>\n"
-        report_md += f"<li>【核心底單水位】：近60日核心主力淨留仓 {net_60:+,} 張，近10日 {net_10:+,} 張，近3日 {net_3:+,} 張。</li>\n"
+        report_md += f"<li>【核心底單水位】：近60日核心主力淨留倉 {net_60:+,} 張，近10日 {net_10:+,} 張，近3日 {net_3:+,} 張。</li>\n"
         
         if bias >= 10 and net_60 > 0: layer1_diag = f"主力成本乖離達10%以上，為台灣市場波段趨勢啟動特徵，{lr_pos_text}，且長線大戶籌碼鎖定。"
         elif bias >= 0 and net_60 > 0: layer1_diag = f"股價貼近主力成本且{lr_pos_text}，長線大戶默默吸籌，處於安全建倉區。"
