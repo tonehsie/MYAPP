@@ -16,14 +16,14 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V70.08版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V70.09版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 CSS = """
 <style>
-/* 將 max-height 從 480px 拉長到 600px，完美容納 10 行資料不被遮擋 */
+/* 將 max-height 從 480px 拉長到 600px，完美容納 10/11 行資料不被遮擋 */
 .table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
@@ -128,7 +128,8 @@ st.sidebar.header("戰術參數控制面板")
 kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 10)
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
-footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 60, 20, 1)
+# 將追蹤天數預設拉長至 45 天，以符合連續追蹤矩陣的波段觀測需求
+footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 90, 45, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 
@@ -159,10 +160,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V70.08 穩定完整版)")
+st.title("全息量化系統 (V70.09 穩定完整版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.08：演算法盲點修復版 (均價防污、CB套利、假面現金警報、防空值閃退)。{usage_text}")
+st.caption(f"V70.09：演算法盲點修復版 (均價防污、CB套利、假面現金警報、防空值閃退、新增45天動態追蹤矩陣)。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -172,7 +173,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V70.08 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V70.09 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -977,6 +978,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         smart_net = smart_grouped['net_vol'].sum() if not smart_grouped.empty else 0
         short_trap = short_grouped[short_grouped['net_vol'] > 0]['net_vol'].sum() if not short_grouped.empty else 0
         
+        total_n = 0
         if not smart_grouped.empty:
             s_ret = smart_grouped.copy()
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
@@ -987,7 +989,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             smart_avg_cost = max(0.0, total_net_amt / total_n) if total_n > 0 else 0.0
         else: 
             smart_avg_cost = 0.0
-            total_n = 0
             
         gap = cp - smart_avg_cost if smart_avg_cost > 0 and cp > 0 else 0
         
