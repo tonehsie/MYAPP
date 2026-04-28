@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V70.10版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V70.11版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -165,10 +165,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V70.10 滿漢全席版)")
+st.title("全息量化系統 (V70.11 滿漢全席版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.10：加入外掛模組【🥩 主力戰鬥熱力圖 (Heatmap)】。底層運算架構 100% 保持穩定不變。{usage_text}")
+st.caption(f"V70.11：加入外掛模組【🦞 Volume Profile 成本區間分佈】與【🥩 熱力圖】。底層架構 100% 穩定。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -178,7 +178,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V70.10 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V70.11 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -373,7 +373,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -616,7 +616,6 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     df['tag'] = df['securities_trader'].map(tags).fillna("【路人雜訊】")
     
     if is_filter_active: 
-        # 💡 盲點一修復：剔除【避險造市】，防高頻微利交易稀釋大戶真實均價
         valid_df = df[~df['tag'].str.contains("【隔日突擊】|【跟風小戶】|【棄守提款】|【避險造市】", na=False)].copy()
     else: 
         valid_df = df
@@ -668,14 +667,13 @@ def get_core_period_net(df_raw, rank_dates, core_names):
     return int(round(net_shares / 1000))
 
 # ==========================================
-# 【新增外掛模組】 45天主力戰鬥熱力圖渲染引擎
+# 【外掛模組 1】 🥩 主力戰鬥熱力圖
 # ==========================================
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
         return
 
-    # 第一步：找老大 (過濾前 N 大)
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
@@ -683,64 +681,160 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
     top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
     target_traders = top_b + top_s
+    
     if not target_traders:
         st.warning("無符合條件的活躍分點。")
         return
 
-    # 第二步：攤平每日資料矩陣
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
     df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
     p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
     p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
     p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
-
-    # 確保資料對齊
     p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
 
-    # 抓取最大絕對值作為顏色深淺基準
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    # 第三步：繪製 HTML 熱力圖
-    html_parts = ["<div class='table-container' style='max-height: 650px;'><table><thead><tr>"]
-    html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>主力分點</th>")
-    html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>系統標籤</th>")
+    html_parts = ["<div class='table-container' style='max-height: 600px;'><table><thead><tr>"]
+    html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
+    html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>標籤</th>")
     for d in display_dates:
-        html_parts.append(f"<th style='text-align: center; min-width: 50px;'>{d[5:]}</th>")
+        html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px;'>{d[5:]}</th>")
     html_parts.append("</tr></thead><tbody>")
 
     for trader in target_traders:
         html_parts.append("<tr>")
         tag = intel_tags.get(trader, "【路人雜訊】")
-        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; font-size: 14px;'>{trader}</td>")
-        html_parts.append(f"<td style='position: sticky; left: 140px; background-color: #f8f9fa; z-index: 4; font-size: 13px;'>{tag}</td>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold;'>{trader}</td>")
+        html_parts.append(f"<td style='position: sticky; left: 140px; background-color: #f8f9fa; z-index: 4;'>{tag}</td>")
 
         for d in display_dates:
             val = p.at[trader, d]
-            # 雜訊過濾
             if abs(val) < noise_threshold:
                 bg = "transparent"
                 txt = ""
             else:
-                # 計算顏色深度 (透明度 0.2 ~ 1.0)
                 alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val))
                 if val > 0:
-                    bg = f"rgba(229, 57, 53, {alpha:.2f})" # 溫暖紅
+                    bg = f"rgba(229, 57, 53, {alpha:.2f})" 
                 else:
-                    bg = f"rgba(67, 160, 71, {alpha:.2f})" # 冷酷綠
+                    bg = f"rgba(67, 160, 71, {alpha:.2f})" 
                 txt = f"+{val}" if val > 0 else str(val)
 
-            # CSS 自動對比與文字陰影，確保深淺模式皆可讀
-            cell_style = f"background-color: {bg}; text-align: center; font-weight: 800; font-size: 14px; color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);" if txt else "text-align: center;"
-            html_parts.append(f"<td style='{cell_style}' title='{d} | {trader}: {val} 張'>{txt}</td>")
+            cell_style = f"background-color: {bg}; text-align: center; font-weight: bold; color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);" if txt else "text-align: center;"
+            tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
+            html_parts.append(f"<td style='{cell_style}' title='{tooltip}'>{txt}</td>")
 
         html_parts.append("</tr>")
     
-    # 底部空白行防遮擋
     html_parts.append("<tr style='height: 30px;'><td style='position: sticky; left: 0; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td><td style='position: sticky; left: 140px; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td>")
     for _ in display_dates: html_parts.append("<td style='border-bottom: none;'></td>")
     html_parts.append("</tr>")
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
+
+# ==========================================
+# 【外掛模組 2】 🦞 戰略系海鮮：Volume Profile 建倉成本分佈
+# ==========================================
+def render_volume_profile(df_raw, rank_dates, top_n=15):
+    if df_raw.empty or not rank_dates:
+        st.warning("查無足夠資料產生建倉成本分佈圖。")
+        return
+
+    # 第一步：過濾前 15 大主力
+    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
+    df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
+    rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+    
+    top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
+    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
+    target_traders = top_b + top_s
+    
+    if not target_traders:
+        st.warning("無符合條件的活躍分點。")
+        return
+
+    # 第二步：抓出這些大戶在區間內的有價交易
+    df_vp = df_rank[(df_rank['securities_trader'].isin(target_traders)) & (df_rank['price'] > 0)].copy()
+    if df_vp.empty:
+        st.warning("無有效價格資料進行成本區間分析。")
+        return
+
+    df_vp['buy_lots'] = df_vp['buy'] / 1000
+    df_vp['sell_lots'] = df_vp['sell'] / 1000
+
+    # 第三步：動態切割價格區間 (Binning)
+    min_p = df_vp['price'].min()
+    max_p = df_vp['price'].max()
+    
+    if min_p == max_p:
+        labels = [f"{min_p:.2f}"]
+        df_vp['price_bin'] = labels[0]
+    else:
+        # 將最高到最低價自動切成 15 等份
+        bin_edges = np.linspace(min_p, max_p, num=16)
+        labels = [f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}" for i in range(len(bin_edges)-1)]
+        df_vp['price_bin'] = pd.cut(df_vp['price'], bins=bin_edges, labels=labels, include_lowest=True)
+
+    # 第四步：彙整運算
+    vp_grouped = df_vp.groupby('price_bin', observed=False)[['buy_lots', 'sell_lots']].sum().fillna(0)
+    vp_grouped['total_lots'] = vp_grouped['buy_lots'] + vp_grouped['sell_lots']
+    vp_grouped['net_lots'] = vp_grouped['buy_lots'] - vp_grouped['sell_lots']
+    
+    if vp_grouped['total_lots'].sum() == 0:
+        st.warning("該區間大戶無顯著成交量。")
+        return
+
+    # 第五步：抓出 POC (Point of Control)
+    poc_idx = vp_grouped['total_lots'].idxmax()
+    max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
+    if max_vol_for_scale == 0: max_vol_for_scale = 1
+
+    # 第六步：渲染橫向分布圖 HTML
+    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
+    html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
+    html_parts.append("<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>")
+    html_parts.append("<th style='width: 10%; text-align: right;'>淨買賣(張)</th>")
+    html_parts.append("</tr></thead><tbody>")
+
+    # 由高價往低價排列，符合看盤直覺
+    vp_grouped = vp_grouped.sort_index(ascending=False)
+
+    for idx, row in vp_grouped.iterrows():
+        b_vol = int(round(row['buy_lots']))
+        s_vol = int(round(row['sell_lots']))
+        n_vol = int(round(row['net_lots']))
+        t_vol = row['total_lots']
+        
+        if t_vol == 0: continue
+
+        b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
+        s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
+
+        # 強制高亮標示 POC 核心防守區
+        is_poc = (idx == poc_idx)
+        row_bg = "background-color: rgba(255, 193, 7, 0.15);" if is_poc else ""
+        poc_star = " <br><span style='color:#f57c00; font-size:12px; font-weight:900;'>⭐ [POC 核心防守]</span>" if is_poc else ""
+
+        html_parts.append(f"<tr style='{row_bg}'>")
+        html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
+        
+        # 買方能量條
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_vol:,}</span></div></td>")
+        
+        # 賣方能量條
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_vol:,}</span></div></td>")
+        
+        # 淨額文字
+        net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
+        net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
+        html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        
+        html_parts.append("</tr>")
+        
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
@@ -1646,14 +1740,13 @@ def format_to_csv_string(df, title):
     return header + df.to_csv(index=False) + "\n"
 
 # ==========================================
-# 【外掛模組】 🥩 視覺系主菜：45天主力戰鬥熱力圖
+# 【外掛模組 1】 🥩 主力戰鬥熱力圖
 # ==========================================
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
         return
 
-    # 第一步：過濾前 N 大活躍主力 (不動核心邏輯，借用 raw data 算一次)
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
@@ -1666,21 +1759,16 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
         st.warning("無符合條件的活躍分點。")
         return
 
-    # 第二步：把流水帳攤平為每日矩陣
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
     df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
     p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
     p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
     p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
-
-    # 對齊所有選定的分點與日期，防空值
     p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
 
-    # 取最大絕對值作為光影著色的基準點
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    # 第三步：渲染純手工打造的熱力 HTML 引擎
     html_parts = ["<div class='table-container' style='max-height: 600px;'><table><thead><tr>"]
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
     html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>標籤</th>")
@@ -1696,32 +1784,130 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
 
         for d in display_dates:
             val = p.at[trader, d]
-            
-            # 套用雜訊過濾器：太小的量直接變透明
             if abs(val) < noise_threshold:
                 bg = "transparent"
                 txt = ""
             else:
-                # 動態計算顏色深度 alpha 值
                 alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val))
                 if val > 0:
-                    bg = f"rgba(229, 57, 53, {alpha:.2f})" # 溫暖紅
+                    bg = f"rgba(229, 57, 53, {alpha:.2f})" 
                 else:
-                    bg = f"rgba(67, 160, 71, {alpha:.2f})" # 冷酷綠
+                    bg = f"rgba(67, 160, 71, {alpha:.2f})" 
                 txt = f"+{val}" if val > 0 else str(val)
 
-            # 加上文字陰影與強制反白，確保深淺模式都能清晰閱讀數字
             cell_style = f"background-color: {bg}; text-align: center; font-weight: bold; color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);" if txt else "text-align: center;"
             tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
             html_parts.append(f"<td style='{cell_style}' title='{tooltip}'>{txt}</td>")
 
         html_parts.append("</tr>")
     
-    # 底部空白撐高行，完美解決滾動條遮擋第10行的問題
     html_parts.append("<tr style='height: 30px;'><td style='position: sticky; left: 0; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td><td style='position: sticky; left: 140px; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td>")
     for _ in display_dates: html_parts.append("<td style='border-bottom: none;'></td>")
     html_parts.append("</tr>")
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
+
+# ==========================================
+# 【外掛模組 2】 🦞 戰略系海鮮：Volume Profile 建倉成本分佈
+# ==========================================
+def render_volume_profile(df_raw, rank_dates, top_n=15):
+    if df_raw.empty or not rank_dates:
+        st.warning("查無足夠資料產生建倉成本分佈圖。")
+        return
+
+    # 第一步：過濾前 15 大主力
+    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
+    df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
+    rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+    
+    top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
+    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
+    target_traders = top_b + top_s
+    
+    if not target_traders:
+        st.warning("無符合條件的活躍分點。")
+        return
+
+    # 第二步：抓出這些大戶在區間內的有價交易
+    df_vp = df_rank[(df_rank['securities_trader'].isin(target_traders)) & (df_rank['price'] > 0)].copy()
+    if df_vp.empty:
+        st.warning("無有效價格資料進行成本區間分析。")
+        return
+
+    df_vp['buy_lots'] = df_vp['buy'] / 1000
+    df_vp['sell_lots'] = df_vp['sell'] / 1000
+
+    # 第三步：動態切割價格區間 (Binning)
+    min_p = df_vp['price'].min()
+    max_p = df_vp['price'].max()
+    
+    if min_p == max_p:
+        labels = [f"{min_p:.2f}"]
+        df_vp['price_bin'] = labels[0]
+    else:
+        # 將最高到最低價自動切成 15 等份
+        bin_edges = np.linspace(min_p, max_p, num=16)
+        labels = [f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}" for i in range(len(bin_edges)-1)]
+        df_vp['price_bin'] = pd.cut(df_vp['price'], bins=bin_edges, labels=labels, include_lowest=True)
+
+    # 第四步：彙整運算
+    vp_grouped = df_vp.groupby('price_bin', observed=False)[['buy_lots', 'sell_lots']].sum().fillna(0)
+    vp_grouped['total_lots'] = vp_grouped['buy_lots'] + vp_grouped['sell_lots']
+    vp_grouped['net_lots'] = vp_grouped['buy_lots'] - vp_grouped['sell_lots']
+    
+    if vp_grouped['total_lots'].sum() == 0:
+        st.warning("該區間大戶無顯著成交量。")
+        return
+
+    # 第五步：抓出 POC (Point of Control)
+    poc_idx = vp_grouped['total_lots'].idxmax()
+    max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
+    if max_vol_for_scale == 0: max_vol_for_scale = 1
+
+    # 第六步：渲染橫向分布圖 HTML
+    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
+    html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
+    html_parts.append("<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>")
+    html_parts.append("<th style='width: 10%; text-align: right;'>淨買賣(張)</th>")
+    html_parts.append("</tr></thead><tbody>")
+
+    # 由高價往低價排列，符合看盤直覺
+    vp_grouped = vp_grouped.sort_index(ascending=False)
+
+    for idx, row in vp_grouped.iterrows():
+        b_vol = int(round(row['buy_lots']))
+        s_vol = int(round(row['sell_lots']))
+        n_vol = int(round(row['net_lots']))
+        t_vol = row['total_lots']
+        
+        if t_vol == 0: continue
+
+        b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
+        s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
+
+        # 強制高亮標示 POC 核心防守區
+        is_poc = (idx == poc_idx)
+        row_bg = "background-color: rgba(255, 193, 7, 0.15);" if is_poc else ""
+        poc_star = " <br><span style='color:#f57c00; font-size:12px; font-weight:900;'>⭐ [POC 核心防守]</span>" if is_poc else ""
+
+        html_parts.append(f"<tr style='{row_bg}'>")
+        html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
+        
+        # 買方能量條
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_vol:,}</span></div></td>")
+        
+        # 賣方能量條
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_vol:,}</span></div></td>")
+        
+        # 淨額文字
+        net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
+        net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
+        html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        
+        html_parts.append("</tr>")
+        
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
@@ -1734,7 +1920,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V70.10 穩定修復決策引擎..."):
+    with st.spinner(f"正在啟動 V70.11 穩定修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1874,7 +2060,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.10)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.11)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -2343,6 +2529,13 @@ if run_btn:
         with st.expander(f"【🥩 視覺系主菜】 {actual_foot_days}天主力戰鬥熱力圖 (Heatmap)", expanded=True):
             st.info("💡 視覺化提示：紅色代表主力買超(囤貨)，綠色代表賣超(倒貨)，顏色越深張數越大。透過左側欄「雜訊過濾門檻」可隱藏散戶微量交易。")
             render_footprint_heatmap(df_b_raw, display_dates, dates[:45] if len(dates)>=45 else dates, tags, footprint_rows, heatmap_noise_threshold)
+            
+        # ==========================================
+        # 🔥 掛上海鮮：45天 Volume Profile 成本區間分佈
+        # ==========================================
+        with st.expander(f"【🦞 戰略系海鮮】 {actual_foot_days}天大戶建倉成本區間分佈 (Volume Profile)", expanded=True):
+            st.info("💡 實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
+            render_volume_profile(df_b_raw, dates[:45] if len(dates)>=45 else dates, footprint_rows)
 
         st.info("所有分點足跡與明細已集中於此，點擊展開即可查看。表格支援上下左右雙向滑動，直向顯示約 10 行以維持版面整潔。")
         
@@ -2402,7 +2595,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V70.10 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V70.11 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
