@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V70.01版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V70.02版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -158,10 +158,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V70.01 穩定完整版)")
+st.title("全息量化系統 (V70.02 穩定完整版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.01：演算法盲點修復版 (均價防污、CB套利、假面現金警報)。{usage_text}")
+st.caption(f"V70.02：演算法盲點修復版 (均價防污、CB套利、假面現金警報)。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -171,7 +171,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V70.01 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V70.02 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1062,7 +1062,7 @@ def clean_level_by_math(x):
                     elif v >= 400000: res = "400-600張"
                     elif v >= 200000: res = "200-400張"
                     elif v >= 100000: res = "100-200張"
-                    elif v >= 50000:  res = "50-100張"
+                    elif v >= 5000:   res = "50-100張"
                     elif v >= 40000:  res = "40-50張"
                     elif v >= 30000:  res = "30-40張"
                     elif v >= 20000:  res = "20-30張"
@@ -1567,7 +1567,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 難70.01 穩定修復決策引擎..."):
+    with st.spinner(f"正在啟動 V70.02 穩定修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1649,10 +1649,10 @@ if run_btn:
         net_10 = get_core_period_net(df_b_raw, dates[:10], core_branch_names)
         net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
-        df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=10)
+        df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=16)
         df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
         
-        df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates, firepower_threshold, period_days=5)
+        df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates, firepower_threshold, period_days=16)
         df_daily_tracker_60, _ = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff_60, dates, firepower_threshold, period_days=60)
         
         df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, parsed_dead_chip, dynamic_dict, s_val, chip_eng)
@@ -1706,7 +1706,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (難70.01)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.02)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -2221,7 +2221,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 難70.01 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V70.02 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2242,7 +2242,7 @@ if run_btn:
             p1 += f"【核心主力10日淨留倉】: {net_10} 張\n"
             p1 += f"【核心主力60日淨留倉】: {net_60} 張\n\n"
             
-            p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近5日)")
+            p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近16日)")
             p1 += format_to_csv_string(df_combined_display.head(4) if not df_combined_display.empty else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
             p1 += format_to_csv_string(df_inst.head(11) if not df_inst.empty else df_inst, "04. 法人買賣超 (近11天)")
             p1 += format_to_csv_string(df_margin.head(11) if not df_margin.empty else df_margin, "05. 散戶資券餘額 (近11天)")
