@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V70.12版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V70.13版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -135,9 +135,6 @@ st.sidebar.divider()
 st.sidebar.markdown("### 🥩 視覺系主菜：熱力圖設定")
 heatmap_noise_threshold = st.sidebar.slider("熱力圖雜訊過濾門檻 (張)", 0, 500, 50, 10)
 
-# ==========================================
-# 🔥 新增配菜：客製化警報器設定
-# ==========================================
 st.sidebar.divider()
 st.sidebar.markdown("### 🥗 防禦系配菜：警報器設定")
 alert_smart_buy = st.sidebar.number_input("警報: 聰明錢單日大買 > (張)", min_value=0, value=300, step=50)
@@ -174,10 +171,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V70.12 滿漢全席版)")
+st.title("全息量化系統 (V70.13 滿漢全席版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.12：加入外掛模組【🥗 客製化戰情警報器】。底層架構 100% 穩定。{usage_text}")
+st.caption(f"V70.13：加入外掛模組【🍰 土洋聯合作戰比對】。底層架構 100% 穩定不變。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -187,7 +184,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V70.12 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V70.13 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -827,6 +824,94 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
         net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
         html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        html_parts.append("</tr>")
+        
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+
+# ==========================================
+# 【外掛模組 3】 🍰 甜點：土洋聯合作戰比對
+# ==========================================
+def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
+    if df_branch_raw.empty or df_inst.empty:
+        st.warning("查無法人或分點資料可供比對。")
+        return
+        
+    # 以法人資料的日期為主軸進行比對
+    dates_in_inst = df_inst['日期'].tolist()
+    if not dates_in_inst: return
+    
+    # 找出這幾天內最活躍的前 N 大分點
+    df_recent = df_branch_raw[df_branch_raw['date'].isin(dates_in_inst)].copy()
+    df_recent['net_shares'] = df_recent['buy'] - df_recent['sell']
+    rank_sum = (df_recent.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+    
+    top_branches = rank_sum.abs().nlargest(top_n).index.tolist()
+    if not top_branches: return
+    
+    # 展開這些分點的每日流水帳
+    p = df_recent.groupby(['date', 'securities_trader'])['net_shares'].sum().reset_index()
+    p['net'] = (p['net_shares'] / 1000).round().astype(int)
+    p_pivot = p.pivot(index='date', columns='securities_trader', values='net').fillna(0).astype(int)
+    
+    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
+    html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>外資(張)</th>")
+    html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>投信(張)</th>")
+    
+    for tb in top_branches:
+        tag_short = intel_tags.get(tb, "路人").replace("【", "").replace("】", "")[:4]
+        html_parts.append(f"<th style='text-align: right;'>{tb}<br><span style='font-size:11px; color:#1e3a8a;'>{tag_short}</span></th>")
+    
+    html_parts.append("<th style='text-align: center; background-color: #e3f2fd;'>戰況判定</th></tr></thead><tbody>")
+    
+    for _, row in df_inst.iterrows():
+        d = row['日期']
+        f_net = row.get('外資買賣超(張)', 0)
+        i_net = row.get('投信買賣超(張)', 0)
+        
+        html_parts.append("<tr>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight:bold; text-align:center;'>{d[5:]}</td>")
+        
+        def format_net(val):
+            if val > 0: return f"<span style='color:#d32f2f; font-weight:bold;'>+{val:,}</span>"
+            elif val < 0: return f"<span style='color:#2e7d32; font-weight:bold;'>{val:,}</span>"
+            return "<span style='color:#bbb;'>0</span>"
+            
+        html_parts.append(f"<td style='text-align:right; background-color: #fdfdfd;'>{format_net(f_net)}</td>")
+        html_parts.append(f"<td style='text-align:right; background-color: #fdfdfd;'>{format_net(i_net)}</td>")
+        
+        local_net_sum = 0
+        for tb in top_branches:
+            val = p_pivot.at[d, tb] if d in p_pivot.index and tb in p_pivot.columns else 0
+            local_net_sum += val
+            html_parts.append(f"<td style='text-align:right;'>{format_net(val)}</td>")
+            
+        # 聯合作戰診斷邏輯
+        inst_sum = f_net + i_net
+        if inst_sum > 0 and local_net_sum > 0:
+            diag = "💎 土洋共擊 (匯聚)"
+            bg = "rgba(229, 57, 53, 0.15)"
+            color = "#c62828"
+        elif inst_sum < 0 and local_net_sum < 0:
+            diag = "🩸 多殺多 (撤退)"
+            bg = "rgba(67, 160, 71, 0.15)"
+            color = "#2e7d32"
+        elif inst_sum > 0 and local_net_sum < 0:
+            diag = "🤝 法人接盤 (大戶倒貨)"
+            bg = "transparent"
+            color = "#555"
+        elif inst_sum < 0 and local_net_sum > 0:
+            diag = "⚔️ 地方硬扛 (法人結帳)"
+            bg = "transparent"
+            color = "#555"
+        else:
+            diag = "休兵盤整"
+            bg = "transparent"
+            color = "#aaa"
+            
+        html_parts.append(f"<td style='text-align:center; background-color:{bg}; color:{color}; font-weight:bold; font-size:13px;'>{diag}</td>")
         html_parts.append("</tr>")
         
     html_parts.append("</tbody></table></div>")
@@ -1733,6 +1818,9 @@ def format_to_csv_string(df, title):
     if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
+# ==========================================
+# 【外掛模組 1】 🥩 主力戰鬥熱力圖
+# ==========================================
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -1798,6 +1886,10 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
+
+# ==========================================
+# 【外掛模組 2】 🦞 戰略系海鮮：Volume Profile 建倉成本分佈
+# ==========================================
 def render_volume_profile(df_raw, rank_dates, top_n=15):
     if df_raw.empty or not rank_dates:
         st.warning("查無足夠資料產生建倉成本分佈圖。")
@@ -1883,6 +1975,90 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
+# ==========================================
+# 【外掛模組 3】 🍰 甜點：土洋聯合作戰比對
+# ==========================================
+def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
+    if df_branch_raw.empty or df_inst.empty:
+        st.warning("查無法人或分點資料可供比對。")
+        return
+        
+    dates_in_inst = df_inst['日期'].tolist()
+    if not dates_in_inst: return
+    
+    # 抓出區間內最具影響力的前 4 大分點
+    df_recent = df_branch_raw[df_branch_raw['date'].isin(dates_in_inst)].copy()
+    df_recent['net_shares'] = df_recent['buy'] - df_recent['sell']
+    rank_sum = (df_recent.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+    
+    top_branches = rank_sum.abs().nlargest(top_n).index.tolist()
+    if not top_branches: return
+    
+    p = df_recent.groupby(['date', 'securities_trader'])['net_shares'].sum().reset_index()
+    p['net'] = (p['net_shares'] / 1000).round().astype(int)
+    p_pivot = p.pivot(index='date', columns='securities_trader', values='net').fillna(0).astype(int)
+    
+    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
+    html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>外資(張)</th>")
+    html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>投信(張)</th>")
+    
+    for tb in top_branches:
+        tag_short = intel_tags.get(tb, "路人").replace("【", "").replace("】", "")[:4]
+        html_parts.append(f"<th style='text-align: right;'>{tb}<br><span style='font-size:11px; color:#1e3a8a;'>{tag_short}</span></th>")
+    
+    html_parts.append("<th style='text-align: center; background-color: #e3f2fd;'>聯合作戰診斷</th></tr></thead><tbody>")
+    
+    for _, row in df_inst.iterrows():
+        d = row['日期']
+        f_net = row.get('外資買賣超(張)', 0)
+        i_net = row.get('投信買賣超(張)', 0)
+        
+        html_parts.append("<tr>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight:bold; text-align:center;'>{d[5:]}</td>")
+        
+        def format_net(val):
+            if val > 0: return f"<span style='color:#d32f2f; font-weight:bold;'>+{val:,}</span>"
+            elif val < 0: return f"<span style='color:#2e7d32; font-weight:bold;'>{val:,}</span>"
+            return "<span style='color:#bbb;'>0</span>"
+            
+        html_parts.append(f"<td style='text-align:right; background-color: #fdfdfd;'>{format_net(f_net)}</td>")
+        html_parts.append(f"<td style='text-align:right; background-color: #fdfdfd;'>{format_net(i_net)}</td>")
+        
+        local_net_sum = 0
+        for tb in top_branches:
+            val = p_pivot.at[d, tb] if d in p_pivot.index and tb in p_pivot.columns else 0
+            local_net_sum += val
+            html_parts.append(f"<td style='text-align:right;'>{format_net(val)}</td>")
+            
+        inst_sum = f_net + i_net
+        if inst_sum > 0 and local_net_sum > 0:
+            diag = "💎 土洋共擊"
+            bg = "rgba(229, 57, 53, 0.15)"
+            color = "#c62828"
+        elif inst_sum < 0 and local_net_sum < 0:
+            diag = "🩸 多殺多撤退"
+            bg = "rgba(67, 160, 71, 0.15)"
+            color = "#2e7d32"
+        elif inst_sum > 0 and local_net_sum < 0:
+            diag = "🤝 法人接盤"
+            bg = "transparent"
+            color = "#555"
+        elif inst_sum < 0 and local_net_sum > 0:
+            diag = "⚔️ 地方硬扛"
+            bg = "transparent"
+            color = "#555"
+        else:
+            diag = "休兵盤整"
+            bg = "transparent"
+            color = "#aaa"
+            
+        html_parts.append(f"<td style='text-align:center; background-color:{bg}; color:{color}; font-weight:bold; font-size:13px;'>{diag}</td>")
+        html_parts.append("</tr>")
+        
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
 
 # ==========================================
 # 執行主引擎
@@ -1892,7 +2068,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V70.12 穩定修復決策引擎..."):
+    with st.spinner(f"正在啟動 V70.13 穩定修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2032,7 +2208,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.12)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.13)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2529,6 +2705,13 @@ if run_btn:
             st.info("💡 實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
             render_volume_profile(df_b_raw, dates[:45] if len(dates)>=45 else dates, footprint_rows)
 
+        # ==========================================
+        # 🔥 掛上甜點：土洋聯合作戰比對
+        # ==========================================
+        with st.expander(f"【🍰 甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=True):
+            st.info("💡 戰況提示：【💎土洋共擊】代表外資/投信與地方主力方向一致，動能最強；【🩸多殺多】代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
+            render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
+
         st.info("所有分點足跡與明細已集中於此，點擊展開即可查看。表格支援上下左右雙向滑動，直向顯示約 10 行以維持版面整潔。")
         
         df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, footprint_rows)
@@ -2587,7 +2770,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V70.12 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V70.13 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
