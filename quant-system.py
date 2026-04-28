@@ -23,7 +23,7 @@ GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads
 
 CSS = """
 <style>
-/* 將 max-height 從 480px 拉長到 600px，完美容納 10/11 行資料不被遮擋 */
+/* 將 max-height 拉長到 600px，完美容納 10 行資料不被遮擋 */
 .table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
@@ -128,7 +128,6 @@ st.sidebar.header("戰術參數控制面板")
 kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 10)
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
-# 將追蹤天數預設拉長至 45 天，以符合連續追蹤矩陣的波段觀測需求
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 90, 45, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
@@ -163,7 +162,7 @@ ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=30
 st.title("全息量化系統 (V70.09 穩定完整版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.09：演算法盲點修復版 (均價防污、CB套利、假面現金警報、防空值閃退、新增45天動態追蹤矩陣)。{usage_text}")
+st.caption(f"V70.09：演算法盲點修復版 (均價防污、CB套利、假面現金警報、新增45天動態追蹤矩陣)。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -1570,7 +1569,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V70.08 穩定修復決策引擎..."):
+    with st.spinner(f"正在啟動 V70.09 穩定修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1650,6 +1649,7 @@ if run_btn:
         
         net_3 = get_core_period_net(df_b_raw, dates[:3], core_branch_names)
         net_10 = get_core_period_net(df_b_raw, dates[:10], core_branch_names)
+        net_45 = get_core_period_net(df_b_raw, dates[:45] if len(dates)>=45 else dates, core_branch_names)
         net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
         df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=15)
@@ -1709,7 +1709,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.08)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.09)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         if not df_ta_full.empty:
@@ -2183,6 +2183,12 @@ if run_btn:
             render_clean_html_table(df_fb_10, f"【近 10 日波段動向】 近 10 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
             render_clean_html_table(df_fs_10, f"【近 10 日波段動向】 近 10 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
             
+        # 💡 修復：真實寫入 45天 動態追蹤區塊
+        df_fb_45, df_fs_45 = process_footprint(df_b_raw, display_dates, dates[:45] if len(dates)>=45 else dates, tags, df_debug_tags, footprint_rows)
+        with st.expander(f"【近 45 日波段建倉動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
+            render_clean_html_table(df_fb_45, f"【近 45 日波段建倉動向】 近 45 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            render_clean_html_table(df_fs_45, f"【近 45 日波段建倉動向】 近 45 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+            
         df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:max_len], tags, df_debug_tags, footprint_rows)
         with st.expander(f"【近 {max_len} 日長線動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)"):
             render_clean_html_table(df_fb_60, f"【近 {max_len} 日長線動向】 近 {max_len} 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
@@ -2224,7 +2230,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V70.08 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V70.09 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2243,6 +2249,8 @@ if run_btn:
             p1 += f"【核心分點控盤率 (相對於自由流通籌碼)】: {core_c_value}%\n\n"
             p1 += f"【核心主力3日淨留倉】: {net_3} 張\n"
             p1 += f"【核心主力10日淨留倉】: {net_10} 張\n"
+            # 💡 修復：真實寫入 45天 數據給 AI
+            p1 += f"【核心主力45日淨留倉】: {net_45} 張\n"
             p1 += f"【核心主力60日淨留倉】: {net_60} 張\n\n"
             
             p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
