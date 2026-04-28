@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V70.11版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V70.12版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -135,6 +135,15 @@ st.sidebar.divider()
 st.sidebar.markdown("### 🥩 視覺系主菜：熱力圖設定")
 heatmap_noise_threshold = st.sidebar.slider("熱力圖雜訊過濾門檻 (張)", 0, 500, 50, 10)
 
+# ==========================================
+# 🔥 新增配菜：客製化警報器設定
+# ==========================================
+st.sidebar.divider()
+st.sidebar.markdown("### 🥗 防禦系配菜：警報器設定")
+alert_smart_buy = st.sidebar.number_input("警報: 聰明錢單日大買 > (張)", min_value=0, value=300, step=50)
+alert_smart_sell = st.sidebar.number_input("警報: 聰明錢單日大賣 > (張)", min_value=0, value=300, step=50)
+alert_bias_drop = st.sidebar.slider("警報: 跌破主力防守乖離 < (%)", -20.0, 0.0, -3.0, 0.5)
+
 st.sidebar.divider()
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 
@@ -165,10 +174,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V70.11 滿漢全席版)")
+st.title("全息量化系統 (V70.12 滿漢全席版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V70.11：加入外掛模組【🦞 Volume Profile 成本區間分佈】與【🥩 熱力圖】。底層架構 100% 穩定。{usage_text}")
+st.caption(f"V70.12：加入外掛模組【🥗 客製化戰情警報器】。底層架構 100% 穩定。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -178,7 +187,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V70.11 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V70.12 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -743,7 +752,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("查無足夠資料產生建倉成本分佈圖。")
         return
 
-    # 第一步：過濾前 15 大主力
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
@@ -756,7 +764,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("無符合條件的活躍分點。")
         return
 
-    # 第二步：抓出這些大戶在區間內的有價交易
     df_vp = df_rank[(df_rank['securities_trader'].isin(target_traders)) & (df_rank['price'] > 0)].copy()
     if df_vp.empty:
         st.warning("無有效價格資料進行成本區間分析。")
@@ -765,7 +772,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     df_vp['buy_lots'] = df_vp['buy'] / 1000
     df_vp['sell_lots'] = df_vp['sell'] / 1000
 
-    # 第三步：動態切割價格區間 (Binning)
     min_p = df_vp['price'].min()
     max_p = df_vp['price'].max()
     
@@ -773,12 +779,10 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         labels = [f"{min_p:.2f}"]
         df_vp['price_bin'] = labels[0]
     else:
-        # 將最高到最低價自動切成 15 等份
         bin_edges = np.linspace(min_p, max_p, num=16)
         labels = [f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}" for i in range(len(bin_edges)-1)]
         df_vp['price_bin'] = pd.cut(df_vp['price'], bins=bin_edges, labels=labels, include_lowest=True)
 
-    # 第四步：彙整運算
     vp_grouped = df_vp.groupby('price_bin', observed=False)[['buy_lots', 'sell_lots']].sum().fillna(0)
     vp_grouped['total_lots'] = vp_grouped['buy_lots'] + vp_grouped['sell_lots']
     vp_grouped['net_lots'] = vp_grouped['buy_lots'] - vp_grouped['sell_lots']
@@ -787,12 +791,10 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("該區間大戶無顯著成交量。")
         return
 
-    # 第五步：抓出 POC (Point of Control)
     poc_idx = vp_grouped['total_lots'].idxmax()
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
-    # 第六步：渲染橫向分布圖 HTML
     html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
@@ -800,7 +802,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     html_parts.append("<th style='width: 10%; text-align: right;'>淨買賣(張)</th>")
     html_parts.append("</tr></thead><tbody>")
 
-    # 由高價往低價排列，符合看盤直覺
     vp_grouped = vp_grouped.sort_index(ascending=False)
 
     for idx, row in vp_grouped.iterrows():
@@ -814,25 +815,18 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
         s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
 
-        # 強制高亮標示 POC 核心防守區
         is_poc = (idx == poc_idx)
         row_bg = "background-color: rgba(255, 193, 7, 0.15);" if is_poc else ""
         poc_star = " <br><span style='color:#f57c00; font-size:12px; font-weight:900;'>⭐ [POC 核心防守]</span>" if is_poc else ""
 
         html_parts.append(f"<tr style='{row_bg}'>")
         html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
-        
-        # 買方能量條
         html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_vol:,}</span></div></td>")
-        
-        # 賣方能量條
         html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_vol:,}</span></div></td>")
         
-        # 淨額文字
         net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
         net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
         html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
-        
         html_parts.append("</tr>")
         
     html_parts.append("</tbody></table></div>")
@@ -1739,9 +1733,6 @@ def format_to_csv_string(df, title):
     if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
-# ==========================================
-# 【外掛模組 1】 🥩 主力戰鬥熱力圖
-# ==========================================
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -1807,16 +1798,11 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-
-# ==========================================
-# 【外掛模組 2】 🦞 戰略系海鮮：Volume Profile 建倉成本分佈
-# ==========================================
 def render_volume_profile(df_raw, rank_dates, top_n=15):
     if df_raw.empty or not rank_dates:
         st.warning("查無足夠資料產生建倉成本分佈圖。")
         return
 
-    # 第一步：過濾前 15 大主力
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
@@ -1829,7 +1815,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("無符合條件的活躍分點。")
         return
 
-    # 第二步：抓出這些大戶在區間內的有價交易
     df_vp = df_rank[(df_rank['securities_trader'].isin(target_traders)) & (df_rank['price'] > 0)].copy()
     if df_vp.empty:
         st.warning("無有效價格資料進行成本區間分析。")
@@ -1838,7 +1823,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     df_vp['buy_lots'] = df_vp['buy'] / 1000
     df_vp['sell_lots'] = df_vp['sell'] / 1000
 
-    # 第三步：動態切割價格區間 (Binning)
     min_p = df_vp['price'].min()
     max_p = df_vp['price'].max()
     
@@ -1846,12 +1830,10 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         labels = [f"{min_p:.2f}"]
         df_vp['price_bin'] = labels[0]
     else:
-        # 將最高到最低價自動切成 15 等份
         bin_edges = np.linspace(min_p, max_p, num=16)
         labels = [f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}" for i in range(len(bin_edges)-1)]
         df_vp['price_bin'] = pd.cut(df_vp['price'], bins=bin_edges, labels=labels, include_lowest=True)
 
-    # 第四步：彙整運算
     vp_grouped = df_vp.groupby('price_bin', observed=False)[['buy_lots', 'sell_lots']].sum().fillna(0)
     vp_grouped['total_lots'] = vp_grouped['buy_lots'] + vp_grouped['sell_lots']
     vp_grouped['net_lots'] = vp_grouped['buy_lots'] - vp_grouped['sell_lots']
@@ -1860,12 +1842,10 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("該區間大戶無顯著成交量。")
         return
 
-    # 第五步：抓出 POC (Point of Control)
     poc_idx = vp_grouped['total_lots'].idxmax()
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
-    # 第六步：渲染橫向分布圖 HTML
     html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
@@ -1873,7 +1853,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     html_parts.append("<th style='width: 10%; text-align: right;'>淨買賣(張)</th>")
     html_parts.append("</tr></thead><tbody>")
 
-    # 由高價往低價排列，符合看盤直覺
     vp_grouped = vp_grouped.sort_index(ascending=False)
 
     for idx, row in vp_grouped.iterrows():
@@ -1887,25 +1866,18 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
         s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
 
-        # 強制高亮標示 POC 核心防守區
         is_poc = (idx == poc_idx)
         row_bg = "background-color: rgba(255, 193, 7, 0.15);" if is_poc else ""
         poc_star = " <br><span style='color:#f57c00; font-size:12px; font-weight:900;'>⭐ [POC 核心防守]</span>" if is_poc else ""
 
         html_parts.append(f"<tr style='{row_bg}'>")
         html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
-        
-        # 買方能量條
         html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_vol:,}</span></div></td>")
-        
-        # 賣方能量條
         html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_vol:,}</span></div></td>")
         
-        # 淨額文字
         net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
         net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
         html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
-        
         html_parts.append("</tr>")
         
     html_parts.append("</tbody></table></div>")
@@ -1920,7 +1892,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V70.11 穩定修復決策引擎..."):
+    with st.spinner(f"正在啟動 V70.12 穩定修復決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2060,8 +2032,70 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.11)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V70.12)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
+
+        disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
+        
+        bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
+        vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
+        
+        today_smart_net = 0
+        today_gap = 0.0
+        if not df_daily_tracker.empty:
+            today_smart_net = df_daily_tracker.iloc[0].get('聰明錢淨流(張)', 0)
+            gap_raw = df_daily_tracker.iloc[0].get('均價落差', 0)
+            try: today_gap = float(str(gap_raw).replace('+', '').replace(',', '').strip())
+            except: today_gap = 0.0
+
+        today_fp = 1.0
+        today_diff_cnt = 0
+        if not df_b_diff.empty:
+            today_fp = df_b_diff.iloc[0].get('買方火力(倍)', 1.0)
+            today_diff_cnt = df_b_diff.iloc[0].get('買賣家數差', 0)
+
+        radar_c_val = 0.0
+        radar_chg = 0.0
+        c_val_text = "[數據擷取中或不足]"
+        chg_text = "[變動率計算中或不足]"
+        
+        if not df_combined_display.empty:
+            try: 
+                c_val_raw = df_combined_display.iloc[0].get('純淨活大戶C_Value(%)', 0)
+                if str(c_val_raw).strip() == "-":
+                    c_val_text = f"{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)"
+                else:
+                    radar_c_val = float(str(c_val_raw).replace('+', '').replace(',', '').replace('%', '').strip())
+                    c_val_text = f"{radar_c_val}%"
+            except: pass
+            
+            try: 
+                radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
+                if radar_chg > 0: dir_str = "增加"
+                elif radar_chg < 0: dir_str = "減少"
+                else: dir_str = "無變動"
+                chg_text = f"{dir_str} {abs(radar_chg)}%" if radar_chg != 0 else f"{dir_str} 0.0%"
+            except: pass
+
+        # ==========================================
+        # 🔥 掛上配菜：客製化戰情警報器
+        # ==========================================
+        custom_alerts = []
+        if today_smart_net >= alert_smart_buy and alert_smart_buy > 0:
+            custom_alerts.append(f"🔥 【極端買擊】：今日聰明錢淨買超達 <b>{today_smart_net:,}</b> 張，突破警戒值 ({alert_smart_buy} 張)！")
+        if today_smart_net <= -alert_smart_sell and alert_smart_sell > 0:
+            custom_alerts.append(f"⚠️ 【極端拋售】：今日聰明錢淨賣超達 <b>{today_smart_net:,}</b> 張，突破警戒值 (-{alert_smart_sell} 張)！")
+        if pure_vwap > 0 and bias <= alert_bias_drop:
+            custom_alerts.append(f"🩸 【跌破底線】：股價跌破大戶純淨防守線，乖離達 <b>{bias:.2f}%</b> (警戒值: {alert_bias_drop}%)，主力面臨套牢風險！")
+
+        if custom_alerts:
+            alert_html = "<div style='background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 15px; margin-bottom: 25px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>"
+            alert_html += "<h4 style='margin-top: 0; margin-bottom: 10px; color: #c62828; font-weight: 900;'>🚨 系統戰情紅色警報觸發</h4><ul style='margin-bottom: 0; color: #333; font-size: 1.05rem;'>"
+            for msg in custom_alerts:
+                alert_html += f"<li style='margin-bottom: 5px;'>{msg}</li>"
+            alert_html += "</ul></div>"
+            st.markdown(alert_html, unsafe_allow_html=True)
+
 
         if not df_ta_full.empty:
             st.markdown(f"<div class='section-title'>高階技術分析 (極緻緊湊版 - {ma_short}/{ma_mid}/{ma_long}極細均線)</div>", unsafe_allow_html=True)
@@ -2313,48 +2347,6 @@ if run_btn:
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
-        disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
-        
-        bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
-        vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
-        
-        today_smart_net = 0
-        today_gap = 0.0
-        if not df_daily_tracker.empty:
-            today_smart_net = df_daily_tracker.iloc[0].get('聰明錢淨流(張)', 0)
-            gap_raw = df_daily_tracker.iloc[0].get('均價落差', 0)
-            try: today_gap = float(str(gap_raw).replace('+', '').replace(',', '').strip())
-            except: today_gap = 0.0
-
-        today_fp = 1.0
-        today_diff_cnt = 0
-        if not df_b_diff.empty:
-            today_fp = df_b_diff.iloc[0].get('買方火力(倍)', 1.0)
-            today_diff_cnt = df_b_diff.iloc[0].get('買賣家數差', 0)
-
-        radar_c_val = 0.0
-        radar_chg = 0.0
-        c_val_text = "[數據擷取中或不足]"
-        chg_text = "[變動率計算中或不足]"
-        
-        if not df_combined_display.empty:
-            try: 
-                c_val_raw = df_combined_display.iloc[0].get('純淨活大戶C_Value(%)', 0)
-                if str(c_val_raw).strip() == "-":
-                    c_val_text = f"{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)"
-                else:
-                    radar_c_val = float(str(c_val_raw).replace('+', '').replace(',', '').replace('%', '').strip())
-                    c_val_text = f"{radar_c_val}%"
-            except: pass
-            
-            try: 
-                radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
-                if radar_chg > 0: dir_str = "增加"
-                elif radar_chg < 0: dir_str = "減少"
-                else: dir_str = "無變動"
-                chg_text = f"{dir_str} {abs(radar_chg)}%" if radar_chg != 0 else f"{dir_str} 0.0%"
-            except: pass
-
         if curr_price >= latest_lr_upper and latest_lr_upper > 0: lr_pos_text = "股價已觸碰或突破通道上軌 (極度過熱區)"
         elif curr_price >= latest_lr_mid and latest_lr_mid > 0: lr_pos_text = "股價運行於通道上半部 (強勢多頭區)"
         elif curr_price <= latest_lr_lower and latest_lr_lower > 0: lr_pos_text = "股價已觸碰或跌破通道下軌 (極度超跌區)"
@@ -2595,7 +2587,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V70.11 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V70.12 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
