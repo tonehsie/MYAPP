@@ -1827,12 +1827,20 @@ if run_btn:
                         const chartTxtColor = isDark ? '#e0e0e0' : '#333';
                         const chartGridColor = isDark ? '#333333' : '#f5f5f5';
 
+                        // 強制統一兩張圖表的右側 Y 軸寬度，保證 X 軸完美對齊
+                        const priceScaleConfig = {
+                            borderColor: chartGridColor,
+                            autoScale: true,
+                            minimumWidth: 80, // 強制寬度對齊的關鍵參數
+                            alignLabels: true
+                        };
+
                         const mainOptions = {
                             autoSize: true,
                             localization: commonLocalization,
                             layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
                             grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
-                            rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.01, bottom: 0.01 } },
+                            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.05, bottom: 0.05 } },
                             timeScale: { visible: false, rightOffset: 10 }
                         };
 
@@ -1841,7 +1849,7 @@ if run_btn:
                             localization: commonLocalization,
                             layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
                             grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
-                            rightPriceScale: { borderColor: chartGridColor, autoScale: true, scaleMargins: { top: 0.02, bottom: 0 } },
+                            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.02, bottom: 0 } },
                             timeScale: { borderColor: chartGridColor, rightOffset: 10 }
                         };
 
@@ -1912,8 +1920,24 @@ if run_btn:
                             else mainChart.clearCrosshairPosition();
                         });
 
-                        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => volChart.timeScale().setVisibleLogicalRange(r));
-                        volChart.timeScale().subscribeVisibleLogicalRangeChange(r => mainChart.timeScale().setVisibleLogicalRange(r));
+                        // 加入防抖同步鎖，避免上下圖表同步時產生細微錯位
+                        let isSyncingMain = false;
+                        let isSyncingVol = false;
+
+                        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+                            if (!isSyncingMain && r !== null) {
+                                isSyncingVol = true;
+                                volChart.timeScale().setVisibleLogicalRange(r);
+                                isSyncingVol = false;
+                            }
+                        });
+                        volChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+                            if (!isSyncingVol && r !== null) {
+                                isSyncingMain = true;
+                                mainChart.timeScale().setVisibleLogicalRange(r);
+                                isSyncingMain = false;
+                            }
+                        });
                     </script>
                 </body>
                 </html>
