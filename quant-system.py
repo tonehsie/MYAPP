@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.10版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.11版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -197,10 +197,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.10 語法修復版)")
+st.title("全息量化系統 (V71.11 全面解鎖版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.10：修復三大法人欄位對齊語法錯誤，穩定順暢執行。{usage_text}")
+st.caption(f"V71.11：徹底解除成本區間分佈(Volume Profile)之高度限制，完美攤開所有資訊。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -210,7 +210,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.10 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.11 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -795,6 +795,7 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
+# 💡 V71.11 修正：移除大戶建倉成本區間分佈的高度限制 (max-height: none !important)
 def render_volume_profile(df_raw, rank_dates, top_n=15):
     if df_raw.empty or not rank_dates:
         st.warning("查無足夠資料產生建倉成本分佈圖。")
@@ -843,6 +844,7 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
+    # 在此處強制覆寫高度限制，讓全部區間完整顯示
     html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
@@ -1885,7 +1887,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.10 語法修復版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.11 全面解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2031,7 +2033,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.10)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.11)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2450,7 +2452,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.10 鐵布衫防護引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.11 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
@@ -2512,7 +2514,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.10 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.11 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2563,8 +2565,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.10 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.11 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.10 備註：語法除錯修復完畢。")
+st.caption("V71.11 備註：解除所有高度限制鎖，確保熱力圖與大戶建倉成本等寬表能完整攤開。")
