@@ -17,13 +17,14 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.11版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.12版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 CSS = """
 <style>
+/* 一般表格，最高 600px 捲動 */
 .table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding-bottom: 10px; }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
@@ -31,12 +32,13 @@ CSS = """
 .table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .table-container thead th:first-child { z-index: 5; }
 
-.heatmap-container { overflow-x: auto; overflow-y: hidden; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; padding-bottom: 10px; }
-.heatmap-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
-.heatmap-container th, .heatmap-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
-.heatmap-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
-.heatmap-container th:first-child, .heatmap-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
-.heatmap-container thead th:first-child { z-index: 5; }
+/* 視覺化圖表專用：無限長高、無垂直捲軸、完美推擠下層 */
+.full-table-container { overflow-x: auto; overflow-y: visible; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; padding-bottom: 10px; }
+.full-table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
+.full-table-container th, .full-table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
+.full-table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
+.full-table-container th:first-child, .full-table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
+.full-table-container thead th:first-child { z-index: 5; }
 
 .text-left { text-align: left !important; }
 .text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
@@ -58,10 +60,10 @@ CSS = """
 .progress-text { font-size: 1.1rem; color: #1e3a8a; font-weight: bold; margin-bottom: 5px; }
 
 @media (prefers-color-scheme: dark) {
-    .table-container table, .heatmap-container table { background-color: #1e1e1e !important; color: #e0e0e0 !important; }
-    .table-container th, .table-container td, .heatmap-container th, .heatmap-container td { border-color: #444 !important; color: #e0e0e0 !important; }
-    .table-container th, .heatmap-container th { background-color: #2d2d2d !important; color: #fff !important; }
-    .table-container th:first-child, .table-container td:first-child, .heatmap-container th:first-child, .heatmap-container td:first-child { background-color: #252525 !important; }
+    .table-container table, .full-table-container table { background-color: #1e1e1e !important; color: #e0e0e0 !important; }
+    .table-container th, .table-container td, .full-table-container th, .full-table-container td { border-color: #444 !important; color: #e0e0e0 !important; }
+    .table-container th, .full-table-container th { background-color: #2d2d2d !important; color: #fff !important; }
+    .table-container th:first-child, .table-container td:first-child, .full-table-container th:first-child, .full-table-container td:first-child { background-color: #252525 !important; }
     .info-box { background-color: #2d2d2d !important; color: #64b5f6 !important; border-left-color: #64b5f6 !important; }
     .section-title { color: #64b5f6 !important; border-bottom-color: #64b5f6 !important; }
     .category-title { color: #fff !important; }
@@ -197,10 +199,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.11 全面解鎖版)")
+st.title("全息量化系統 (V71.12 全解鎖終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.11：徹底解除成本區間分佈(Volume Profile)之高度限制，完美攤開所有資訊。{usage_text}")
+st.caption(f"V71.12：徹底解除大戶建倉成本區間分佈的高度限制，所有級距完整無缺展現。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -210,7 +212,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.11 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -759,7 +761,7 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    html_parts = ["<div class='heatmap-container'><table><thead><tr>"]
+    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
     html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>標籤</th>")
     for d in display_dates:
@@ -794,8 +796,7 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-
-# 💡 V71.11 修正：移除大戶建倉成本區間分佈的高度限制 (max-height: none !important)
+# 💡 V71.12 更新：移除 if t_vol == 0: continue 確保全區間顯示，並使用 full-table-container
 def render_volume_profile(df_raw, rank_dates, top_n=15):
     if df_raw.empty or not rank_dates:
         st.warning("查無足夠資料產生建倉成本分佈圖。")
@@ -844,8 +845,7 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
-    # 在此處強制覆寫高度限制，讓全部區間完整顯示
-    html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
+    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>")
@@ -860,8 +860,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         n_vol = int(round(row['net_lots']))
         t_vol = row['total_lots']
         
-        if t_vol == 0: continue
-
         b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
         s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
 
@@ -871,12 +869,20 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
 
         html_parts.append(f"<tr style='{row_bg}'>")
         html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
-        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_vol:,}</span></div></td>")
-        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_vol:,}</span></div></td>")
         
-        net_color = "#d32f2f" if n_vol > 0 else ("#2e7d32" if n_vol < 0 else "inherit")
-        net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
-        html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        b_txt = f"{b_vol:,}" if b_vol > 0 else ""
+        s_txt = f"{s_vol:,}" if s_vol > 0 else ""
+        
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_txt}</span></div></td>")
+        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_txt}</span></div></td>")
+        
+        if n_vol != 0:
+            net_color = "#d32f2f" if n_vol > 0 else "#2e7d32"
+            net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
+            html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        else:
+            html_parts.append(f"<td style='text-align: right;'></td>")
+            
         html_parts.append("</tr>")
         
     html_parts.append("</tbody></table></div>")
@@ -901,7 +907,7 @@ def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
     p['net'] = (p['net_shares'] / 1000).round().astype(int)
     p_pivot = p.pivot(index='date', columns='securities_trader', values='net').fillna(0).astype(int)
     
-    html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
+    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
     html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
     html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>外資(張)</th>")
     html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>投信(張)</th>")
@@ -1887,7 +1893,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.11 全面解鎖版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.12 終極解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2033,7 +2039,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.11)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2452,7 +2458,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.11 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.12 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
@@ -2514,7 +2520,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.11 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.12 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2565,8 +2571,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.11 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.12 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.11 備註：解除所有高度限制鎖，確保熱力圖與大戶建倉成本等寬表能完整攤開。")
+st.caption("V71.12 備註：解除所有高度限制鎖，確保熱力圖與大戶建倉成本等寬表能完整攤開。")
