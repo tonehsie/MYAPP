@@ -17,21 +17,21 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.08版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.09版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 CSS = """
 <style>
-.table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding-bottom: 10px; }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
 .table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
 .table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .table-container thead th:first-child { z-index: 5; }
 
-.heatmap-container { overflow-x: auto; overflow-y: hidden; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; }
+.heatmap-container { overflow-x: auto; overflow-y: hidden; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; padding-bottom: 10px; }
 .heatmap-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .heatmap-container th, .heatmap-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
 .heatmap-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
@@ -153,7 +153,6 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-# 💡 V71.08 更新：新增獨立的買賣超統計天數選擇拉桿，整合多個重複表格
 footprint_stat_days = st.sidebar.select_slider("買賣超排行統計天數", options=[3, 5, 10, 20, 45, 60, 90, 120], value=10 if is_right_side else 45)
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 90, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
@@ -198,10 +197,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.08 簡潔進化版)")
+st.title("全息量化系統 (V71.09 視覺排版優化版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.08：新增側邊欄統計天數控制、整合多餘表格、修復熱力圖空白行、AI診斷優先揭露潛在賣壓。{usage_text}")
+st.caption(f"V71.09：徹底修復聯合作戰與成本區間表格被捲軸遮擋的問題，完美呈現無死角。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -211,7 +210,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.08 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.09 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -409,7 +408,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手手)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -733,7 +732,6 @@ def process_price(df):
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
     return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
 
-# 💡 V71.08 更新：徹底移除最後的 tr 空白行，完美貼合表底
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -845,7 +843,8 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
-    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    # 💡 V71.09 更新：取消高度限制，解決捲軸遮擋問題
+    html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>")
@@ -901,7 +900,8 @@ def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
     p['net'] = (p['net_shares'] / 1000).round().astype(int)
     p_pivot = p.pivot(index='date', columns='securities_trader', values='net').fillna(0).astype(int)
     
-    html_parts = ["<div class='table-container' style='max-height: 500px;'><table><thead><tr>"]
+    # 💡 V71.09 更新：取消 max-height 限制，徹底解決最後一行被橫向捲軸遮擋的問題
+    html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
     html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
     html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>外資(張)</th>")
     html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>投信(張)</th>")
@@ -1012,57 +1012,60 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
     return build_df(top_b_names, False), build_df(top_s_names, True)
 
 def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, stick_thresh, global_days):
-    if df_raw.empty or df_price_raw.empty: return pd.DataFrame()
-    latest_close = df_price_raw.sort_values('date', ascending=False)['close'].iloc[0]
-    df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
-    if df.empty: return pd.DataFrame()
-    
-    df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
-    df['valid_sell'] = np.where(df['price'] > 0, df['sell'], 0)
-    df['ba'] = df['valid_buy'] * df['price']
-    df['sa'] = df['valid_sell'] * df['price']
-    
-    g = df.groupby('securities_trader').agg(
-        bv=('buy', 'sum'), sv=('sell', 'sum'), 
-        vbv=('valid_buy', 'sum'), vsv=('valid_sell', 'sum'),
-        ba=('ba', 'sum'), sa=('sa', 'sum')
-    ).reset_index()
-    
-    g['net'] = round((g['bv'] - g['sv']) / 1000).astype(int)
-    g['avg_b'] = (g['ba'] / g['vbv'].replace(0, np.nan)).fillna(0)
-    g['avg_s'] = (g['sa'] / g['vsv'].replace(0, np.nan)).fillna(0)
-    
-    b = g[g['net'] > 0].sort_values('net', ascending=False).head(15).reset_index(drop=True)
-    s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
-    out, tv = [], round(g['bv'].sum() / 1000) if g['bv'].sum() > 0 else 1
-    
-    for i in range(15):
-        r = {}
-        if i < len(b): 
-            b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}" if b.loc[i,'avg_b'] > 0 else "-"
-            if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0 and b.loc[i,'net'] > 0: b_str = f"(虧) {b_str}"
-            raw_tag = intel_tags.get(b.loc[i,'securities_trader'], '路人雜訊')
-            attr = "短線" if any(x in raw_tag for x in ["隔日突擊", "跟風小戶"]) else "中長線" if any(x in raw_tag for x in ["波段鎖碼", "避險造市", "主力重砲"]) else "波段"
-            r["買超分點"] = b.loc[i,'securities_trader']
-            r["買_標籤"] = raw_tag
-            r["買_週期"] = attr
-            r["買超(張)"] = int(b.loc[i,'net'])
-            r["買均價"] = b_str
-            r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%" if tv > 0 else "-"
-        else: r["買超分點"], r["買_標籤"], r["買_週期"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", "-", 0, "-", "-"
+    try:
+        if df_raw.empty or df_price_raw.empty: return pd.DataFrame()
+        latest_close = df_price_raw.sort_values('date', ascending=False)['close'].iloc[0]
+        df = df_raw[df_raw['date'].isin(actual_dates[:period])].copy()
+        if df.empty: return pd.DataFrame()
         
-        if i < len(s): 
-            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'], '路人雜訊')
-            attr_s = "短線" if any(x in raw_tag_s for x in ["隔日突擊", "跟風小戶"]) else "中長線" if any(x in raw_tag_s for x in ["波段鎖碼", "避險造市", "主力重砲"]) else "波段"
-            r["賣超分點"] = s.loc[i,'securities_trader']
-            r["賣_標籤"] = raw_tag_s
-            r["賣_週期"] = attr_s
-            r["賣超(張)"] = abs(int(s.loc[i,'net']))
-            r["賣均價"] = f"{round(s.loc[i,'avg_s'], 2):,.2f}" if s.loc[i,'avg_s'] > 0 else "-"
-            r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%" if tv > 0 else "-"
-        else: r["賣超分點"], r["賣_標籤"], r["賣_週期"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", "-", 0, "-", "-"
-        out.append(r)
-    return pd.DataFrame(out)
+        df['valid_buy'] = np.where(df['price'] > 0, df['buy'], 0)
+        df['valid_sell'] = np.where(df['price'] > 0, df['sell'], 0)
+        df['ba'] = df['valid_buy'] * df['price']
+        df['sa'] = df['valid_sell'] * df['price']
+        
+        g = df.groupby('securities_trader').agg(
+            bv=('buy', 'sum'), sv=('sell', 'sum'), 
+            vbv=('valid_buy', 'sum'), vsv=('valid_sell', 'sum'),
+            ba=('ba', 'sum'), sa=('sa', 'sum')
+        ).reset_index()
+        
+        g['net'] = round((g['bv'] - g['sv']) / 1000).astype(int)
+        g['avg_b'] = (g['ba'] / g['vbv'].replace(0, np.nan)).fillna(0)
+        g['avg_s'] = (g['sa'] / g['vsv'].replace(0, np.nan)).fillna(0)
+        
+        b = g[g['net'] > 0].sort_values('net', ascending=False).head(15).reset_index(drop=True)
+        s = g[g['net'] < 0].sort_values('net', ascending=True).head(15).reset_index(drop=True)
+        out, tv = [], round(g['bv'].sum() / 1000) if g['bv'].sum() > 0 else 1
+        
+        for i in range(15):
+            r = {}
+            if i < len(b): 
+                b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}" if b.loc[i,'avg_b'] > 0 else "-"
+                if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0 and b.loc[i,'net'] > 0: b_str = f"(虧) {b_str}"
+                raw_tag = intel_tags.get(b.loc[i,'securities_trader'], '路人雜訊')
+                attr = "短線" if any(x in raw_tag for x in ["隔日突擊", "跟風小戶"]) else "中長線" if any(x in raw_tag for x in ["波段鎖碼", "避險造市", "主力重砲"]) else "波段"
+                r["買超分點"] = b.loc[i,'securities_trader']
+                r["買_標籤"] = raw_tag
+                r["買_週期"] = attr
+                r["買超(張)"] = int(b.loc[i,'net'])
+                r["買均價"] = b_str
+                r["佔比"] = f"{(b.loc[i,'net']/tv)*100:.1f}%" if tv > 0 else "-"
+            else: r["買超分點"], r["買_標籤"], r["買_週期"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", "-", 0, "-", "-"
+            
+            if i < len(s): 
+                raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'], '路人雜訊')
+                attr_s = "短線" if any(x in raw_tag_s for x in ["隔日突擊", "跟風小戶"]) else "中長線" if any(x in raw_tag_s for x in ["波段鎖碼", "避險造市", "主力重砲"]) else "波段"
+                r["賣超分點"] = s.loc[i,'securities_trader']
+                r["賣_標籤"] = raw_tag_s
+                r["賣_週期"] = attr_s
+                r["賣超(張)"] = abs(int(s.loc[i,'net']))
+                r["賣均價"] = f"{round(s.loc[i,'avg_s'], 2):,.2f}" if s.loc[i,'avg_s'] > 0 else "-"
+                r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%" if tv > 0 else "-"
+            else: r["賣超分點"], r["賣_標籤"], r["賣_週期"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", "-", 0, "-", "-"
+            out.append(r)
+        return pd.DataFrame(out)
+    except Exception:
+        return pd.DataFrame()
 
 def get_smart_threshold(price, total_lots, dead_float):
     if pd.isna(price) or price <= 0: return 1000 
@@ -1520,7 +1523,7 @@ def process_inst(df):
     ds_s = safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))
     out['自營商(自行)買賣超(張)'] = ((ds_b - ds_s) / 1000).round().astype(int)
     dh_b = safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length)))
-    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length)))
+    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length))))
     out['自營商(避險)買賣超(張)'] = ((dh_b - dh_s) / 1000).round().astype(int)
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
@@ -1884,7 +1887,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.08 簡潔進化版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.09 視覺排版優化版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2030,7 +2033,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.08)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.09)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2040,7 +2043,7 @@ if run_btn:
         
         today_smart_net = 0
         today_gap = 0.0
-        today_short_trap = 0  # 💡 提取潛在賣壓
+        today_short_trap = 0  
         if not df_daily_tracker.empty:
             today_smart_net = df_daily_tracker.iloc[0].get('聰明錢淨流(張)', 0)
             today_short_trap = df_daily_tracker.iloc[0].get('潛在賣壓(張)', 0)
@@ -2404,11 +2407,11 @@ if run_btn:
             action = "目前長、中、短線籌碼動向不一，未出現極端的集中或發散訊號。盤勢由一般市場力量主導，建議縮小部位，靜待主力給出更明確的方向表態。"
 
         report_md = "<div class='ai-report-box'>\n\n"
+        
         report_md += "#### 🧠 系統終極戰略推演與深度解析\n\n"
         report_md += "<ul>"
 
         report_md += "<li><b>一、 短線戰鬥多空定調 (今日籌碼真偽)：</b><br>"
-        # 💡 V71.08 更新：將潛在賣壓(隔日沖)提早至 AI 診斷第一點強力揭露
         if today_short_trap > 0:
             report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
             
@@ -2449,7 +2452,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.08 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.09 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
@@ -2469,7 +2472,6 @@ if run_btn:
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
 
-        # 💡 V71.08 更新：整合多餘的足跡表格，統一由側邊欄 footprint_stat_days 控制
         st.info(f"以下買賣超排行已切換至您在側邊欄指定的「{footprint_stat_days}日」戰略視角。")
         
         stat_days = footprint_stat_days if len(dates) >= footprint_stat_days else len(dates)
@@ -2512,7 +2514,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.08 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.09 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2563,8 +2565,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.08 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.09 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.08 備註：整合足跡明細控制列，大幅減少畫面重疊與留白，並於 AI 總結處最高優先級顯示潛在賣壓(張)。")
+st.caption("V71.09 備註：解除表格 max-height 限制，徹底修復橫向捲軸遮擋最後一行資料的問題。")
