@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.00版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.01版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -86,7 +86,7 @@ def optimize_memory(df):
                 df[col] = df[col].astype('category')
     return df
 
-@st.cache_resource(max_entries=2)
+@st.cache_resource(max_entries=3)
 def get_finmind_session():
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
@@ -96,7 +96,7 @@ def get_finmind_session():
     session.mount('https://', adapter)
     return session
 
-@st.cache_resource(max_entries=2)
+@st.cache_resource(max_entries=3)
 def get_generic_session():
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
@@ -188,10 +188,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V71.00 記憶體優化版)")
+st.title("全息量化系統 (V71.01 極速還原版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.00：全面升級記憶體管理，限制快取與降低線程，徹底解決 OOM 閃退問題。{usage_text}")
+st.caption(f"V71.01：徹底解決快取假象，同步拉回 max_workers=8 狂暴模式。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -201,7 +201,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.00 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.01 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -237,6 +237,7 @@ def get_basic_info_finmind(tid):
     except: pass
     return name, ind
 
+@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
 def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     url = "https://api.finmindtrade.com/api/v4/data"
     p = {"dataset": ds, "start_date": sd}
@@ -248,7 +249,10 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except:
         return pd.DataFrame()
 
-def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
+# 核心修改：將進度條整包快取起來，相同參數直接瞬間返回！
+@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
+def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
+    dates = list(dates_tuple) # 將 tuple 轉回 list
     b_results = []
     a_results = {}
     cb_info_list = []
@@ -294,7 +298,8 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
         except:
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    # 依照您的要求，重新拉回 max_workers=8
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         future_to_type = {}
         for d in dates[:max_len]:
             future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
@@ -306,7 +311,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
             completed += 1
             prog_val = min(1.0, completed / total_tasks)
             prog_bar.progress(prog_val)
-            text_container.markdown(f"<div class='progress-text'>記憶體守護中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+            text_container.markdown(f"<div class='progress-text'>⚡ 最新快取架構載入中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
 
             f_type = future_to_type[future]
             if f_type == 'branch':
@@ -322,7 +327,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
             target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
             
             if len(target_cbs) > 0:
-                text_container.markdown(f"<div class='progress-text'>正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
+                text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
                 cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
                 for f in concurrent.futures.as_completed(cb_futures):
                     _, cb_data = f.result()
@@ -330,7 +335,6 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len):
 
     prog_container.empty()
     text_container.empty()
-    gc.collect()
 
     df_b = optimize_memory(pd.DataFrame.from_records(b_results)) if b_results else pd.DataFrame()
     df_cb_info = pd.DataFrame(cb_info_list)
@@ -1836,7 +1840,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.00 記憶體優化版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.01 記憶體優化版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1879,7 +1883,8 @@ if run_btn:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
 
-            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, dates, max_len)
+            # 將 dates 轉為 tuple 以符合 st.cache_data 的 hash 規則
+            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, tuple(dates), max_len)
 
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
             df_p_sum, df_p_det = f_ple.result()
@@ -1982,7 +1987,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.00)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.01)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2473,7 +2478,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.00 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.01 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2524,8 +2529,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.00 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.01 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.00 備註：此版本專為 1GB RAM 環境優化，自動回收無效變數，確保系統穩定不閃退。")
+st.caption("V71.01 備註：此版本專為 1GB RAM 環境優化，並已將巨量資料彙整引擎整體快取化，實現瞬間讀取。")
