@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.01版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.02版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -188,10 +188,10 @@ ma_short = st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20,
 ma_mid = st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60)
 ma_long = st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240)
 
-st.title("全息量化系統 (V71.01 極速還原版)")
+st.title("全息量化系統 (V71.02 動態自適應版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.01：徹底解決快取假象，同步拉回 max_workers=8 狂暴模式。{usage_text}")
+st.caption(f"V71.02：導入「動態量能感知係數」，系統將自動依據各股均量調整主力標籤門檻，大小股通吃！{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -201,7 +201,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.01 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.02 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -249,10 +249,9 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except:
         return pd.DataFrame()
 
-# 核心修改：將進度條整包快取起來，相同參數直接瞬間返回！
 @st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
 def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
-    dates = list(dates_tuple) # 將 tuple 轉回 list
+    dates = list(dates_tuple) 
     b_results = []
     a_results = {}
     cb_info_list = []
@@ -298,7 +297,6 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         except:
             return []
 
-    # 依照您的要求，重新拉回 max_workers=8
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         future_to_type = {}
         for d in dates[:max_len]:
@@ -311,7 +309,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
             completed += 1
             prog_val = min(1.0, completed / total_tasks)
             prog_bar.progress(prog_val)
-            text_container.markdown(f"<div class='progress-text'>⚡ 最新快取架構載入中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+            text_container.markdown(f"<div class='progress-text'>⚡ 系統載入中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
 
             f_type = future_to_type[future]
             if f_type == 'branch':
@@ -489,6 +487,9 @@ def scrape_fubon_pledge(df_pr, tid):
     sr = [{"身份別": d["title"], "姓名": n, "目前剩餘質設(張)": d["balance"], "最後設質收盤價(元)": d["p"], "估算斷頭價(0.78)": d["mc"]} for n, d in sm.items() if d["balance"] > 0]
     return pd.DataFrame(sr), df_all
 
+# ==========================================
+# 🧠 核心升級：V71.02 動態門檻自適應引擎
+# ==========================================
 def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list):
     if df_b_raw.empty or df_p_raw.empty: return {}, pd.DataFrame()
     
@@ -498,6 +499,22 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p['date'] = pd.to_datetime(df_p['date'])
     df_p = df_p.sort_values('date', ascending=False)
     
+    # 計算近 20 日平均量，作為動態排量齒輪的基礎
+    vol_col = 'Trading_Volume' if 'Trading_Volume' in df_p_raw.columns else 'Trading_volume'
+    if vol_col in df_p_raw.columns:
+        avg_vol_lots = (pd.to_numeric(df_p_raw[vol_col], errors='coerce').head(20).mean()) / 1000
+    else:
+        avg_vol_lots = 3000
+    if pd.isna(avg_vol_lots) or avg_vol_lots <= 0: avg_vol_lots = 3000
+
+    # ⚙️ 動態閥值縮放係數 (基準值設定為 3,000 張/日)
+    # 最低縮小至 0.2 倍 (冷門股)，最高放大至 20 倍 (大型權值股)
+    scale = max(0.2, min(20.0, avg_vol_lots / 3000.0))
+    t_50 = max(10, int(50 * scale))
+    t_100 = max(20, int(100 * scale))
+    t_200 = max(40, int(200 * scale))
+    t_300 = max(60, int(300 * scale))
+
     df_p['actual_spread'] = df_p['close'] - df_p['close'].shift(-1).fillna(df_p['close'])
     range_diff = df_p['max'] - df_p['min']
     df_p['pos'] = 0.5 
@@ -560,14 +577,15 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    cond_heavy = g['net_20d'].abs() >= 300
-    cond_lock = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
-    cond_cover = (g['net_60d'] <= -100) & (g['net_5d'] >= 200)
-    cond_profit = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
-    cond_exit = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
-    cond_snap = (g['net_60d'].between(-200, 200)) & (g['net_20d'].between(-200, 200)) & (g['net_5d'] >= 300)
+    # ⚙️ 套用動態閥值進行標籤判定
+    cond_heavy = g['net_20d'].abs() >= t_300
+    cond_lock = (g['net_60d'] >= t_200) & (g['net_20d'] >= t_100) & (g['net_5d'] >= t_50)
+    cond_cover = (g['net_60d'] <= -t_100) & (g['net_5d'] >= t_200)
+    cond_profit = (g['net_60d'] >= t_300) & (g['net_20d'] >= t_100) & (g['net_5d'] <= -t_100)
+    cond_exit = (g['net_60d'] <= -t_200) & (g['net_20d'] <= -t_100) & (g['net_5d'] <= -t_100)
+    cond_snap = (g['net_60d'].between(-t_200, t_200)) & (g['net_20d'].between(-t_200, t_200)) & (g['net_5d'] >= t_300)
     cond_maker = g['stickiness'] >= stick_thresh
-    cond_follow = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > 50)
+    cond_follow = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > t_50)
 
     g['tag'] = np.select(
         [cond_heavy, cond_lock, cond_cover, cond_profit, cond_exit, cond_snap, cond_maker, cond_follow],
@@ -1840,7 +1858,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.01 記憶體優化版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.02 動態自適應版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -1883,7 +1901,6 @@ if run_btn:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
 
-            # 將 dates 轉為 tuple 以符合 st.cache_data 的 hash 規則
             df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, tuple(dates), max_len)
 
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
@@ -1987,7 +2004,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.01)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.02)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2478,7 +2495,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.01 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.02 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2529,8 +2546,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.01 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.02 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.01 備註：此版本專為 1GB RAM 環境優化，並已將巨量資料彙整引擎整體快取化，實現瞬間讀取。")
+st.caption("V71.02 備註：此版本專為 1GB RAM 環境優化，並已將巨量資料彙整引擎整體快取化，實現瞬間讀取。")
