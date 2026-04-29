@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.09版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.10版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -197,10 +197,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.09 視覺排版優化版)")
+st.title("全息量化系統 (V71.10 語法修復版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.09：徹底修復聯合作戰與成本區間表格被捲軸遮擋的問題，完美呈現無死角。{usage_text}")
+st.caption(f"V71.10：修復三大法人欄位對齊語法錯誤，穩定順暢執行。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -210,7 +210,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.09 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.10 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -408,7 +408,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手手)", []
+    return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -843,7 +843,6 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
     if max_vol_for_scale == 0: max_vol_for_scale = 1
 
-    # 💡 V71.09 更新：取消高度限制，解決捲軸遮擋問題
     html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
     html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
     html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
@@ -900,7 +899,6 @@ def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
     p['net'] = (p['net_shares'] / 1000).round().astype(int)
     p_pivot = p.pivot(index='date', columns='securities_trader', values='net').fillna(0).astype(int)
     
-    # 💡 V71.09 更新：取消 max-height 限制，徹底解決最後一行被橫向捲軸遮擋的問題
     html_parts = ["<div class='table-container' style='max-height: none !important;'><table><thead><tr>"]
     html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
     html_parts.append("<th style='text-align: right; background-color: #f1f3f5;'>外資(張)</th>")
@@ -1523,7 +1521,7 @@ def process_inst(df):
     ds_s = safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))
     out['自營商(自行)買賣超(張)'] = ((ds_b - ds_s) / 1000).round().astype(int)
     dh_b = safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length)))
-    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length))))
+    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length)))
     out['自營商(避險)買賣超(張)'] = ((dh_b - dh_s) / 1000).round().astype(int)
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
@@ -1887,7 +1885,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.09 視覺排版優化版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.10 語法修復版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2033,7 +2031,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.09)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.10)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2452,7 +2450,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.09 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.10 鐵布衫防護引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
@@ -2514,7 +2512,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.09 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.10 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2565,8 +2563,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.09 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.10 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.09 備註：解除表格 max-height 限制，徹底修復橫向捲軸遮擋最後一行資料的問題。")
+st.caption("V71.10 備註：語法除錯修復完畢。")
