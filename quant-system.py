@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.07版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.08版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -153,6 +153,8 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
+# 💡 V71.08 更新：新增獨立的買賣超統計天數選擇拉桿，整合多個重複表格
+footprint_stat_days = st.sidebar.select_slider("買賣超排行統計天數", options=[3, 5, 10, 20, 45, 60, 90, 120], value=10 if is_right_side else 45)
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 90, 20, 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
@@ -196,10 +198,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.07 鐵布衫防呆版)")
+st.title("全息量化系統 (V71.08 簡潔進化版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.07：為高階數學運算加入強固的數值防呆機制，徹底杜絕技術指標閃退崩潰。{usage_text}")
+st.caption(f"V71.08：新增側邊欄統計天數控制、整合多餘表格、修復熱力圖空白行、AI診斷優先揭露潛在賣壓。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -209,7 +211,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.07 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.08 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -731,6 +733,7 @@ def process_price(df):
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
     return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
 
+# 💡 V71.08 更新：徹底移除最後的 tr 空白行，完美貼合表底
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -790,9 +793,6 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
 
         html_parts.append("</tr>")
     
-    html_parts.append("<tr style='height: 30px;'><td style='position: sticky; left: 0; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td><td style='position: sticky; left: 140px; background-color: #f8f9fa; border-bottom: none;'>&nbsp;</td>")
-    for _ in display_dates: html_parts.append("<td style='border-bottom: none;'></td>")
-    html_parts.append("</tr>")
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
@@ -1622,7 +1622,6 @@ def calculate_disposition_thresholds(df_price, total_lots):
         res['max_vol_1d'] = None
     return res
 
-# 💡 V71.07 更新：為均線計算加上 try-except 防護罩，並強制轉型為 float64，杜絕任何崩潰
 def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     try:
         if df_price is None or df_price.empty or len(df_price) < 30 or '收盤價(元)' not in df_price.columns or '日期' not in df_price.columns: 
@@ -1631,7 +1630,6 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
         s_ma, m_ma, l_ma = int(s_ma), int(m_ma), int(l_ma) 
         df_ta = df_price.sort_values('日期', ascending=True).copy()
         
-        # 強制轉為 float64，防止降維後 rolling() 報錯
         df_ta['收盤價(元)'] = pd.to_numeric(df_ta['收盤價(元)'], errors='coerce').astype('float64')
         
         df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
@@ -1647,7 +1645,6 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     except Exception:
         return pd.DataFrame()
 
-# 💡 V71.07 更新：同步為線性迴歸模組套用 try-except 與強制轉型防護
 def process_linear_regression(df_price, lr_days):
     try:
         if df_price is None or df_price.empty or len(df_price) < 2 or '收盤價(元)' not in df_price.columns: 
@@ -1887,7 +1884,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.07 鐵布衫防呆版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.08 簡潔進化版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2033,7 +2030,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.07)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.08)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2043,8 +2040,10 @@ if run_btn:
         
         today_smart_net = 0
         today_gap = 0.0
+        today_short_trap = 0  # 💡 提取潛在賣壓
         if not df_daily_tracker.empty:
             today_smart_net = df_daily_tracker.iloc[0].get('聰明錢淨流(張)', 0)
+            today_short_trap = df_daily_tracker.iloc[0].get('潛在賣壓(張)', 0)
             gap_raw = df_daily_tracker.iloc[0].get('均價落差', 0)
             try: today_gap = float(str(gap_raw).replace('+', '').replace(',', '').strip())
             except: today_gap = 0.0
@@ -2405,11 +2404,14 @@ if run_btn:
             action = "目前長、中、短線籌碼動向不一，未出現極端的集中或發散訊號。盤勢由一般市場力量主導，建議縮小部位，靜待主力給出更明確的方向表態。"
 
         report_md = "<div class='ai-report-box'>\n\n"
-        
         report_md += "#### 🧠 系統終極戰略推演與深度解析\n\n"
         report_md += "<ul>"
 
         report_md += "<li><b>一、 短線戰鬥多空定調 (今日籌碼真偽)：</b><br>"
+        # 💡 V71.08 更新：將潛在賣壓(隔日沖)提早至 AI 診斷第一點強力揭露
+        if today_short_trap > 0:
+            report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
+            
         if is_double_counting:
             report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
         elif is_margin_trap:
@@ -2447,13 +2449,13 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.07 鐵布衫防護引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.08 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
         
-        st.markdown("<div class='category-title'>01. 主力分點全息透視區 (雙核心戰略自動排檔)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='category-title'>01. 主力分點全息透視區 (依戰略天數排檔)</div>", unsafe_allow_html=True)
         
         with st.expander(f"【視覺系主菜】 {actual_foot_days}天主力戰鬥熱力圖 (Heatmap)", expanded=True):
             st.info(f"視覺化提示：紅色買、綠色賣。已套用動態過濾：隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。")
@@ -2467,36 +2469,21 @@ if run_btn:
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
 
-        st.info("詳細分點足跡與明細已根據您的「交易戰略偏好」自動進行排檔。點擊展開即可查看完整數據。")
+        # 💡 V71.08 更新：整合多餘的足跡表格，統一由側邊欄 footprint_stat_days 控制
+        st.info(f"以下買賣超排行已切換至您在側邊欄指定的「{footprint_stat_days}日」戰略視角。")
         
-        df_fb_3, df_fs_3 = process_footprint(df_b_raw, display_dates, dates[:3], tags, df_debug_tags, footprint_rows)
-        with st.expander(f"【近 3 日急單動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)", expanded=is_right_side):
-            render_clean_html_table(df_fb_3, f"【近 3 日急單動向】 近 3 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_3, f"【近 3 日急單動向】 近 3 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            
-        df_fb_10, df_fs_10 = process_footprint(df_b_raw, display_dates, dates[:10], tags, df_debug_tags, footprint_rows)
-        with st.expander(f"【近 10 日波段動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)", expanded=is_right_side):
-            render_clean_html_table(df_fb_10, f"【近 10 日波段動向】 近 10 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_10, f"【近 10 日波段動向】 近 10 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            
-        df_fb_45, df_fs_45 = process_footprint(df_b_raw, display_dates, dates[:45] if len(dates)>=45 else dates, tags, df_debug_tags, footprint_rows)
-        with st.expander(f"【近 45 日波段建倉動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)", expanded=not is_right_side):
-            render_clean_html_table(df_fb_45, f"【近 45 日波段建倉動向】 近 45 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_45, f"【近 45 日波段建倉動向】 近 45 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            
-        df_fb_60, df_fs_60 = process_footprint(df_b_raw, display_dates, dates[:max_len], tags, df_debug_tags, footprint_rows)
-        with st.expander(f"【近 {max_len} 日長線動向】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)", expanded=False):
-            render_clean_html_table(df_fb_60, f"【近 {max_len} 日長線動向】 近 {max_len} 日買超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
-            render_clean_html_table(df_fs_60, f"【近 {max_len} 日長線動向】 近 {max_len} 日賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡)")
+        stat_days = footprint_stat_days if len(dates) >= footprint_stat_days else len(dates)
+        if stat_days == 0: stat_days = 1
+        
+        df_fb_main, df_fs_main = process_footprint(df_b_raw, display_dates, dates[:stat_days], tags, df_debug_tags, footprint_rows)
+        with st.expander(f"【近 {stat_days} 日動向排行】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡明細)", expanded=True):
+            render_clean_html_table(df_fb_main, f"近 {stat_days} 日買超前 {footprint_rows} 大")
+            render_clean_html_table(df_fs_main, f"近 {stat_days} 日賣超前 {footprint_rows} 大")
 
         with st.expander(f"主力分點 - 今日 ({dates[0]})"):
             render_clean_html_table(df_b_today)
         with st.expander(f"主力分點 - 前一日"):
             render_clean_html_table(df_b_prev1)
-        with st.expander(f"點此展開過渡期分點 (近3日 / 10日 / {max_len}日總和)"):
-            render_clean_html_table(df_b_3, "主力分點 - 近 3 日")
-            render_clean_html_table(df_b_10, "主力分點 - 近 10 日")
-            render_clean_html_table(df_b_60, f"主力分點 - 近 {max_len} 日")
         with st.expander("主力分點圖鑑 (三維動態檢驗)"):
             render_clean_html_table(df_debug_tags)
 
@@ -2525,7 +2512,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.07 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.08 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2576,8 +2563,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.07 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.08 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.07 備註：加入全面數值防護罩，即便遇到空值或極端資料，系統依然能穩健運行不報錯。")
+st.caption("V71.08 備註：整合足跡明細控制列，大幅減少畫面重疊與留白，並於 AI 總結處最高優先級顯示潛在賣壓(張)。")
