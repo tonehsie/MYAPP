@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.04版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V71.05版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -184,15 +184,14 @@ st.sidebar.markdown("### 淨化籌碼引擎")
 filter_day_trade = st.sidebar.checkbox("剔除散戶與當沖，計算純淨加權均價", value=True)
 st.sidebar.divider()
 
-# 💡 V71.04 更新：強制防呆轉型 int，確保傳入 rolling() 時絕對不報錯
 ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value=20, value=10))
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.04 終極抗錯版)")
+st.title("全息量化系統 (V71.05 完美佈局版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.04：加入均線參數強制防呆機制與缺漏欄位保護，徹底消滅 TypeError 崩潰問題。{usage_text}")
+st.caption(f"V71.05：修正熱力圖溢出覆蓋下層的排版錯誤，確保視窗順利推擠展開。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -202,7 +201,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.04 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.05 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -724,6 +723,7 @@ def process_price(df):
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
     return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
 
+# 💡 V71.05 更新：修復熱力圖排版溢出覆蓋下層的問題 (改回 overflow: auto 結合 max-height: none !important)
 def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -751,8 +751,8 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    # 💡 V71.03 更新：強制去除 max-height 讓所有行數完整展開
-    html_parts = ["<div class='table-container' style='max-height: none !important; overflow: visible;'><table><thead><tr>"]
+    # 💡 這裡將 overflow 改回 auto 保留格式上下文 (BFC)，同時使用 max-height: none 無限長高
+    html_parts = ["<div class='table-container' style='max-height: none !important; overflow: auto;'><table><thead><tr>"]
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
     html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>標籤</th>")
     for d in display_dates:
@@ -1854,7 +1854,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.04 終極抗錯版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.05 完美佈局版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2000,7 +2000,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.04)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.05)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2372,6 +2372,7 @@ if run_btn:
             action = "目前長、中、短線籌碼動向不一，未出現極端的集中或發散訊號。盤勢由一般市場力量主導，建議縮小部位，靜待主力給出更明確的方向表態。"
 
         report_md = "<div class='ai-report-box'>\n\n"
+        
         report_md += "#### 🧠 系統終極戰略推演與深度解析\n\n"
         report_md += "<ul>"
 
@@ -2413,7 +2414,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.04 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V71.05 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
@@ -2491,7 +2492,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.04 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.05 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2542,8 +2543,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.04 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.05 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.04 備註：此版本專為 1GB RAM 環境優化，解除熱力圖高度限制，導入深度語義解析，並修復均線型別崩潰錯誤。")
+st.caption("V71.05 備註：修復熱力圖排版高度與溢出覆蓋下層的問題，採用完美的 overflow: auto 佈局，維持無裁切體驗。")
