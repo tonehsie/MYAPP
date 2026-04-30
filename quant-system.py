@@ -214,15 +214,38 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
+# ==========================================
+# 【改良版】防崩潰強制轉換引擎 (大聲警告機制)
+# ==========================================
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
-        try: return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip(), errors='coerce').fillna(fill_val)
-        except: return pd.Series([fill_val] * len(series))
-    elif isinstance(series, (int, float)): return series
+        
+        cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip()
+        converted = pd.to_numeric(cleaned, errors='coerce')
+        
+        # 偵測原本有值，但轉換後變 NaN 的異常狀況 (抓取對方格式突變)
+        valid_str_mask = (cleaned != '') & (cleaned.str.lower() != 'nan') & (cleaned != 'none') & (cleaned != '-')
+        failed_mask = converted.isna() & valid_str_mask
+        
+        if failed_mask.any():
+            col_name = series.name if hasattr(series, 'name') and series.name else "未知資料行"
+            failed_count = failed_mask.sum()
+            sample_val = series[failed_mask].iloc[0]
+            st.warning(f"⚠️ **[資料格式突變警告]** 欄位 `{col_name}` 中有 {failed_count} 筆資料無法轉為純數字 (範例異常格式: `{sample_val}`)。系統已暫時以 `{fill_val}` 代替以確保運行，請注意此欄位計算可能失真！")
+            
+        return converted.fillna(fill_val)
+        
+    elif isinstance(series, (int, float)): 
+        return series
     else:
-        try: return float(str(series).replace(',', '').replace('%', '').strip())
-        except: return fill_val
+        s_str = str(series).replace(',', '').replace('%', '').strip()
+        if not s_str or s_str.lower() in ['nan', 'none', '-']: return fill_val
+        try: 
+            return float(s_str)
+        except: 
+            st.warning(f"⚠️ **[單筆格式突變警告]** 遭遇無法辨識的數值格式 `{series}`，已強制降級暫代為 `{fill_val}`。")
+            return fill_val
 
 @st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
@@ -2440,7 +2463,7 @@ if run_btn:
             report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
             
         if is_double_counting:
-            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
+            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提提防假外資隔日沖。"
         elif is_margin_trap:
             report_md += "<span style='color:#d32f2f;'>主力雖大買，但融資同步異常暴增。</span><br>深度解析：這通常是高槓桿的「假主力」或當沖客利用融資鎖碼。這類資金極端不穩定，只要明日開盤不如預期，立刻會引發融資斷頭的多殺多連鎖反應，強烈建議避開。"
         elif today_smart_net > 100 and today_diff_cnt <= -10:
