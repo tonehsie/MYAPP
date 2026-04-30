@@ -214,16 +214,18 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
+# ==========================================
+# 【改良版】防崩潰強制轉換引擎 (擴大 NaN, <NA> 等忽略清單)
+# ==========================================
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
         
-        # 清除逗號、百分比、以及常見的無效佔位符號 (包含全形/半形星號)
         cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.replace('＊', '', regex=False).str.replace('*', '', regex=False).str.strip()
         converted = pd.to_numeric(cleaned, errors='coerce')
         
-        # 定義合法可被轉為 0/空值 的白名單 (包含當沖的 'y', 'n', 'x' 等標記)
-        ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x']
+        # 嚴謹擴充：把所有可能的空值字串 (包含 pandas <NA>) 加入白名單
+        ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']
         valid_str_mask = ~cleaned.str.lower().isin(ignore_list)
         failed_mask = converted.isna() & valid_str_mask
         
@@ -238,9 +240,8 @@ def safe_to_num(series, fill_val=0):
     elif isinstance(series, (int, float)): 
         return series
     else:
-        # 單一數值處理
         s_str = str(series).replace(',', '').replace('%', '').replace('＊', '').replace('*', '').strip()
-        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x']: return fill_val
+        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
         try: 
             return float(s_str)
         except: 
@@ -1518,9 +1519,6 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
         out.append({"日期": row['日期'], "收盤價(元)": round(float(p), 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
     return pd.DataFrame(out)
 
-# ==========================================
-# 【改良版】當沖明細表 - 直接移除先買後賣衍生欄位
-# ==========================================
 def process_day_trading(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
@@ -1528,8 +1526,6 @@ def process_day_trading(df):
     elif 'Volume' in df_out.columns: df_out['當沖總張數'] = (safe_to_num(df_out['Volume']) / 1000).round().astype(int)
     df_out = df_out.rename(columns={"date": "日期"})
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
-    
-    # 僅保留日期與當沖總張數，剔除易出錯的原始衍生欄位
     cols = [c for c in ['日期', '當沖總張數'] if c in df_out.columns]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
@@ -1599,18 +1595,14 @@ def process_disp(df):
     cols = [c for c in ['公告日期', '處置次數', '處置起日', '處置迄日', '處置條件', '處置措施'] if c in df_out.columns]
     return df_out[cols].tail(5).sort_values('公告日期', ascending=False)
 
-# ==========================================
-# 【改良版】股利政策 - 預先過濾 NaN，避免正則表達式出錯
-# ==========================================
 def process_div(df):
     if df.empty: return pd.DataFrame()
     df_out = df.rename(columns={"date": "公告日期", "year": "股利年份", "StockEarningsDistribution": "盈餘配股(元)", "StockStatutorySurplus": "公積配股(元)", "CashEarningsDistribution": "盈餘配息(元)", "CashStatutorySurplus": "公積配息(元)"})
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
     cols = [c for c in ["公告日期", "股利年份", "盈餘配息(元)", "公積配息(元)", "盈餘配股(元)", "公積配股(元)"] if c in df_out.columns]
     if '股利年份' in df_out.columns:
-        # 先濾除字串為空或為 nan/None 的資料，再進行正則擷取
-        valid_year_mask = df_out['股利年份'].notna() & (df_out['股利年份'].astype(str).str.lower() != 'nan')
-        extracted_year = pd.Series(index=df_out.index, dtype='object')
+        valid_year_mask = df_out['股利年份'].notna() & (~df_out['股利年份'].astype(str).str.lower().isin(['nan', '<na>', 'none', '']))
+        extracted_year = pd.Series(index=df_out.index, dtype='object', name='股利年份')
         extracted_year[valid_year_mask] = df_out.loc[valid_year_mask, '股利年份'].astype(str).str.extract(r'^(\d+)', expand=False)
         
         year_num = safe_to_num(extracted_year, fill_val=np.nan)
@@ -1905,7 +1897,7 @@ def render_clean_html_table(df, title=""):
                     if "無本獲利" in s:
                         display_val = f"<span class='profit-warning'>{s}</span>"
                     elif "(虧)" in s:
-                        display_val = f"<span class='loss-warning'>(亏) {s.replace('(虧)', '').strip()}</span>"
+                        display_val = f"<span class='loss-warning'>(虧) {s.replace('(虧)', '').strip()}</span>"
                     elif s.startswith("+"):
                         display_val = f"<span class='highlight-red'>{s}</span>"
                     elif s.startswith("-") and len(s) > 1 and s[1].isdigit():
@@ -1962,7 +1954,6 @@ if run_btn:
         d_end = dates[max_len-1]
         
         df_price = optimize_memory(process_price(df_p_raw))
-        # 修正股價小數點溢出問題：強制取到小數點後兩位
         curr_price = round(float(df_price['收盤價(元)'].iloc[0]), 2) if not df_price.empty and '收盤價(元)' in df_price.columns else 0
         df_ta_full = process_technical_analysis(df_price, ma_short, ma_mid, ma_long)
         
@@ -2625,3 +2616,4 @@ if run_btn:
 
 st.divider()
 st.caption("V71.12 備註：解除所有高度限制鎖，確保熱力圖與大戶建倉成本等寬表能完整攤開。")
+```</NA></NA>
