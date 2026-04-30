@@ -378,7 +378,7 @@ def scrape_director_v50(tid):
                 if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(str(c) for c in col if 'Unnamed' not in str(c)).strip('_') for col in df.columns.values]
                 else: df.columns = df.columns.astype(str)
                 
-                # 修改死籌碼邏輯：找出董監事持股與大股東持股
+                # 包含董監事持股與大股東持股
                 tc_dir = next((c for c in df.columns if '董監' in str(c) and '持股' in str(c).replace(' ', '')), None)
                 tc_large = next((c for c in df.columns if '大股東' in str(c) and '持股' in str(c).replace(' ', '')), None)
                 mc = next((c for c in df.columns if '月別' in str(c)), None)
@@ -1096,8 +1096,14 @@ def get_smart_threshold(price, total_lots, dead_float):
     return al
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
+    if df_wide.empty or len(df_wide) < 2:
+        st.warning("⚠️ [V27 終極雷達] 集保股權分佈資料不足 (少於2週)，無法比對趨勢，雷達模組已暫停。")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    if df_price.empty:
+        st.warning("⚠️ [V27 終極雷達] 查無歷史股價，系統將以預設基準 (無動態股價加權) 強制推算大戶門檻。")
+
     try:
-        if df_wide.empty or len(df_wide) < 2: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         df = df_wide.sort_values('日期', ascending=True).copy()
         df['dt_end'] = pd.to_datetime(df['日期'])
         
@@ -1108,9 +1114,11 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             df_p['收盤價(元)'] = pd.to_numeric(df_p['收盤價(元)'], errors='coerce')
             df_p['ma20'] = df_p['收盤價(元)'].rolling(20, min_periods=1).mean()
             df = pd.merge_asof(df.sort_values('dt_end'), df_p[['dt', '收盤價(元)', 'ma20']], left_on='dt_end', right_on='dt', direction='backward')
-        else: df['收盤價(元)'], df['ma20'] = 0, 0
+        else: 
+            df['收盤價(元)'], df['ma20'] = 0, 0
             
-        df['總人數變率(%)'] = (pd.to_numeric(df['總人數(人)'], errors='coerce').pct_change() * 100).round(2)
+        df['總人數(人)'] = pd.to_numeric(df['總人數(人)'], errors='coerce')
+        df['總人數變率(%)'] = (df['總人數(人)'].pct_change() * 100).fillna(0).round(2)
         
         levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
         for col in levels_cols:
@@ -1154,8 +1162,8 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             p = row.get('收盤價(元)', 0)
             total_lots = row.get('總張數', 0)
             
-            if pd.isna(p) or p <= 0 or total_lots <= 0: 
-                out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "初始化/數據不全"})
+            if total_lots <= 0: 
+                out.append({"日期": d_str, "大戶原持股(%)": 0, "原始大戶變動(%)": 0, "純淨變動": 0, "雜訊": 0, "診斷": "初始化/總股本為零"})
                 prev_row = row
                 continue
                 
@@ -1209,7 +1217,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
         res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
         return res_df, pd.DataFrame(d_math), pd.DataFrame(d_fri)
-    except Exception:
+        
+    except Exception as e:
+        st.error(f"🚨 [V27 終極雷達] 運算遭遇異常，模組已強制停止。錯誤原因：`{str(e)}`")
+        st.info("💡 提示：這通常是因為該檔股票的特定資料表格式突變，或含有無法解析的空值。系統其他模組不受影響。")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
@@ -1502,7 +1513,6 @@ def process_day_trading(df):
 
 def process_margin(df):
     if df.empty: return pd.DataFrame()
-    # 維持融資券資料單位為萬元與原始張數，不進行除法轉換
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
         if c in df.columns: df[c] = safe_to_num(df[c]).round().astype(int)
     df = df.rename(columns={
@@ -2482,7 +2492,7 @@ if run_btn:
             st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
             render_volume_profile(df_b_raw, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, footprint_rows)
 
-        with st.expander(f"【甜點】 土洋聯合作戰比تدائي (近10日法人 vs 地方大戶角力)", expanded=is_right_side):
+        with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=is_right_side):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
 
