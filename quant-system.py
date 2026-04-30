@@ -215,17 +215,18 @@ with col2:
 run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
-# 【改良版】防崩潰強制轉換引擎 (大聲警告機制)
+# 【改良版】防崩潰強制轉換引擎 (大聲警告機制，支援過濾證交所特有星號)
 # ==========================================
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
         
-        cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.strip()
+        # 清除逗號、百分比、以及常見的無效佔位符號 (包含全形/半形星號)
+        cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.replace('＊', '', regex=False).str.replace('*', '', regex=False).str.strip()
         converted = pd.to_numeric(cleaned, errors='coerce')
         
-        # 偵測原本有值，但轉換後變 NaN 的異常狀況 (抓取對方格式突變)
-        valid_str_mask = (cleaned != '') & (cleaned.str.lower() != 'nan') & (cleaned != 'none') & (cleaned != '-')
+        # 偵測原本有值，但轉換後變 NaN 的異常狀況 (排除已被清空合法佔位符的空字串)
+        valid_str_mask = (cleaned != '') & (cleaned.str.lower() != 'nan') & (cleaned.str.lower() != 'none') & (cleaned != '-')
         failed_mask = converted.isna() & valid_str_mask
         
         if failed_mask.any():
@@ -239,7 +240,8 @@ def safe_to_num(series, fill_val=0):
     elif isinstance(series, (int, float)): 
         return series
     else:
-        s_str = str(series).replace(',', '').replace('%', '').strip()
+        # 單一數值處理
+        s_str = str(series).replace(',', '').replace('%', '').replace('＊', '').replace('*', '').strip()
         if not s_str or s_str.lower() in ['nan', 'none', '-']: return fill_val
         try: 
             return float(s_str)
@@ -401,7 +403,6 @@ def scrape_director_v50(tid):
                 if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(str(c) for c in col if 'Unnamed' not in str(c)).strip('_') for col in df.columns.values]
                 else: df.columns = df.columns.astype(str)
                 
-                # 包含董監事持股與大股東持股
                 tc_dir = next((c for c in df.columns if '董監' in str(c) and '持股' in str(c).replace(' ', '')), None)
                 tc_large = next((c for c in df.columns if '大股東' in str(c) and '持股' in str(c).replace(' ', '')), None)
                 mc = next((c for c in df.columns if '月別' in str(c)), None)
@@ -2463,7 +2464,7 @@ if run_btn:
             report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
             
         if is_double_counting:
-            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提提防假外資隔日沖。"
+            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
         elif is_margin_trap:
             report_md += "<span style='color:#d32f2f;'>主力雖大買，但融資同步異常暴增。</span><br>深度解析：這通常是高槓桿的「假主力」或當沖客利用融資鎖碼。這類資金極端不穩定，只要明日開盤不如預期，立刻會引發融資斷頭的多殺多連鎖反應，強烈建議避開。"
         elif today_smart_net > 100 and today_diff_cnt <= -10:
