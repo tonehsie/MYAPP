@@ -377,20 +377,28 @@ def scrape_director_v50(tid):
             for df in pd.read_html(StringIO(r.text)):
                 if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(str(c) for c in col if 'Unnamed' not in str(c)).strip('_') for col in df.columns.values]
                 else: df.columns = df.columns.astype(str)
-                tc = next((c for c in df.columns if '全體董監持股' in str(c) and '持股(%)' in str(c).replace(' ', '')), None)
+                
+                # 修改死籌碼邏輯：找出董監事持股與大股東持股
+                tc_dir = next((c for c in df.columns if '董監' in str(c) and '持股' in str(c).replace(' ', '')), None)
+                tc_large = next((c for c in df.columns if '大股東' in str(c) and '持股' in str(c).replace(' ', '')), None)
                 mc = next((c for c in df.columns if '月別' in str(c)), None)
-                if tc and mc:
+                
+                if mc and (tc_dir or tc_large):
                     lt = 0.0
                     for ro in df.to_dict('records'):
-                        m, v = str(ro.get(mc, '')).replace('/', '-').strip(), str(ro.get(tc, '')).replace(',', '').strip()
-                        if re.match(r'^\d{4}-\d{2}$', m) and v not in ['-', '', 'nan']:
+                        m = str(ro.get(mc, '')).replace('/', '-').strip()
+                        if re.match(r'^\d{4}-\d{2}$', m):
+                            v_dir = str(ro.get(tc_dir, '0')).replace(',', '').strip() if tc_dir else '0'
+                            v_large = str(ro.get(tc_large, '0')).replace(',', '').strip() if tc_large else '0'
                             try:
-                                val = float(v)
+                                val_dir = float(v_dir) if v_dir not in ['-', '', 'nan'] else 0.0
+                                val_large = float(v_large) if v_large not in ['-', '', 'nan'] else 0.0
+                                val = val_dir + val_large
                                 if 0 < val < 100:
                                     dd[m] = val
                                     if lt == 0.0: lt = val
                             except: pass
-                    if dd: return dd, lt, "Goodinfo", []
+                    if dd: return dd, lt, "Goodinfo(含大股東)", []
     except: pass
     
     try:
@@ -796,7 +804,6 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-# 💡 V71.12 更新：移除 if t_vol == 0: continue 確保全區間顯示，並使用 full-table-container
 def render_volume_profile(df_raw, rank_dates, top_n=15):
     if df_raw.empty or not rank_dates:
         st.warning("查無足夠資料產生建倉成本分佈圖。")
@@ -1495,6 +1502,7 @@ def process_day_trading(df):
 
 def process_margin(df):
     if df.empty: return pd.DataFrame()
+    # 維持融資券資料單位為萬元與原始張數，不進行除法轉換
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
         if c in df.columns: df[c] = safe_to_num(df[c]).round().astype(int)
     df = df.rename(columns={
@@ -2474,7 +2482,7 @@ if run_btn:
             st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
             render_volume_profile(df_b_raw, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, footprint_rows)
 
-        with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=is_right_side):
+        with st.expander(f"【甜點】 土洋聯合作戰比تدائي (近10日法人 vs 地方大戶角力)", expanded=is_right_side):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
 
