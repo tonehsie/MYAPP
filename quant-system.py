@@ -214,9 +214,6 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
-# ==========================================
-# 【改良版】防崩潰強制轉換引擎 (擴大 NaN, <NA> 等忽略清單)
-# ==========================================
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -224,7 +221,6 @@ def safe_to_num(series, fill_val=0):
         cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.replace('＊', '', regex=False).str.replace('*', '', regex=False).str.strip()
         converted = pd.to_numeric(cleaned, errors='coerce')
         
-        # 嚴謹擴充：把所有可能的空值字串 (包含 pandas <NA>) 加入白名單
         ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']
         valid_str_mask = ~cleaned.str.lower().isin(ignore_list)
         failed_mask = converted.isna() & valid_str_mask
@@ -885,6 +881,10 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
     vp_grouped = vp_grouped.sort_index(ascending=False)
 
     for idx, row in vp_grouped.iterrows():
+        # 💡 隱藏價格跳空/無交易區間，保持版面乾淨
+        if row['total_lots'] == 0:
+            continue
+            
         b_vol = int(round(row['buy_lots']))
         s_vol = int(round(row['sell_lots']))
         n_vol = int(round(row['net_lots']))
@@ -1526,6 +1526,7 @@ def process_day_trading(df):
     elif 'Volume' in df_out.columns: df_out['當沖總張數'] = (safe_to_num(df_out['Volume']) / 1000).round().astype(int)
     df_out = df_out.rename(columns={"date": "日期"})
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
+    
     cols = [c for c in ['日期', '當沖總張數'] if c in df_out.columns]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
@@ -1808,7 +1809,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
 
         if "M頭" in mode or is_auto:
             if len(highs) >= 2:
-                h1, h2 = highs[-2], highs[-1]
+                h1, h2, h3 = highs[-2], highs[-1]
                 between_lows = [l for l in lows if h1[2] < l[2] < h2[2]]
                 if between_lows and h1[1] > 0:
                     l1 = min(between_lows, key=lambda x: x[1])
