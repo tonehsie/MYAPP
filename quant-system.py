@@ -215,7 +215,7 @@ with col2:
 run_btn = st.button("啟動 V71.12 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
-# 【改良版】防崩潰強制轉換引擎 (大聲警告機制，支援過濾證交所特有星號)
+# 【改良版】防崩潰強制轉換引擎 (增加 Y, N 忽略清單)
 # ==========================================
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -225,8 +225,9 @@ def safe_to_num(series, fill_val=0):
         cleaned = series.astype(str).str.replace(',', '', regex=False).str.replace('%', '', regex=False).str.replace('＊', '', regex=False).str.replace('*', '', regex=False).str.strip()
         converted = pd.to_numeric(cleaned, errors='coerce')
         
-        # 偵測原本有值，但轉換後變 NaN 的異常狀況 (排除已被清空合法佔位符的空字串)
-        valid_str_mask = (cleaned != '') & (cleaned.str.lower() != 'nan') & (cleaned.str.lower() != 'none') & (cleaned != '-')
+        # 定義合法可被轉為 0 的空值白名單 (包含當沖的 'y', 'n', 'x' 等標記)
+        ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x']
+        valid_str_mask = ~cleaned.str.lower().isin(ignore_list)
         failed_mask = converted.isna() & valid_str_mask
         
         if failed_mask.any():
@@ -242,7 +243,7 @@ def safe_to_num(series, fill_val=0):
     else:
         # 單一數值處理
         s_str = str(series).replace(',', '').replace('%', '').replace('＊', '').replace('*', '').strip()
-        if not s_str or s_str.lower() in ['nan', 'none', '-']: return fill_val
+        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x']: return fill_val
         try: 
             return float(s_str)
         except: 
@@ -1517,7 +1518,7 @@ def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict,
             cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
             st_val = "強勢控盤" if cv >= 0.5 else "偏強鎖碼" if cv >= 0.3 else "初步集結" if cv >= 0.15 else "籌碼渙散"
             cd = round(cv * 100, 2)
-        out.append({"日期": row['日期'], "收盤價(元)": p, "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
+        out.append({"日期": row['日期'], "收盤價(元)": round(float(p), 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
     return pd.DataFrame(out)
 
 def process_day_trading(df):
@@ -1607,7 +1608,9 @@ def process_div(df):
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
     cols = [c for c in ["公告日期", "股利年份", "盈餘配息(元)", "公積配息(元)", "盈餘配股(元)", "公積配股(元)"] if c in df_out.columns]
     if '股利年份' in df_out.columns:
-        year_num = safe_to_num(df_out['股利年份'].astype(str).str.replace('年', '').str.strip(), fill_val=np.nan)
+        # 正則表達式修正：針對如 "108第1季", "108上半年" 等格式，自動萃取最前面的年份數字
+        extracted_year = df_out['股利年份'].astype(str).str.extract(r'^(\d+)', expand=False)
+        year_num = safe_to_num(extracted_year, fill_val=np.nan)
         recent = sorted(year_num.dropna().unique(), reverse=True)[:5]
         return df_out[year_num.isin(recent)][cols].sort_values('公告日期', ascending=False).head(10)
     return df_out[cols].sort_values('公告日期', ascending=False).head(10)
@@ -1956,7 +1959,7 @@ if run_btn:
         d_end = dates[max_len-1]
         
         df_price = optimize_memory(process_price(df_p_raw))
-        curr_price = df_price['收盤價(元)'].iloc[0] if not df_price.empty and '收盤價(元)' in df_price.columns else 0
+        curr_price = round(float(df_price['收盤價(元)'].iloc[0]), 2) if not df_price.empty and '收盤價(元)' in df_price.columns else 0
         df_ta_full = process_technical_analysis(df_price, ma_short, ma_mid, ma_long)
         
         recent_20_vol = df_price['成交量(張)'].head(20).mean() if not df_price.empty else 1000
@@ -2478,11 +2481,11 @@ if run_btn:
         report_md += "<li><b>二、 核心防守價位與安全邊際確認：</b><br>"
         report_md += f"系統已為您剔除避險造市與當沖雜訊，精算出的「純淨主力防守價」為 <b>{vwap_str} 元</b>。<br>"
         if bias > 5:
-            report_md += f"深度解析：目前股價({curr_price}元)距離主力成本線有 {bias:.1f}% 的豐厚緩衝。這代表主力目前處於輕鬆獲利的狀態，洗盤時有足夠的空間下殺而不會傷到自己，您只需沿著均線續抱即可。"
+            report_md += f"深度解析：目前股價({curr_price:.2f}元)距離主力成本線有 {bias:.1f}% 的豐厚緩衝。這代表主力目前處於輕鬆獲利的狀態，洗盤時有足夠的空間下殺而不會傷到自己，您只需沿著均線續抱即可。"
         elif 0 <= bias <= 5:
-            report_md += f"深度解析：目前股價({curr_price}元)完美貼合主力的真實成本區(乖離僅 {bias:.1f}%)。這是左側潛伏最愛的「黃金建倉點」。只要不實質跌破此防線，主力都有極大動機主動護盤。"
+            report_md += f"深度解析：目前股價({curr_price:.2f}元)完美貼合主力的真實成本區(乖離僅 {bias:.1f}%)。這是左側潛伏最愛的「黃金建倉點」。只要不實質跌破此防線，主力都有極大動機主動護盤。"
         else:
-            report_md += f"深度解析：<span style='color:#d32f2f;'>目前股價({curr_price}元)已跌破主力的鐵板防守線(乖離 {bias:.1f}%)。</span>這代表連砸重金的大戶自己都處於帳面虧損。一旦大戶決定停損，將引發海嘯般的賣壓，此時切勿抱持凹單心態。"
+            report_md += f"深度解析：<span style='color:#d32f2f;'>目前股價({curr_price:.2f}元)已跌破主力的鐵板防守線(乖離 {bias:.1f}%)。</span>這代表連砸重金的大戶自己都處於帳面虧損。一旦大戶決定停損，將引發海嘯般的賣壓，此時切勿抱持凹單心態。"
         report_md += "</li><br>\n"
 
         report_md += "<li><b>三、 潛在市場盲點與套利干擾排除：</b><br>"
