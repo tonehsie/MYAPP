@@ -205,10 +205,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.1 終極版)")
+st.title("全息量化系統 (V71.12.2 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.1：熱力圖支援純前端無刷新切換，並強化股利年份與極端空值的捕捉能力。{usage_text}")
+st.caption(f"V71.12.2：熱力圖純前端切換功能修正，並強化股利年份與極端空值的捕捉能力。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -218,7 +218,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.1 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12.2 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -801,7 +801,6 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    # 💡 植入純前端控制開關
     html_parts = ["""
     <div class='heatmap-toggle-container'>
         <label style='cursor: pointer;'>
@@ -827,7 +826,6 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
             val = p.at[trader, d]
             is_noise = abs(val) < noise_threshold
             
-            # 準備顏色與數值
             alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val))
             bg = f"rgba(229, 57, 53, {alpha:.2f})" if val > 0 else f"rgba(67, 160, 71, {alpha:.2f})" if val < 0 else "transparent"
             txt = f"+{val}" if val > 0 else str(val) if val < 0 else ""
@@ -1626,9 +1624,11 @@ def process_div(df):
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
     cols = [c for c in ["公告日期", "股利年份", "盈餘配息(元)", "公積配息(元)", "盈餘配股(元)", "公積配股(元)"] if c in df_out.columns]
     if '股利年份' in df_out.columns:
-        valid_year_mask = df_out['股利年份'].notna() & (~df_out['股利年份'].astype(str).str.lower().isin(['nan', '<na>', 'none', '']))
+        df_out['股利年份'] = df_out['股利年份'].astype(str)
+        # 濾除所有空字串或 NaN 的變體字
+        valid_year_mask = ~df_out['股利年份'].str.lower().isin(['nan', '<na>', 'none', 'null', ''])
         extracted_year = pd.Series(index=df_out.index, dtype='object', name='股利年份')
-        extracted_year[valid_year_mask] = df_out.loc[valid_year_mask, '股利年份'].astype(str).str.extract(r'^(\d+)', expand=False)
+        extracted_year[valid_year_mask] = df_out.loc[valid_year_mask, '股利年份'].str.extract(r'^(\d+)', expand=False)
         
         year_num = safe_to_num(extracted_year, fill_val=np.nan)
         recent = sorted(year_num.dropna().unique(), reverse=True)[:5]
@@ -2532,12 +2532,8 @@ if run_btn:
         st.markdown("<div class='category-title'>01. 主力分點全息透視區 (依戰略天數排檔)</div>", unsafe_allow_html=True)
         
         with st.expander(f"【視覺系主菜】 {actual_foot_days}天主力戰鬥熱力圖 (Heatmap)", expanded=True):
-            if show_all_heatmap_vals:
-                st.info("🟢 已啟用「強制顯示所有數值」，目前為無過濾狀態。")
-            else:
-                st.info(f"🟢 視覺化提示：紅色買、綠色賣。已套用動態過濾：預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用上方切換開關顯示所有數字。")
-                
-            render_footprint_heatmap(df_b_raw, display_dates, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, tags, footprint_rows, 0 if show_all_heatmap_vals else dynamic_noise_threshold)
+            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已套用動態過濾：預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方切換開關顯示所有數字。")
+            render_footprint_heatmap(df_b_raw, display_dates, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, tags, footprint_rows, dynamic_noise_threshold)
             
         with st.expander(f"【戰略系海鮮】 {actual_foot_days}天大戶建倉成本區間分佈 (Volume Profile)", expanded=not is_right_side):
             st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
