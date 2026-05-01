@@ -457,11 +457,10 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df['date_dt'] = pd.to_datetime(df['date'])
     df['net_shares'] = df['buy'] - df['sell']
     
-    # 防止除以 0：只有真實買入才有買進金額與數量
-    df['valid_buy_amt'] = np.where(df['buy'] > 0, df['buy'] * df['price'], 0)
-    df['valid_buy_vol'] = np.where(df['buy'] > 0, df['buy'], 0)
-    df['valid_sell_amt'] = np.where(df['sell'] > 0, df['sell'] * df['price'], 0)
-    df['valid_sell_vol'] = np.where(df['sell'] > 0, df['sell'], 0)
+    df['valid_buy_amt'] = np.where(df['price'] > 0, df['buy'] * df['price'], 0)
+    df['valid_buy_vol'] = np.where(df['price'] > 0, df['buy'], 0)
+    df['valid_sell_amt'] = np.where(df['price'] > 0, df['sell'] * df['price'], 0)
+    df['valid_sell_vol'] = np.where(df['price'] > 0, df['sell'], 0)
 
     d5 = dates_list[:5]
     d20 = dates_list[:20] if len(dates_list) >= 20 else dates_list
@@ -505,28 +504,25 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    # 四字專業標籤邏輯判定
-    cond_heavy = g['net_20d'].abs() >= 300
-    cond_lock = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
+    cond_dump = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
+    cond_core = (g['net_60d'] >= 200) & (g['net_20d'] >= 100) & (g['net_5d'] >= 50)
+    cond_bear = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
     cond_cover = (g['net_60d'] <= -100) & (g['net_5d'] >= 200)
-    cond_profit = (g['net_60d'] >= 300) & (g['net_20d'] >= 100) & (g['net_5d'] <= -100)
-    cond_exit = (g['net_60d'] <= -200) & (g['net_20d'] <= -100) & (g['net_5d'] <= -100)
-    cond_snap = (g['net_60d'].between(-200, 200)) & (g['net_20d'].between(-200, 200)) & (g['net_5d'] >= 300)
+    cond_sniper = (g['net_60d'].between(-200, 200)) & (g['net_20d'].between(-200, 200)) & (g['net_5d'] >= 300)
     cond_maker = g['stickiness'] >= stick_thresh
-    cond_follow = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > 50)
+    cond_flash = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > 50)
 
     g['tag'] = np.select(
-        [cond_heavy, cond_lock, cond_cover, cond_profit, cond_exit, cond_snap, cond_maker, cond_follow],
-        ["【主力重砲】", "【波段鎖碼】", "【認錯回補】", "【獲利調節】", "【棄守提款】", "【隔日突擊】", "【避險造市】", "【跟風小戶】"],
-        default="【路人雜訊】"
+        [cond_dump, cond_core, cond_bear, cond_cover, cond_sniper, cond_maker, cond_flash],
+        ["[逢高派發]", "[波段鐵粉]", "[長線倒貨]", "[低檔回補]", "[短線狙擊]", "[常駐造市]", "[快閃散戶]"],
+        default="[隨波逐流]"
     )
 
     tags = g['tag'].to_dict()
     g = g[(g['tb_shares'] > 0) | (g['ts_shares'] > 0)].copy()
     
-    # 均價防呆：無買入顯示 "-" 避免零成本誤判
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
-    b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
+    b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}")
     g['b_str'] = np.where(cond_loss, "(虧) " + b_strs, b_strs)
     g['pos'] = g['last_date'].map(pos_dict).fillna(0.5).round(2)
     
@@ -587,11 +583,10 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if df_b_raw.empty: return 0.0, 0, 0, 0.0, []
     df = df_b_raw.copy()
-    df['tag'] = df['securities_trader'].map(tags).fillna("【路人雜訊】")
+    df['tag'] = df['securities_trader'].map(tags).fillna("[隨波逐流]")
     
     if is_filter_active: 
-        # 只剔除突擊、小戶、提款
-        valid_df = df[~df['tag'].str.contains("【隔日突擊】|【跟風小戶】|【棄守提款】", na=False)].copy()
+        valid_df = df[~df['tag'].str.contains("短線狙擊|快閃散戶|長線倒貨", na=False)].copy()
     else: 
         valid_df = df
 
@@ -629,8 +624,7 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
         free_float_ratio = (100.0 - safe_dead_ratio) / 100.0
         free_float_lots = total_lots * free_float_ratio
         if free_float_lots > 0:
-            raw_c = (full_net_accum / free_float_lots) * 100
-            c_value = round(min(98.0, raw_c), 2)  # C_Value 最高鎖死 98.0% 防破百
+            c_value = round((full_net_accum / free_float_lots) * 100, 2)
 
     return vwap, full_net_accum, active_buyers, c_value, core_branch_names
 
@@ -675,7 +669,7 @@ def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerpr
             
             row_dict = {
                 "分點名稱": trader, 
-                "標籤": intel_tags.get(trader, "【路人雜訊】"),
+                "標籤": intel_tags.get(trader, "[隨波逐流]"),
                 "黏著度(%)": st_val, 
                 hr_name: hr_val,
                 f"區間累計(張)": f"+{total_val}" if total_val > 0 else str(total_val)
@@ -717,10 +711,10 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
     for i in range(15):
         r = {}
         if i < len(b): 
-            b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}" if b.loc[i,'avg_b'] > 0 else "-"
+            b_str = f"{round(b.loc[i,'avg_b'], 2):,.2f}"
             if b.loc[i,'avg_b'] > latest_close and b.loc[i,'avg_b'] > 0 and b.loc[i,'net'] > 0: b_str = f"(虧) {b_str}"
-            raw_tag = intel_tags.get(b.loc[i,'securities_trader'], '【路人雜訊】')
-            attr = "短線" if any(x in raw_tag for x in ["【隔日突擊】", "【跟風小戶】"]) else "中長線" if any(x in raw_tag for x in ["【波段鎖碼】", "【避險造市】", "【主力重砲】"]) else "波段"
+            raw_tag = intel_tags.get(b.loc[i,'securities_trader'], '[隨波逐流]')
+            attr = "短線" if any(x in raw_tag for x in ["短線狙擊", "快閃散戶", "低檔回補"]) else "中長線" if any(x in raw_tag for x in ["波段鐵粉", "常駐造市"]) else "波段"
             r["買超分點"] = b.loc[i,'securities_trader']
             r["買_標籤"] = raw_tag
             r["買_週期"] = attr
@@ -730,13 +724,13 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         else: r["買超分點"], r["買_標籤"], r["買_週期"], r["買超(張)"], r["買均價"], r["佔比"] = "-", "-", "-", 0, "-", "-"
         
         if i < len(s): 
-            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'], '【路人雜訊】')
-            attr_s = "短線" if any(x in raw_tag_s for x in ["【隔日突擊】", "【跟風小戶】"]) else "中長線" if any(x in raw_tag_s for x in ["【波段鎖碼】", "【避險造市】", "【主力重砲】"]) else "波段"
+            raw_tag_s = intel_tags.get(s.loc[i,'securities_trader'], '[隨波逐流]')
+            attr_s = "短線" if any(x in raw_tag_s for x in ["短線狙擊", "快閃散戶", "低檔回補"]) else "中長線" if any(x in raw_tag_s for x in ["波段鐵粉", "常駐造市"]) else "波段"
             r["賣超分點"] = s.loc[i,'securities_trader']
             r["賣_標籤"] = raw_tag_s
             r["賣_週期"] = attr_s
             r["賣超(張)"] = abs(int(s.loc[i,'net']))
-            r["賣均價"] = f"{round(s.loc[i,'avg_s'], 2):,.2f}" if s.loc[i,'avg_s'] > 0 else "-"
+            r["賣均價"] = f"{round(s.loc[i,'avg_s'], 2):,.2f}"
             r["佔比_"] = f"{(abs(s.loc[i,'net'])/tv)*100:.1f}%" if tv > 0 else "-"
         else: r["賣超分點"], r["賣_標籤"], r["賣_週期"], r["賣超(張)"], r["賣均價"], r["佔比_"] = "-", "-", "-", 0, "-", "-"
         out.append(r)
@@ -795,8 +789,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     if not df_branch_raw.empty:
         df_b_tagged = df_branch_raw[['date', 'securities_trader', 'buy', 'sell']].copy()
         df_b_tagged['tag'] = df_b_tagged['securities_trader'].map(intel_tags).fillna("")
-        # 僅剔除短線干擾
-        mask_short = df_b_tagged['tag'].str.contains("【隔日突擊】|【跟風小戶】", na=False)
+        mask_short = df_b_tagged['tag'].str.contains("短線狙擊|低檔回補|快閃散戶", na=False)
         df_fake = df_b_tagged[mask_short]
         if not df_fake.empty:
             df_fake_daily = df_fake.groupby(['date', 'securities_trader'])[['buy', 'sell']].sum().reset_index()
@@ -857,7 +850,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 if p_chg * lev > 2.5 and row.get('收盤價(元)', 0) > row.get('ma20', 0): adv.append(f"[強勢軋空] 站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
                 elif p_chg > 0.4 and row.get('收盤價(元)', 0) < row.get('ma20', 0): adv.append(f"[底位建倉] 跌破月線但主力吃貨{p_chg}%")
                 elif p_chg < -1.0: adv.append(f"[主力撤退] 大戶實質流出{abs(p_chg)}%")
-                if f_impact > 1.2: adv.append(f"[隔日沖/留倉干擾] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
+                if f_impact > 1.2: adv.append(f"[當沖/短沖陷阱] 虛胖買盤潛藏{round(f_impact, 2)}%倒貨危機")
                 
         prev_row = row
         out.append({"日期": d_str, "大戶原持股(%)": round(current_large_pct, 2), "原始大戶變動(%)": raw_chg, "純淨變動": p_chg, "雜訊": round(f_impact, 2), "診斷": " | ".join(adv) if adv else "盤整"})
@@ -904,10 +897,10 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
     df_b = df_branch_raw[['date', 'securities_trader', 'buy', 'sell', 'price']].rename(columns={'buy': 'bs', 'sell': 'ss', 'price': 'pr'})
-    df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("【路人雜訊】")
+    df_b['tag'] = df_b['securities_trader'].map(intel_tags).fillna("[隨波逐流]")
     
-    smart_set = {"【波段鎖碼】", "【避險造市】", "【獲利調節】", "【棄守提款】", "【主力重砲】", "【認錯回補】"}
-    short_set = {"【隔日突擊】", "【跟風小戶】"}
+    smart_set = {"[波段鐵粉]", "[常駐造市]", "[逢高派發]", "[長線倒貨]"}
+    short_set = {"[短線狙擊]", "[低檔回補]", "[快閃散戶]"}
     df_b['is_smart'] = df_b['tag'].isin(smart_set)
     df_b['is_short'] = df_b['tag'].isin(short_set)
     
@@ -988,7 +981,6 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             if day_range > 0 and (lower_shadow / day_range) > 0.5 and smart_net > 0: adv.append("探底洗盤成功，主力護盤")
             
             if smart_avg_cost == 0 and smart_net < 0: adv.append("【危險】主力零成本無本出貨中")
-            elif smart_net > 300 and firepower > 1.5: adv.append("【重擊點火】大戶重力掃貨推升")
             elif smart_net > 50 and gap > 0: adv.append("主動鎖碼/強勢推升")
             elif smart_net > 50 and gap < 0: adv.append("大戶承接/弱勢護盤")
             elif smart_net < -100 and sp_num > 0: adv.append("拉高派發/撤退")
@@ -1006,6 +998,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
+# 【V60.53 更新】加入對「以上」的秒殺判定，解決 15 到 21 級的新版集保格式問題
 def clean_level_by_math(x):
     s = str(x).replace(',', '').replace(' ', '').replace('.0', '')
     if s in _LEVEL_CLEAN_CACHE: return _LEVEL_CLEAN_CACHE[s]
@@ -1907,6 +1900,7 @@ if run_btn:
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
         
+        # 執行 V3 處置紅線預警系統計算
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -1957,11 +1951,6 @@ if run_btn:
 
         report_md = "<div class='ai-report-box'>\n\n"
 
-        inst_net_today = df_inst.iloc[0]['三大法人買賣超(張)'] if not df_inst.empty else 0
-        is_double_counting = (inst_net_today > 0 and today_smart_net > 0 and abs(inst_net_today - today_smart_net) < inst_net_today * 0.2)
-        if is_double_counting:
-            report_md += f"<div style='color:#d32f2f; font-weight:bold; margin-bottom: 10px;'>⚠️ 【防雙重計算警告】：今日法人動向與分點聰明錢高度重疊 ({today_smart_net}張)，請視為同一筆資金，防過度樂觀。</div>\n"
-
         report_md += "#### 第零層：幾何形態與結構 (AI 視覺辨識)\n"
         report_md += "<ul>"
         if pat_data:
@@ -2007,8 +1996,7 @@ if run_btn:
         report_md += f"<li>【買賣力道對決】：買方火力 {today_fp} 倍，買賣家數差為 {today_diff_cnt} 家。</li>\n"
 
         if today_smart_net < 0 and today_diff_cnt > 0: layer3_diag = "聰明錢撤退，且買賣家數差為正(散戶湧入接刀)，標準的主力倒貨特徵。"
-        elif today_smart_net > 300 and float(today_fp) > 1.5: layer3_diag = "聰明錢不計代價大量掃貨，買方火力強大，主力強勢重擊鎖碼。"
-        elif today_smart_net > 0 and float(today_fp) >= float(firepower_threshold): layer3_diag = "聰明錢積極買進，買方火力強大，主力穩定推升。"
+        elif today_smart_net > 0 and float(today_fp) >= float(firepower_threshold): layer3_diag = "聰明錢積極買進，且買方火力強大，主力強勢鎖碼推升。"
         elif today_smart_net < 0 and today_diff_cnt <= 0: layer3_diag = "聰明錢流出，但籌碼未發散至散戶手中，偏向特定大戶換手或壓盤洗盤。"
         else: layer3_diag = "短線多空交戰，無極端偏離，屬自然換手。"
         report_md += f"<li>解讀：{layer3_diag}</li>"
@@ -2041,12 +2029,8 @@ if run_btn:
         
         pat_is_breakout = pat_data and pat_data['signal'] == 'bullish' and ('突破' in pat_data['desc'] or '深V' in pat_data['desc'])
         pat_is_breakdown = pat_data and pat_data['signal'] == 'bearish' and ('跌破' in pat_data['desc'] or '衰退' in pat_data['desc'])
-        is_short_squeeze = (curr_price >= latest_lr_upper and latest_lr_upper > 0 and today_smart_net > 300 and today_fp > 1.5)
 
-        if is_short_squeeze:
-            conclusion = "【軋空噴出飆股模式 / 通道已失效】"
-            action = "股價頂破通道上軌，但聰明錢持續狂炸重擊。線性迴歸指標已鈍化，此時不應逆勢放空或提早獲利，建議改用短均線防守，讓獲利奔跑！"
-        elif pat_is_breakdown and today_smart_net < 0:
+        if pat_is_breakdown and today_smart_net < 0:
             conclusion = "【形態轉弱 / 主力撤退，立刻停損】"
             action = f"視覺形態確認跌破或轉弱，且今日聰明錢果斷撤退。技術面與籌碼面雙重轉空，請立刻停損逃命，嚴禁留戀！"
         elif pat_is_breakout and today_smart_net > 0:
