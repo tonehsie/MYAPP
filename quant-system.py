@@ -795,7 +795,6 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
-    # 💡 完美修復前端 CSS 切換機制：確保 <input> 與 wrapper 同層，且 0 完美隱形
     html_parts = ["""
     <style>
     /* 預設狀態：隱藏雜訊 */
@@ -1299,19 +1298,132 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         st.info("💡 提示：這通常是因為該檔股票的特定資料表格式突變，或含有無法解析的空值。系統其他模組不受影響。")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
+# ==========================================
+# 【新增/替換模組 1】監管套利預警模組 (V2)
+# ==========================================
+def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
+    if df_price.empty or len(df_price) < 6: return None
+    df_asc = df_price.sort_values('日期', ascending=True).reset_index(drop=True)
+    closes = df_asc['收盤價(元)'].tolist()
+    lows = df_asc['最低價(元)'].tolist()
+    volumes_lots = df_asc['成交量(張)'].tolist()
+
+    res = {
+        'limit_6d': closes[-6] * 1.32 if len(closes) >= 6 else None, # 6日漲幅32%紅線
+        'limit_amp': min(lows[-5:]) * 1.25 if len(lows) >= 5 else None,
+        'limit_30d': closes[-30] * 2.0 if len(closes) >= 30 else None,
+        'limit_60d': closes[-60] * 2.3 if len(closes) >= 60 else None,
+    }
+
+    # 加入當沖過熱紅線預測 (連續兩日大於60%)
+    res['day_trade_warning'] = False
+    if not df_day_trade.empty and len(df_day_trade) >= 2:
+        dt_vol = df_day_trade['當沖總張數'].tolist()[:6]
+        vol_recent = volumes_lots[-6:]
+        dt_ratios = [d / v if v > 0 else 0 for d, v in zip(dt_vol, reversed(vol_recent))]
+        # 修正您的 V2 原始碼：原本的陣列比較會有錯誤，改為精準取得前兩個值
+        if len(dt_ratios) >= 2 and dt_ratios[0] > 0.6 and dt_ratios[1] > 0.6:
+            res['day_trade_warning'] = True
+
+    if total_lots > 0:
+        recent_5d_vol_lots = sum(volumes_lots[-5:])
+        max_volume_tomorrow_lots = (total_lots * 0.5) - recent_5d_vol_lots
+        res['current_5d_turnover'] = (recent_5d_vol_lots / total_lots) * 100
+        res['max_vol_6d'] = max_volume_tomorrow_lots
+        res['max_vol_1d'] = total_lots * 0.1
+        # 週轉率極端過高紅線 (10%以上)
+        res['turnover_warning'] = res['current_5d_turnover'] > 10.0 
+    else:
+        res['current_5d_turnover'] = 0
+        res['max_vol_6d'] = None
+        res['max_vol_1d'] = None
+        res['turnover_warning'] = False
+    return res
+
+# ==========================================
+# 【新增/替換模組 2】籌碼甜區與極端過濾模組 (V2)
+# ==========================================
+def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
+    if df_share_wide.empty or df_price.empty: return pd.DataFrame()
+    df_s, df_p = df_share_wide.copy(), df_price.copy()
+    df_s['dt'], df_p['dt'] = pd.to_datetime(df_s['日期']), pd.to_datetime(df_p['日期'])
+    df_p = df_p.drop_duplicates(subset=['dt']).sort_values('dt')
+    df_m = pd.merge_asof(df_s.sort_values('dt'), df_p[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
+    
+    levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
+    for col in levels_cols:
+        df_m[col] = pd.to_numeric(df_m[col], errors='coerce').fillna(0.0) if col in df_m.columns else 0.0
+
+    df_m['pct_1000'] = df_m['1000張以上_比例(%)']
+    df_m['pct_800'] = df_m['pct_1000'] + df_m['800-1000張_比例(%)']
+    df_m['pct_600'] = df_m['pct_800'] + df_m['600-800張_比例(%)']
+    df_m['pct_400'] = df_m['pct_600'] + df_m['400-600張_比例(%)']
+    df_m['pct_200'] = df_m['pct_400'] + df_m['200-400張_比例(%)']
+    df_m['pct_100'] = df_m['pct_200'] + df_m['100-200張_比例(%)']
+
+    def get_pct(row_dict, threshold):
+        if threshold <= 100: return row_dict.get('pct_100', 0)
+        if threshold <= 200: return row_dict.get('pct_200', 0)
+        if threshold <= 400: return row_dict.get('pct_400', 0)
+        if threshold <= 600: return row_dict.get('pct_600', 0)
+        if threshold <= 800: return row_dict.get('pct_800', 0)
+        return row_dict.get('pct_1000', 0)
+    
+    out = [] # 修正了您原本缺少中括號的錯誤
+    for row in df_m.to_dict('records'):
+        p = row.get('收盤價(元)', 0)
+        if pd.isna(p) or p <= 0: continue
+        cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
+        total_lots = row.get('總張數', 0)
+        safe_dead_ratio = max(0.0, min(99.9, cur_dead))
+        
+        # 取得大戶真實比例
+        ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
+        lp = get_pct(row, ct) # 保留原本精算門檻機制以維護精準度
+        
+        # 為了相容下游追蹤矩陣，需保留 C_Value 的計算
+        cd = "-"
+        if 0 < safe_dead_ratio < 100:
+            cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
+            cd = round(cv * 100, 2)
+            
+        # 導入老手甜區判斷邏輯
+        st_val = "籌碼渙散"
+        if 40.0 <= lp <= 70.0:
+            st_val = "波段甜區 (易吸量推升)"
+        elif lp > 80.0:
+            st_val = "極度集中 (防無量倒貨)"
+        elif lp > 70.0:
+            st_val = "高度鎖碼"
+
+        out.append({
+            "日期": row['日期'], 
+            "收盤價(元)": round(float(p), 2), 
+            "大戶精算門檻": f"系統判定 ({int(ct)}張)", # 相容原版保留
+            "大戶原持股(%)": round(lp, 2), 
+            "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", 
+            "純淨活大戶C_Value(%)": cd, # 相容原版保留
+            "實戰判定": st_val
+        })
+    return pd.DataFrame(out)
+
+# ==========================================
+# 【新增/替換模組 3】資金接力與主力成交力模組 (V2)
+# ==========================================
+def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
-    out = []
+    out = [] # 修正缺少的宣告
     branch_grouped = dict(tuple(df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')))
     for d in actual_dates[:period_days]:
         if d not in branch_grouped: continue
         df_d = branch_grouped[d]
+        
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
         
+        # 保留 V1 所需的火力與集中度計算 (供其他模組使用)
         buy_count = buy_branches['securities_trader'].nunique()
         sell_count = sell_branches['securities_trader'].nunique()
         diff_count = buy_count - sell_count
-        
         active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
         concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
         
@@ -1320,13 +1432,65 @@ def process_branch_diff(df_raw, actual_dates, fire_thresh, period_days=10):
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
         
-        diag = []
+        # 新增 V2 的主力成交力 (Main Power) 計算
+        daily_total_vol = df_d['buy'].sum() 
+        main_power = 0
+        if daily_total_vol > 0:
+            g_net = df_d.groupby('securities_trader').apply(lambda x: x['buy'].sum() - x['sell'].sum())
+            top_15_buy_vol = g_net[g_net > 0].nlargest(15).sum()
+            top_15_sell_vol = abs(g_net[g_net < 0].nsmallest(15).sum())
+            main_power = (top_15_buy_vol - top_15_sell_vol) / daily_total_vol * 100
+        
+        diag = [] # 修正缺少的宣告
+        # 綜合診斷判定
         if firepower >= fire_thresh and concentration > 5: diag.append(f"大戶火力壓制 ({fire_thresh}倍↑)")
         elif firepower < 0.7 and diff_count > 50: diag.append("散戶進場 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: diag.append("籌碼極度發散 (熱門當沖雷區)")
+            
+        if main_power > 15: diag.append(f"主力重兵集結 (買力 {main_power:.1f}%)")
+        elif main_power < -15: diag.append(f"大戶強力倒貨 (賣力 {abs(main_power):.1f}%)")
         
-        out.append({"日期": d, "活躍家數": active_count, "買賣家數差": diff_count, "籌碼集中度(%)": round(concentration, 1), "買方火力(倍)": round(firepower, 2), "鷹眼診斷": " | ".join(diag) if diag else "中性換手"})
+        if diff_count > 50 and main_power < 0: diag.append("散戶螞蟻搬象接刀")
+            
+        out.append({
+            "日期": d, 
+            "活躍家數": active_count, 
+            "買賣家數差": diff_count, 
+            "籌碼集中度(%)": round(concentration, 1), # 保留 V1
+            "買方火力(倍)": round(firepower, 2), # 保留 V1
+            "主力成交力(%)": round(main_power, 2), # 新增 V2
+            "鷹眼診斷": " | ".join(diag) if diag else "中性換手"
+        })
     return pd.DataFrame(out)
+
+# ==========================================
+# 【新增模組 4】微觀五檔防騙線介面
+# ==========================================
+def detect_orderbook_spoofing(order_book_tick, trade_tick):
+    """
+    未來即時串接擴充模組：用於破解盤中假牆與內外盤騙線
+    order_book_tick: 包含 bid_vol_1~5, ask_vol_1~5 
+    trade_tick: 包含最新成交價量與內外盤標記 (inside/outside)
+    """
+    # 1. 內外盤失衡判定
+    total_ask_vol = sum([order_book_tick[f'ask_vol_{i}'] for i in range(1, 6)])
+    total_bid_vol = sum([order_book_tick[f'bid_vol_{i}'] for i in range(1, 6)])
+    
+    # 2. 判定賣壓假牆：上方掛滿大單，但真實成交多在內盤
+    if total_ask_vol > total_bid_vol * 1.5:
+        if trade_tick['trade_type'] == 'inside':
+            return "短線偏空：賣方主動讓價，買盤被動承接"
+        elif trade_tick['cancel_rate_ask'] > 0.8:
+            return "誘空假牆：上方大單頻繁撤單，準備向上突圍"
+            
+    # 3. 判定買盤假牆：下方掛滿大單，但真實成交多在外盤
+    if total_bid_vol > total_ask_vol * 1.5:
+        if trade_tick['trade_type'] == 'outside':
+            return "短線偏多：買方主動吃價，賣盤被動成交"
+        elif trade_tick['cancel_rate_bid'] > 0.8:
+            return "誘多假牆：下方大單為虛假支撐，慎防破底"
+
+    return "結構正常"
 
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
@@ -1529,49 +1693,6 @@ def process_tdcc(df):
     df_ppl = pd.merge(df_t[['date', '總人數(人)']], p_p[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
     return df_w, df_unit, df_ppl
 
-def process_tdcc_dynamic(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
-    if df_share_wide.empty or df_price.empty: return pd.DataFrame()
-    df_s, df_p = df_share_wide.copy(), df_price.copy()
-    df_s['dt'], df_p['dt'] = pd.to_datetime(df_s['日期']), pd.to_datetime(df_p['日期'])
-    df_p = df_p.drop_duplicates(subset=['dt']).sort_values('dt')
-    df_m = pd.merge_asof(df_s.sort_values('dt'), df_p[['dt', '收盤價(元)']], on='dt', direction='backward').sort_values('dt', ascending=False)
-
-    levels_cols = ['100-200張_比例(%)', '200-400張_比例(%)', '400-600張_比例(%)', '600-800張_比例(%)', '800-1000張_比例(%)', '1000張以上_比例(%)']
-    for col in levels_cols:
-        df_m[col] = pd.to_numeric(df_m[col], errors='coerce').fillna(0.0) if col in df_m.columns else 0.0
-
-    df_m['pct_1000'] = df_m['1000張以上_比例(%)']
-    df_m['pct_800'] = df_m['pct_1000'] + df_m['800-1000張_比例(%)']
-    df_m['pct_600'] = df_m['pct_800'] + df_m['600-800張_比例(%)']
-    df_m['pct_400'] = df_m['pct_600'] + df_m['400-600張_比例(%)']
-    df_m['pct_200'] = df_m['pct_400'] + df_m['200-400張_比例(%)']
-    df_m['pct_100'] = df_m['pct_200'] + df_m['100-200張_比例(%)']
-
-    def get_pct(row_dict, threshold):
-        if threshold <= 100: return row_dict.get('pct_100', 0)
-        if threshold <= 200: return row_dict.get('pct_200', 0)
-        if threshold <= 400: return row_dict.get('pct_400', 0)
-        if threshold <= 600: return row_dict.get('pct_600', 0)
-        if threshold <= 800: return row_dict.get('pct_800', 0)
-        return row_dict.get('pct_1000', 0)
-
-    out = []
-    for row in df_m.to_dict('records'):
-        p = row.get('收盤價(元)', 0)
-        if pd.isna(p) or p <= 0: continue
-        cur_dead, cl = get_dead_chip_info(row['日期'], dead_chip_input, dynamic_dict, static_val, chip_engine)
-        total_lots = row.get('總張數', 0)
-        safe_dead_ratio = max(0.0, min(99.9, cur_dead))
-        ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
-        lp = get_pct(row, ct)
-        cd, st_val = "-", "無董監事持股數據"
-        if 0 < safe_dead_ratio < 100:
-            cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
-            st_val = "強勢控盤" if cv >= 0.5 else "偏強鎖碼" if cv >= 0.3 else "初步集結" if cv >= 0.15 else "籌碼渙散"
-            cd = round(cv * 100, 2)
-        out.append({"日期": row['日期'], "收盤價(元)": round(float(p), 2), "大戶精算門檻": f"系統判定 ({int(ct)}張)", "大戶原持股(%)": round(lp, 2), "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", "純淨活大戶C_Value(%)": cd, "實戰判定": st_val})
-    return pd.DataFrame(out)
-
 def process_day_trading(df):
     if df.empty: return pd.DataFrame()
     df_out = df.copy()
@@ -1698,32 +1819,6 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     else: df_out["未償還比例(%)"] = "需原始發行總額"
     display_cols = ["日期", "可轉債代號", "可轉債名稱", "CB收盤價", "標的股價(元)", "轉換價(元)", "轉換價值", "溢價率(%)", "未償還餘額", "未償還比例(%)", "到期日"]
     return df_out[[c for c in display_cols if c in df_out.columns]]
-
-def calculate_disposition_thresholds(df_price, total_lots):
-    if df_price.empty or len(df_price) < 6: return None
-    df_asc = df_price.sort_values('日期', ascending=True).reset_index(drop=True)
-    closes = df_asc['收盤價(元)'].tolist()
-    lows = df_asc['最低價(元)'].tolist()
-    volumes_lots = df_asc['成交量(張)'].tolist()
-
-    res = {}
-    res['limit_6d'] = closes[-6] * 1.25 if len(closes) >= 6 else None
-    res['limit_amp'] = min(lows[-5:]) * 1.25 if len(lows) >= 5 else None
-    res['limit_30d'] = closes[-30] * 2.0 if len(closes) >= 30 else None
-    res['limit_60d'] = closes[-60] * 2.3 if len(closes) >= 60 else None
-    res['limit_90d'] = closes[-90] * 2.6 if len(closes) >= 90 else None
-
-    if total_lots > 0:
-        recent_5d_vol_lots = sum(volumes_lots[-5:])
-        max_volume_tomorrow_lots = (total_lots * 0.5) - recent_5d_vol_lots
-        res['current_5d_turnover'] = (recent_5d_vol_lots / total_lots) * 100
-        res['max_vol_6d'] = max_volume_tomorrow_lots
-        res['max_vol_1d'] = total_lots * 0.1
-    else:
-        res['current_5d_turnover'] = 0
-        res['max_vol_6d'] = None
-        res['max_vol_1d'] = None
-    return res
 
 def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
     try:
@@ -2076,13 +2171,18 @@ if run_btn:
         net_45 = get_core_period_net(df_b_raw, dates[:45] if len(dates)>=45 else dates, core_branch_names)
         net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
-        df_b_diff = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=15)
-        df_b_diff_60 = process_branch_diff(df_b_raw, dates, firepower_threshold, period_days=60)
+        # 取得當沖資料，並將順序提前給新的 V2 模組使用
+        df_day_trade = optimize_memory(process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())))
+        df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()) # 若模組需要完整 raw
+        
+        # 套用升級的 V2 模組
+        df_b_diff = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=15)
+        df_b_diff_60 = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=60)
         
         df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates, firepower_threshold, period_days=15)
         df_daily_tracker_60, _ = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff_60, dates, firepower_threshold, period_days=60)
         
-        df_s_dyn = process_tdcc_dynamic(df_s_wide, df_price, parsed_dead_chip, dynamic_dict, s_val, chip_eng)
+        df_s_dyn = process_tdcc_dynamic_v2(df_s_wide, df_price, parsed_dead_chip, dynamic_dict, s_val, chip_eng)
         df_v27_radar, df_debug_math, _ = process_v27_ultimate_radar(df_s_wide, parsed_dead_chip, dynamic_dict, s_val, df_price, df_b_raw, tags)
 
         df_combined_display = pd.DataFrame()
@@ -2095,7 +2195,6 @@ if run_btn:
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
         df_margin = optimize_memory(process_margin(ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())))
-        df_day_trade = optimize_memory(process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())))
         df_inst = optimize_memory(process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame())))
         
         df_rev_raw = ds_dict.get("TaiwanStockMonthRevenue", pd.DataFrame())
@@ -2136,7 +2235,8 @@ if run_btn:
         st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.4)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
+        # 套用升級的 V2 模組，並確保取得已處理的當沖資料
+        disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
@@ -2669,4 +2769,4 @@ if run_btn:
         gc.collect()
 
 st.divider()
-st.caption("V71.12.4 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。")
+st.caption("V71.12.4 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
