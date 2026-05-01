@@ -199,10 +199,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.3 終極版)")
+st.title("全息量化系統 (V71.12.4 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.3：熱力圖純前端秒切技術實裝，全系統數據空值安靜處理。{usage_text}")
+st.caption(f"V71.12.4：熱力圖支援純前端無刷新切換全覽，並強化所有數據的空值容錯。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -212,7 +212,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.3 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12.4 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -795,21 +795,37 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
+    # 💡 完美修復前端 CSS 切換機制：確保 <input> 與 wrapper 同層，且 0 完美隱形
     html_parts = ["""
     <style>
-    /* 預設隱藏雜訊 */
+    /* 預設狀態：隱藏雜訊 */
     .heatmap-wrapper .noise-cell { background-color: transparent !important; }
     .heatmap-wrapper .noise-cell span { display: none; }
     
-    /* 勾選後顯示雜訊 */
+    /* 勾選狀態：顯示雜訊與 0 */
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
-    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { display: inline; }
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { 
+        display: inline; 
+        color: var(--txt-color) !important; 
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.6); 
+    }
+    /* 專門消除 0 的陰影，讓畫面更乾淨 */
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
+
+    /* 開關按鈕的美化 */
+    .heatmap-toggle-label {
+        display: inline-block; margin-bottom: 12px; padding: 6px 12px; 
+        background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc;
+        cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none;
+    }
+    #heatmap-toggle:checked + .heatmap-toggle-label {
+        background-color: #e3f2fd; border-color: #90caf9;
+    }
     </style>
     
-    <div style="margin-bottom: 12px; padding: 8px; background-color: #f1f3f5; border-radius: 6px; display: inline-block;">
-        <input type="checkbox" id="heatmap-toggle" style="cursor: pointer; width: 16px; height: 16px; vertical-align: middle; margin-right: 5px;">
-        <label for="heatmap-toggle" style="cursor: pointer; vertical-align: middle; font-weight: bold; color: #1e3a8a; margin: 0;">強制顯示所有數值 (關閉雜訊隱藏)</label>
-    </div>
+    <input type="checkbox" id="heatmap-toggle" style="display: none;">
+    <label for="heatmap-toggle" class="heatmap-toggle-label">👁️ 切換顯示：所有隱藏數值 (含 0 與雜訊)</label>
+    
     <div class='full-table-container heatmap-wrapper'><table><thead><tr>
     """]
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
@@ -828,17 +844,32 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
             val = p.at[trader, d]
             is_noise = abs(val) < noise_threshold
             
-            alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val))
-            bg = f"rgba(229, 57, 53, {alpha:.2f})" if val > 0 else f"rgba(67, 160, 71, {alpha:.2f})" if val < 0 else "transparent"
-            txt = f"+{val}" if val > 0 else str(val) if val < 0 else ""
+            alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
             
-            if val == 0:
-                cell_class = ""
-                cell_style = "text-align: center;"
+            if val > 0:
+                bg = f"rgba(229, 57, 53, {alpha:.2f})"
+                txt = f"+{val}"
+                txt_color = "#fff"
+                zero_class = ""
+            elif val < 0:
+                bg = f"rgba(67, 160, 71, {alpha:.2f})"
+                txt = str(val)
+                txt_color = "#fff"
+                zero_class = ""
             else:
-                cell_class = "noise-cell" if is_noise else ""
-                # 將顏色寫入 CSS 變數 --bg-color 供純 CSS 切換使用
-                cell_style = f"background-color: {bg}; --bg-color: {bg}; text-align: center; font-weight: bold; color: #fff !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
+                bg = "transparent"
+                txt = "0"
+                txt_color = "#aaa"
+                zero_class = "val-zero"
+                is_noise = True 
+
+            cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
+            
+            cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; "
+            if not is_noise:
+                cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
+            else:
+                cell_style += "background-color: transparent;"
 
             tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
             html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
@@ -1956,7 +1987,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.12.3 終極解鎖版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.12.4 終極解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2102,7 +2133,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.3)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.4)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds(df_price, current_total_shares)
@@ -2530,7 +2561,7 @@ if run_btn:
         st.markdown("<div class='category-title'>01. 主力分點全息透視區 (依戰略天數排檔)</div>", unsafe_allow_html=True)
         
         with st.expander(f"【視覺系主菜】 {actual_foot_days}天主力戰鬥熱力圖 (Heatmap)", expanded=True):
-            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已套用動態過濾：預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方切換開關顯示所有數字。")
+            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已套用動態過濾：預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
             render_footprint_heatmap(df_b_raw, display_dates, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, tags, footprint_rows, dynamic_noise_threshold)
             
         with st.expander(f"【戰略系海鮮】 {actual_foot_days}天大戶建倉成本區間分佈 (Volume Profile)", expanded=not is_right_side):
@@ -2583,7 +2614,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.12.3 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.12.4 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2634,8 +2665,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.12.3 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.12.4 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.12.3 備註：熱力圖支援純前端無刷新切換，並強化股利年份與極端空值的捕捉能力。")
+st.caption("V71.12.4 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。")
