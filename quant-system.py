@@ -549,7 +549,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
-    g['b_str'] = np.where(cond_loss, "(虧) " + b_strs, b_strs)
+    g['b_str'] = np.where(cond_loss, "(亏) " + b_strs, b_strs)
     g['pos'] = g['last_date'].map(pos_dict).fillna(0.5).round(2)
     
     res_df = pd.DataFrame({
@@ -723,12 +723,12 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
 
     html_parts = ["""
     <style>
-  .heatmap-wrapper.noise-cell { background-color: transparent!important; }
-  .heatmap-wrapper.noise-cell span { display: none; }
+ .heatmap-wrapper.noise-cell { background-color: transparent!important; }
+ .heatmap-wrapper.noise-cell span { display: none; }
     #heatmap-toggle:checked ~.heatmap-wrapper.noise-cell { background-color: var(--bg-color)!important; }
     #heatmap-toggle:checked ~.heatmap-wrapper.noise-cell span { display: inline; color: var(--txt-color)!important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
     #heatmap-toggle:checked ~.heatmap-wrapper.noise-cell.val-zero span { text-shadow: none!important; }
-  .heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
+ .heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
     #heatmap-toggle:checked +.heatmap-toggle-label { background-color: #e3f2fd; border-color: #90caf9; }
     </style>
     <input type="checkbox" id="heatmap-toggle" style="display: none;">
@@ -1332,8 +1332,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]): lows.append((dates_vals[i], float(lows_vals[i]), i))
             if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]): highs.append((dates_vals[i], float(highs_vals[i]), i))
         if len(lows) < 2 or len(highs) < 2: return {}
-        # (Pattern recognition logic simplified to save space, keeping auto basic bounds)
-        return {'name': "Auto", 'shape_x': [highs[-2], highs[-1]], 'shape_y': [highs[-2][1], highs[-1][1]], 'neck_x': [lows[-2], lows[-1]], 'neck_y': [lows[-2][1], lows[-1][1]], 'color': "#2196f3", 'desc': "矩形整理 (等待突破)", 'signal': "neutral"}
+        return {'name': "Auto", 'shape_x': [highs[-2], highs[-1]], 'shape_y': [highs[-2][1], highs[-1][1]], 'neck_x': [lows[-2], lows[-1]], 'neck_y': [lows[-2][1], lows[-1][1]], 'color': "#2196f3", 'desc': "自動辨識區間", 'signal': "neutral"}
     except Exception: return {}
 
 def render_clean_html_table(df, title=""):
@@ -1502,8 +1501,8 @@ if run_btn:
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
         vwap_str = f"{pure_vwap:,.2f}" if pure_vwap > 0 else "-"
         
-        today_smart_net, today_short_trap, today_gap = df_daily_tracker.iloc.get('聰明錢淨流(張)', 0), df_daily_tracker.iloc.get('潛在賣壓(張)', 0), 0.0 if df_daily_tracker.empty else safe_num(df_daily_tracker.iloc.get('均價落差', 0))
-        today_fp, today_diff_cnt = df_b_diff.iloc.get('買方火力(倍)', 1.0), df_b_diff.iloc.get('買賣家數差', 0) if not df_b_diff.empty else (1.0, 0)
+        today_smart_net, today_short_trap, today_gap = df_daily_tracker.iloc.get('聰明錢淨流(張)', 0), df_daily_tracker.iloc.get('潛在賣壓(張)', 0), 0.0 if df_daily_tracker.empty else safe_to_num(df_daily_tracker.iloc.get('均價落差', 0))
+        today_fp, today_diff_cnt = df_b_diff.iloc.get('買方火力(倍)', 1.0) if not df_b_diff.empty else 1.0, df_b_diff.iloc.get('買賣家數差', 0) if not df_b_diff.empty else 0
 
         custom_alerts =
         if today_smart_net >= dynamic_alert_threshold and dynamic_alert_threshold > 0: custom_alerts.append(f"【極端買擊】：今日聰明錢淨買超達 <b>{today_smart_net:,}</b> 張，突破警戒值")
