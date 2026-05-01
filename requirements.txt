@@ -7,3 +7,4 @@ lxml
 scipy
 FinMind
 tqdm
+anyio<4.0.0
