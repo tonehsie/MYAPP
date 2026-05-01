@@ -6,12 +6,12 @@ from datetime import datetime
 
 # ================= 頁面設定 =================
 st.set_page_config(page_title="全五檔撤單監控雷達", layout="wide")
-st.title("🎯 台股純富果：全五檔撤單監控雷達 (上市/上櫃全支援)")
-st.markdown("全面採用 Fugle API，為你提供**每一檔標的的完整五檔明細**與總量變化分析。")
+st.title("🎯 台股純富果：全五檔撤單監控雷達")
+st.markdown("全面採用 Fugle API，為你提供**上市與上櫃**每一檔標的的完整五檔明細與總量變化分析。")
 
 # ================= 系統參數 (API Key) =================
-# 🔑 你的富果 API Key
-FUGLE_API_KEY = "6ecb52bb-322c-489b-9022-aa75e65c9567"
+# 🔑 已經為你寫入最原始、正確的富果 API Key
+FUGLE_API_KEY = "MWJmYTYyMTMtMjJiNC00M2YyLWI2NmQtMzNhNzliYWNhMDFmIDZlY2I1MmJiLTMyMmMtNDg5Yi05MDIyLWFhNzVlNjVjOTU2Nw=="
 
 # ================= 狀態管理 =================
 if "prev_data_dict" not in st.session_state:
@@ -19,9 +19,9 @@ if "prev_data_dict" not in st.session_state:
 
 # ================= 側邊欄設定 =================
 st.sidebar.header("⚙️ 追蹤參數設定")
-st.sidebar.info("⚠️ 基本方案 API 限制：每分鐘 60 次。\n建議追蹤 4 支以內，頻率 5 秒以上。")
+st.sidebar.info("⚠️ 基本方案限制：每分鐘 60 次呼叫。\n建議追蹤 4 支以內，更新頻率設定在 5 秒以上最安全。")
 
-stock_ids_input = st.sidebar.text_input("請輸入股票代碼 (半形逗號分隔，建議最多4支)", value="2330, 3169, 2317")
+stock_ids_input = st.sidebar.text_input("請輸入股票代碼 (半形逗號分隔)", value="2330, 3169, 2317")
 stock_list = [s.strip() for s in stock_ids_input.split(",") if s.strip()][:4]
 
 wall_threshold = st.sidebar.number_input("五檔單邊總量撤單門檻 (張數)", value=150)
@@ -30,7 +30,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("🤖 自動偵測設定")
 
 auto_detect = st.sidebar.toggle("🟢 啟動自動持續偵測")
-refresh_rate = st.sidebar.slider("自動更新頻率 (秒)", min_value=3, max_value=30, value=5)
+refresh_rate = st.sidebar.slider("自動更新頻率 (秒)", min_value=3, max_value=30, value=6)
 
 manual_refresh = False
 if not auto_detect:
@@ -39,7 +39,8 @@ if not auto_detect:
 # ================= 產生五檔表格函數 =================
 def render_order_book(bids, asks):
     """將富果的 bids 和 asks 轉換為對稱的五檔 DataFrame"""
-    max_len = max(len(bids), len(asks), 5) # 確保至少顯示5格
+    # 確保至少顯示5格
+    max_len = max(len(bids), len(asks), 5) 
     
     # 補齊長度，沒有資料的檔位補 '-'
     bids_padded = bids + [{'price': '-', 'size': '-'}] * (max_len - len(bids))
@@ -70,11 +71,14 @@ if auto_detect or manual_refresh:
             headers = {"X-API-KEY": FUGLE_API_KEY}
             
             try:
-                res = requests.get(url, headers=headers, timeout=3)
+                res = requests.get(url, headers=headers, timeout=5)
                 if res.status_code == 200:
                     raw_data = res.json()
-                    if 'bids' not in raw_data:
-                        st.warning(f"{stock_id} 目前無五檔資料 (可能非盤中時間)。")
+                    
+                    # 盤後清盤或無資料防呆機制
+                    if 'bids' not in raw_data and 'asks' not in raw_data:
+                        st.markdown(f"### 📌 標的：{stock_id}")
+                        st.warning("目前無五檔掛單資料 (通常為盤後清盤時間，或該標的無交易)。")
                         st.markdown("---")
                         continue
                         
@@ -127,11 +131,13 @@ if auto_detect or manual_refresh:
                         'total_sell': total_sell
                     }
                     st.markdown("---")
+                elif res.status_code == 429:
+                    st.error(f"{stock_id} API 呼叫太頻繁被鎖了！請關閉自動更新，等待一分鐘後再試。")
                 else:
-                    st.error(f"{stock_id} API 呼叫失敗，請確認代碼或 API 額度。")
+                    st.error(f"{stock_id} API 呼叫失敗，請確認代碼。錯誤碼: {res.status_code}")
                     
             except Exception as e:
-                st.error(f"{stock_id} 連線異常：{e}")
+                st.error(f"{stock_id} 連線異常：請稍後再試。")
                 st.markdown("---")
 
     # ===== 自動更新迴圈控制 =====
