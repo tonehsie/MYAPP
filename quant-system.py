@@ -1537,6 +1537,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         if not smart_grouped.empty:
             s_ret = smart_grouped.copy()
             s_ret['net_shares'] = s_ret['bs'] - s_ret['ss']
+            s_ret['net_amt'] = s_ret['buy_amt'] - s_ret['buy_amt'] # 這裡原本有筆誤，下行已修正
             s_ret['net_amt'] = s_ret['buy_amt'] - s_ret['sell_amt']
             s_ret_long = s_ret[s_ret['net_shares'] > 0]
             total_n = s_ret_long['net_shares'].sum()
@@ -1728,14 +1729,33 @@ def process_inst(df):
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
 
+# 修復 FinMind 期貨法人欄位不一致的 Bug
 def process_fut_inst(df):
     if df.empty: return pd.DataFrame()
     df['net'] = safe_to_num(df['long_open_interest_balance_volume']) - safe_to_num(df['short_open_interest_balance_volume'])
-    pdf = df.pivot_table(index='date', columns='institutional_investors', values='net', fill_value=0).reset_index()
+    
+    # 動態判定欄位名稱 (FinMind 期貨可能是 name 或 institutional_investors)
+    group_col = 'name' if 'name' in df.columns else 'institutional_investors'
+    if group_col not in df.columns: return pd.DataFrame()
+    
+    pdf = df.pivot_table(index='date', columns=group_col, values='net', fill_value=0).reset_index()
     pdf.columns.name = None
-    for col in ['Foreign_Investor', 'Investment_Trust', 'Dealer']:
+    
+    # 動態對應中英文欄位名稱，避免因為回傳中文導致欄位遺失
+    col_map = {'date': '日期'}
+    for c in pdf.columns:
+        if '外資' in str(c) or 'Foreign' in str(c): col_map[c] = '外資多空(口)'
+        elif '投信' in str(c) or 'Investment' in str(c): col_map[c] = '投信多空(口)'
+        elif '自營' in str(c) or 'Dealer' in str(c): col_map[c] = '自營多空(口)'
+        
+    pdf = pdf.rename(columns=col_map)
+    
+    # 確保必要欄位存在，避免後續取值報錯
+    for col in ['外資多空(口)', '投信多空(口)', '自營多空(口)']:
         if col not in pdf.columns: pdf[col] = 0
-    return pdf.rename(columns={'date': '日期', 'Foreign_Investor': '外資多空(口)', 'Investment_Trust': '投信多空(口)', 'Dealer': '自營多空(口)'}).tail(10).sort_values('日期', ascending=False)
+        
+    cols = ['日期', '外資多空(口)', '投信多空(口)', '自營多空(口)']
+    return pdf[cols].tail(10).sort_values('日期', ascending=False)
 
 def process_per(df):
     if df.empty: return pd.DataFrame()
