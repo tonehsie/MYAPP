@@ -397,7 +397,15 @@ def safe_get_fubon(url):
 def scrape_director_v50(tid):
     dd, sv = {}, 0.0
     try:
-        headers = {"User-Agent": "Mozilla/5.0", "Cookie": "CLIENT_KEY=20260413;", "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={tid}"}
+        # 動態產生當天日期作為 Cookie，避免過期導致 Goodinfo 阻擋
+        tw_now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        cookie_date = tw_now.strftime('%Y%m%d')
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
+            "Cookie": f"CLIENT_KEY={cookie_date};", 
+            "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={tid}",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+        }
         r = GENERIC_SESSION.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers=headers, timeout=8)
         if r.status_code == 200:
             r.encoding = 'utf-8'
@@ -1321,7 +1329,6 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         dt_vol = df_day_trade['當沖總張數'].tolist()[:6]
         vol_recent = volumes_lots[-6:]
         dt_ratios = [d / v if v > 0 else 0 for d, v in zip(dt_vol, reversed(vol_recent))]
-        # 修正您的 V2 原始碼：原本的陣列比較會有錯誤，改為精準取得前兩個值
         if len(dt_ratios) >= 2 and dt_ratios[0] > 0.6 and dt_ratios[1] > 0.6:
             res['day_trade_warning'] = True
 
@@ -1369,7 +1376,7 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         if threshold <= 800: return row_dict.get('pct_800', 0)
         return row_dict.get('pct_1000', 0)
     
-    out = [] # 修正了您原本缺少中括號的錯誤
+    out = [] 
     for row in df_m.to_dict('records'):
         p = row.get('收盤價(元)', 0)
         if pd.isna(p) or p <= 0: continue
@@ -1377,17 +1384,14 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         total_lots = row.get('總張數', 0)
         safe_dead_ratio = max(0.0, min(99.9, cur_dead))
         
-        # 取得大戶真實比例
         ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
-        lp = get_pct(row, ct) # 保留原本精算門檻機制以維護精準度
+        lp = get_pct(row, ct) 
         
-        # 為了相容下游追蹤矩陣，需保留 C_Value 的計算
         cd = "-"
         if 0 < safe_dead_ratio < 100:
             cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
             cd = round(cv * 100, 2)
             
-        # 導入老手甜區判斷邏輯
         st_val = "籌碼渙散"
         if 40.0 <= lp <= 70.0:
             st_val = "波段甜區 (易吸量推升)"
@@ -1399,10 +1403,10 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         out.append({
             "日期": row['日期'], 
             "收盤價(元)": round(float(p), 2), 
-            "大戶精算門檻": f"系統判定 ({int(ct)}張)", # 相容原版保留
+            "大戶精算門檻": f"系統判定 ({int(ct)}張)",
             "大戶原持股(%)": round(lp, 2), 
             "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", 
-            "純淨活大戶C_Value(%)": cd, # 相容原版保留
+            "純淨活大戶C_Value(%)": cd,
             "實戰判定": st_val
         })
     return pd.DataFrame(out)
@@ -1412,7 +1416,7 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
 # ==========================================
 def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
-    out = [] # 修正缺少的宣告
+    out = [] 
     branch_grouped = dict(tuple(df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')))
     for d in actual_dates[:period_days]:
         if d not in branch_grouped: continue
@@ -1420,7 +1424,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
         
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
         
-        # 保留 V1 所需的火力與集中度計算 (供其他模組使用)
         buy_count = buy_branches['securities_trader'].nunique()
         sell_count = sell_branches['securities_trader'].nunique()
         diff_count = buy_count - sell_count
@@ -1432,7 +1435,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
         
-        # 新增 V2 的主力成交力 (Main Power) 計算
         daily_total_vol = df_d['buy'].sum() 
         main_power = 0
         if daily_total_vol > 0:
@@ -1441,8 +1443,7 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
             top_15_sell_vol = abs(g_net[g_net < 0].nsmallest(15).sum())
             main_power = (top_15_buy_vol - top_15_sell_vol) / daily_total_vol * 100
         
-        diag = [] # 修正缺少的宣告
-        # 綜合診斷判定
+        diag = [] 
         if firepower >= fire_thresh and concentration > 5: diag.append(f"大戶火力壓制 ({fire_thresh}倍↑)")
         elif firepower < 0.7 and diff_count > 50: diag.append("散戶進場 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: diag.append("籌碼極度發散 (熱門當沖雷區)")
@@ -1456,41 +1457,13 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
             "日期": d, 
             "活躍家數": active_count, 
             "買賣家數差": diff_count, 
-            "籌碼集中度(%)": round(concentration, 1), # 保留 V1
-            "買方火力(倍)": round(firepower, 2), # 保留 V1
-            "主力成交力(%)": round(main_power, 2), # 新增 V2
+            "籌碼集中度(%)": round(concentration, 1),
+            "買方火力(倍)": round(firepower, 2),
+            "主力成交力(%)": round(main_power, 2),
             "鷹眼診斷": " | ".join(diag) if diag else "中性換手"
         })
     return pd.DataFrame(out)
 
-# ==========================================
-# 【新增模組 4】微觀五檔防騙線介面
-# ==========================================
-def detect_orderbook_spoofing(order_book_tick, trade_tick):
-    """
-    未來即時串接擴充模組：用於破解盤中假牆與內外盤騙線
-    order_book_tick: 包含 bid_vol_1~5, ask_vol_1~5 
-    trade_tick: 包含最新成交價量與內外盤標記 (inside/outside)
-    """
-    # 1. 內外盤失衡判定
-    total_ask_vol = sum([order_book_tick[f'ask_vol_{i}'] for i in range(1, 6)])
-    total_bid_vol = sum([order_book_tick[f'bid_vol_{i}'] for i in range(1, 6)])
-    
-    # 2. 判定賣壓假牆：上方掛滿大單，但真實成交多在內盤
-    if total_ask_vol > total_bid_vol * 1.5:
-        if trade_tick['trade_type'] == 'inside':
-            return "短線偏空：賣方主動讓價，買盤被動承接"
-        elif trade_tick['cancel_rate_ask'] > 0.8:
-            return "誘空假牆：上方大單頻繁撤單，準備向上突圍"
-            
-    # 3. 判定買盤假牆：下方掛滿大單，但真實成交多在外盤
-    if total_bid_vol > total_ask_vol * 1.5:
-        if trade_tick['trade_type'] == 'outside':
-            return "短線偏多：買方主動吃價，賣盤被動成交"
-        elif trade_tick['cancel_rate_bid'] > 0.8:
-            return "誘多假牆：下方大單為虛假支撐，慎防破底"
-
-    return "結構正常"
 
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
@@ -2173,7 +2146,7 @@ if run_btn:
         
         # 取得當沖資料，並將順序提前給新的 V2 模組使用
         df_day_trade = optimize_memory(process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())))
-        df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()) # 若模組需要完整 raw
+        df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()) 
         
         # 套用升級的 V2 模組
         df_b_diff = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=15)
@@ -2235,7 +2208,6 @@ if run_btn:
         st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.4)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        # 套用升級的 V2 模組，並確保取得已處理的當沖資料
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -2757,7 +2729,7 @@ if run_btn:
             
             df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
             dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家差數據 (近 60 天)")
             dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
             
             df_tdcc_dump = df_s_wide.head(10).copy() if not df_s_wide.empty else pd.DataFrame()
