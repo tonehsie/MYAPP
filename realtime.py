@@ -4,14 +4,13 @@ from FinMind.data import DataLoader
 from datetime import datetime
 
 # ================= 頁面設定 =================
-st.set_page_config(page_title="五檔假牆與撤單監控系統", layout="wide")
-st.title("🎯 台股五檔假牆與撤單監控雷達")
-st.markdown("透過比對兩次快照的掛單量差異，找出可能的「假牆」與「高頻撤單」跡象。")
+st.set_page_config(page_title="最佳一檔撤單與大單監控系統", layout="wide")
+st.title("🎯 台股最佳一檔撤單監控雷達")
+st.markdown("由於 FinMind 即時 API 提供的是**最佳一檔（Best Bid/Ask）**的快照，本雷達針對「最逼近成交價」的買賣單量變化進行監控，捕捉最前線的撤單跡象。")
 
 # ================= 狀態管理 (Session State) =================
-# 用來儲存「上一次」的五檔資料，才能算出差額
-if "prev_b5_data" not in st.session_state:
-    st.session_state.prev_b5_data = None
+if "prev_tick_data" not in st.session_state:
+    st.session_state.prev_tick_data = None
 
 # ================= 側邊欄設定 =================
 st.sidebar.header("系統參數設定")
@@ -19,9 +18,9 @@ api_token = st.sidebar.text_input("請輸入 FinMind API Token (Sponsor專屬)",
 stock_id = st.sidebar.text_input("請輸入股票代碼", value="2330")
 
 # 判斷大單假牆的門檻 (張數)
-wall_threshold = st.sidebar.number_input("假牆過濾門檻 (單檔張數大於)", value=100)
+wall_threshold = st.sidebar.number_input("大單過濾門檻 (單檔張數大於)", value=100)
 
-refresh_btn = st.sidebar.button("🔄 手動更新即時五檔")
+refresh_btn = st.sidebar.button("🔄 手動更新即時快照")
 
 # ================= 主程式邏輯 =================
 if refresh_btn:
@@ -33,74 +32,69 @@ if refresh_btn:
         
         with st.spinner('正在抓取即時資料...'):
             try:
-                # 抓取即時五檔快照
-                df_b5 = dl.taiwan_stock_best_five_snapshot(stock_id=stock_id)
+                # 呼叫正確的 FinMind API 函數 (即時快照)
+                df_tick = dl.taiwan_stock_tick_snapshot(stock_id=stock_id)
                 
-                if df_b5.empty:
+                if df_tick.empty:
                     st.error("目前無資料，請確認是否為盤中時間，或 API Token 權限是否正確。")
                 else:
-                    # 展開資料 (FinMind 回傳通常會將五檔包在 list 中)
-                    # 這裡抓取第一筆 (最新的快照)
-                    latest_data = df_b5.iloc[0]
-                    update_time = latest_data.get('Time', datetime.now().strftime("%H:%M:%S"))
+                    # 抓取第一筆 (最新的快照)
+                    latest_data = df_tick.iloc[0]
+                    update_time = latest_data.get('date', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                     
                     st.subheader(f"代碼：{stock_id} | 更新時間：{update_time}")
+                    st.markdown(f"**最新成交價：** `{latest_data.get('close', 'N/A')}`")
                     
-                    # 整理成易讀的 DataFrame
-                    b5_table = pd.DataFrame({
-                        "賣出價 (外盤)": latest_data['best_five_sell_price'],
-                        "賣出量 (張)": latest_data['best_five_sell_volume'],
-                        "買進價 (內盤)": latest_data['best_five_buy_price'],
-                        "買進量 (張)": latest_data['best_five_buy_volume']
-                    })
-                    
-                    # 排版：將賣價反轉，讓最低賣價在最下方，符合看盤軟體習慣
-                    b5_table = b5_table.sort_index(ascending=False).reset_index(drop=True)
+                    # 取得最佳一檔買賣價量
+                    curr_buy_vol = latest_data.get('buy_volume', 0)
+                    curr_sell_vol = latest_data.get('sell_volume', 0)
+                    curr_buy_price = latest_data.get('buy_price', 0)
+                    curr_sell_price = latest_data.get('sell_price', 0)
                     
                     # ================= 假牆與撤單分析邏輯 =================
-                    st.markdown("### 🔍 檔位變化與假牆分析")
+                    st.markdown("### 🔍 最佳買賣檔位變化分析")
                     
-                    if st.session_state.prev_b5_data is not None:
-                        prev_data = st.session_state.prev_b5_data
-                        
-                        # 比較前一次與這一次的總掛單量
-                        prev_total_buy = sum(prev_data['best_five_buy_volume'])
-                        curr_total_buy = sum(latest_data['best_five_buy_volume'])
-                        prev_total_sell = sum(prev_data['best_five_sell_volume'])
-                        curr_total_sell = sum(latest_data['best_five_sell_volume'])
+                    if st.session_state.prev_tick_data is not None:
+                        prev_data = st.session_state.prev_tick_data
+                        prev_buy_vol = prev_data.get('buy_volume', 0)
+                        prev_sell_vol = prev_data.get('sell_volume', 0)
                         
                         col1, col2 = st.columns(2)
+                        
+                        # 買方分析
                         with col1:
-                            buy_diff = curr_total_buy - prev_total_buy
-                            st.metric(label="五檔總買量變化 (潛在撤單/補單)", value=f"{curr_total_buy} 張", delta=f"{buy_diff} 張")
+                            buy_diff = curr_buy_vol - prev_buy_vol
+                            st.metric(
+                                label=f"委買大門 (價: {curr_buy_price})", 
+                                value=f"{int(curr_buy_vol)} 張", 
+                                delta=int(buy_diff)
+                            )
+                            if curr_buy_vol >= wall_threshold:
+                                st.info("🛡️ 買一出現防守大單 (潛在買方牆)")
                             if buy_diff < -wall_threshold:
-                                st.error("⚠️ 警告：下方買盤出現大額撤單，支撐可能為假！")
+                                st.error("⚠️ 警告：買單出現大額撤銷，支撐可能為假！")
                                 
+                        # 賣方分析
                         with col2:
-                            sell_diff = curr_total_sell - prev_total_sell
-                            st.metric(label="五檔總賣量變化 (潛在撤單/補單)", value=f"{curr_total_sell} 張", delta=f"{sell_diff} 張", delta_color="inverse")
+                            sell_diff = curr_sell_vol - prev_sell_vol
+                            st.metric(
+                                label=f"委賣大門 (價: {curr_sell_price})", 
+                                value=f"{int(curr_sell_vol)} 張", 
+                                delta=int(sell_diff), 
+                                delta_color="inverse"
+                            )
+                            if curr_sell_vol >= wall_threshold:
+                                st.info("🧱 賣一出現壓力大單 (潛在賣方牆)")
                             if sell_diff < -wall_threshold:
-                                st.success("🚀 提示：上方賣盤出現大額撤單，壓力可能為假！")
+                                st.success("🚀 提示：賣單出現大額撤銷，壓力可能為假！")
                     else:
                         st.info("這是第一次抓取，請再次點擊「更新」來進行量能差異比對。")
+                        col1, col2 = st.columns(2)
+                        col1.metric(label=f"委買量 (價: {curr_buy_price})", value=f"{int(curr_buy_vol)} 張")
+                        col2.metric(label=f"委賣量 (價: {curr_sell_price})", value=f"{int(curr_sell_vol)} 張")
                     
                     # 記錄本次資料供下次比對
-                    st.session_state.prev_b5_data = latest_data
-                    
-                    # ================= 顯示五檔明細 =================
-                    st.markdown("### 📊 五檔明細快照")
-                    
-                    # 針對大單(假牆)進行高亮標示
-                    def highlight_walls(s):
-                        if isinstance(s, (int, float)) and s >= wall_threshold:
-                            return 'background-color: #ffcccc; color: black; font-weight: bold'
-                        return ''
-                    
-                    styled_table = b5_table.style.applymap(
-                        highlight_walls, subset=['賣出量 (張)', '買進量 (張)']
-                    )
-                    
-                    st.dataframe(styled_table, use_container_width=True)
+                    st.session_state.prev_tick_data = latest_data
                     
             except Exception as e:
                 st.error(f"執行發生錯誤，錯誤訊息：{e}")
