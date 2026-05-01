@@ -199,10 +199,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.4 終極版)")
+st.title("全息量化系統 (V71.12.5 終極純淨版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.4：熱力圖支援純前端無刷新切換全覽，並強化所有數據的空值容錯。{usage_text}")
+st.caption(f"V71.12.5：升級 Goodinfo 擬真防擋機制，強化資金流分析。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -212,7 +212,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.4 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12.5 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -397,14 +397,16 @@ def safe_get_fubon(url):
 def scrape_director_v50(tid):
     dd, sv = {}, 0.0
     try:
-        # 動態產生當天日期作為 Cookie，避免過期導致 Goodinfo 阻擋
-        tw_now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
-        cookie_date = tw_now.strftime('%Y%m%d')
+        # 使用最完整的瀏覽器偽裝 Header，突破 Goodinfo 403 阻擋 (去除易過期的 Cookie)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", 
-            "Cookie": f"CLIENT_KEY={cookie_date};", 
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
             "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={tid}",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Upgrade-Insecure-Requests": "1"
         }
         r = GENERIC_SESSION.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers=headers, timeout=8)
         if r.status_code == 200:
@@ -1306,9 +1308,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         st.info("💡 提示：這通常是因為該檔股票的特定資料表格式突變，或含有無法解析的空值。系統其他模組不受影響。")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-# ==========================================
-# 【新增/替換模組 1】監管套利預警模組 (V2)
-# ==========================================
 def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
     if df_price.empty or len(df_price) < 6: return None
     df_asc = df_price.sort_values('日期', ascending=True).reset_index(drop=True)
@@ -1317,13 +1316,12 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
     volumes_lots = df_asc['成交量(張)'].tolist()
 
     res = {
-        'limit_6d': closes[-6] * 1.32 if len(closes) >= 6 else None, # 6日漲幅32%紅線
+        'limit_6d': closes[-6] * 1.32 if len(closes) >= 6 else None, 
         'limit_amp': min(lows[-5:]) * 1.25 if len(lows) >= 5 else None,
         'limit_30d': closes[-30] * 2.0 if len(closes) >= 30 else None,
         'limit_60d': closes[-60] * 2.3 if len(closes) >= 60 else None,
     }
 
-    # 加入當沖過熱紅線預測 (連續兩日大於60%)
     res['day_trade_warning'] = False
     if not df_day_trade.empty and len(df_day_trade) >= 2:
         dt_vol = df_day_trade['當沖總張數'].tolist()[:6]
@@ -1338,7 +1336,6 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         res['current_5d_turnover'] = (recent_5d_vol_lots / total_lots) * 100
         res['max_vol_6d'] = max_volume_tomorrow_lots
         res['max_vol_1d'] = total_lots * 0.1
-        # 週轉率極端過高紅線 (10%以上)
         res['turnover_warning'] = res['current_5d_turnover'] > 10.0 
     else:
         res['current_5d_turnover'] = 0
@@ -1347,9 +1344,6 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         res['turnover_warning'] = False
     return res
 
-# ==========================================
-# 【新增/替換模組 2】籌碼甜區與極端過濾模組 (V2)
-# ==========================================
 def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
     df_s, df_p = df_share_wide.copy(), df_price.copy()
@@ -1411,9 +1405,6 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         })
     return pd.DataFrame(out)
 
-# ==========================================
-# 【新增/替換模組 3】資金接力與主力成交力模組 (V2)
-# ==========================================
 def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
     out = [] 
@@ -1463,7 +1454,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
             "鷹眼診斷": " | ".join(diag) if diag else "中性換手"
         })
     return pd.DataFrame(out)
-
 
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
@@ -2055,7 +2045,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.12.4 終極解鎖版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.12.5 終極解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2144,11 +2134,9 @@ if run_btn:
         net_45 = get_core_period_net(df_b_raw, dates[:45] if len(dates)>=45 else dates, core_branch_names)
         net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
-        # 取得當沖資料，並將順序提前給新的 V2 模組使用
         df_day_trade = optimize_memory(process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())))
         df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()) 
         
-        # 套用升級的 V2 模組
         df_b_diff = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=15)
         df_b_diff_60 = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=60)
         
@@ -2205,7 +2193,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.4)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.5)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2588,7 +2576,7 @@ if run_btn:
             report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
             
         if is_double_counting:
-            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
+            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的數據相加而產生「買盤超強」的過度樂觀錯覺，需提提防假外資隔日沖。"
         elif is_margin_trap:
             report_md += "<span style='color:#d32f2f;'>主力雖大買，但融資同步異常暴增。</span><br>深度解析：這通常是高槓桿的「假主力」或當沖客利用融資鎖碼。這類資金極端不穩定，只要明日開盤不如預期，立刻會引發融資斷頭的多殺多連鎖反應，強烈建議避開。"
         elif today_smart_net > 100 and today_diff_cnt <= -10:
@@ -2686,7 +2674,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.12.4 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.12.5 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2729,7 +2717,7 @@ if run_btn:
             
             df_price_dump = df_price.head(60).copy() if not df_price.empty else pd.DataFrame()
             dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
             dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
             
             df_tdcc_dump = df_s_wide.head(10).copy() if not df_s_wide.empty else pd.DataFrame()
@@ -2737,8 +2725,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.12.4 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.12.5 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.12.4 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
+st.caption("V71.12.5 備註：熱力圖支援純前端無刷新切換，修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎，並修復 Goodinfo 連線模組。")
