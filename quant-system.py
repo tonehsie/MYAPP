@@ -159,10 +159,16 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-footprint_stat_days = st.sidebar.select_slider("買賣超排行統計天數", options=[3, 5, 10, 20, 45, 60, 90, 120], value=10 if is_right_side else 45)
+# 【修正】：依據要求改為 Select Slider 拉 BAR，選項為 5, 10, 30, 45, 60, 90, 120
+footprint_stat_days = st.sidebar.select_slider(
+    "買賣超排行統計天數", 
+    options=[5, 10, 30, 45, 60, 90, 120], 
+    value=10 if is_right_side else 45
+)
 
-# 【修正】：依據左右側動能自動切換熱力圖顯示天數 (右側15天，左側45天)
-footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 3, 90, 15 if is_right_side else 45, 1)
+# 【修正】：透過字典將設定天數直接映射到指定的顯示天數
+display_map = {5: 20, 10: 20, 30: 45, 45: 60, 60: 60, 90: 90, 120: 120}
+footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 5, 120, display_map[footprint_stat_days], 1)
 
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
@@ -206,10 +212,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.5 終極版)")
+st.title("全息量化系統 (V71.12.6 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.5：已修復熱力圖與戰略連動邏輯、自動摺疊多餘介面。{usage_text}")
+st.caption(f"V71.12.6：已完美修復熱力圖與戰略連動邏輯、導入自訂級距選單。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -219,7 +225,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.5 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12.6 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -812,21 +818,17 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
 
     html_parts = ["""
     <style>
-    /* 預設狀態：隱藏雜訊 */
     .heatmap-wrapper .noise-cell { background-color: transparent !important; }
     .heatmap-wrapper .noise-cell span { display: none; }
     
-    /* 勾選狀態：顯示雜訊與 0 */
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { 
         display: inline; 
         color: var(--txt-color) !important; 
         text-shadow: 1px 1px 2px rgba(0,0,0,0.6); 
     }
-    /* 專門消除 0 的陰影，讓畫面更乾淨 */
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
 
-    /* 開關按鈕的美化 */
     .heatmap-toggle-label {
         display: inline-block; margin-bottom: 12px; padding: 6px 12px; 
         background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc;
@@ -2083,7 +2085,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.12.5 終極解鎖版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.12.6 終極解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2172,11 +2174,9 @@ if run_btn:
         net_45 = get_core_period_net(df_b_raw, dates[:45] if len(dates)>=45 else dates, core_branch_names)
         net_60 = get_core_period_net(df_b_raw, dates[:60] if len(dates)>=60 else dates, core_branch_names)
         
-        # 取得當沖資料，並將順序提前給新的 V2 模組使用
         df_day_trade = optimize_memory(process_day_trading(ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())))
-        df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame()) # 若模組需要完整 raw
+        df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())
         
-        # 套用升級的 V2 模組
         df_b_diff = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=15)
         df_b_diff_60 = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=60)
         
@@ -2233,7 +2233,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.5)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.6)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         # 套用升級的 V2 模組，並確保取得已處理的當沖資料
@@ -2741,7 +2741,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.12.5 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.12.6 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2792,8 +2792,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.12.5 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.12.6 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.12.5 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
+st.caption("V71.12.6 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
