@@ -159,17 +159,14 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-# 【修正】：依據要求改為 Select Slider 拉 BAR，選項為 5, 10, 30, 45, 60, 90, 120
 footprint_stat_days = st.sidebar.select_slider(
     "買賣超排行統計天數", 
     options=[5, 10, 30, 45, 60, 90, 120], 
     value=10 if is_right_side else 45
 )
 
-# 【修正】：透過字典將設定天數直接映射到指定的顯示天數
 display_map = {5: 20, 10: 20, 30: 45, 45: 60, 60: 60, 90: 90, 120: 120}
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 5, 120, display_map[footprint_stat_days], 1)
-
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
 st.sidebar.divider()
@@ -212,10 +209,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.6 終極版)")
+st.title("全息量化系統 (V71.12.7 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.6：已完美修復熱力圖與戰略連動邏輯、導入自訂級距選單。{usage_text}")
+st.caption(f"V71.12.7：排行榜與熱力圖完美一體化，大幅提升實戰判讀效率。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -225,7 +222,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.6 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V71.12.7 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -465,7 +462,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手手動)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -789,7 +786,7 @@ def process_price(df):
     cols_to_keep = ['日期','成交量(張)','開盤價(元)','最高價(元)','最低價(元)','收盤價(元)','漲跌(元)','斷頭價(0.78)']
     return df_out[[c for c in cols_to_keep if c in df_out.columns]].sort_values('日期', ascending=False)
 
-def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_n, noise_threshold):
+def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
     if df_raw.empty or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
         return
@@ -800,9 +797,8 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
 
     top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
     top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
-    target_traders = top_b + top_s
     
-    if not target_traders:
+    if not top_b and not top_s:
         st.warning("無符合條件的活躍分點。")
         return
 
@@ -811,86 +807,99 @@ def render_footprint_heatmap(df_raw, display_dates, rank_dates, intel_tags, top_
     p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
     p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
     p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
+    
+    target_traders = top_b + top_s
     p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
 
     max_val = p.abs().max().max()
     if max_val == 0: max_val = 1
 
+    fp_dict = {}
+    if not df_fingerprint.empty:
+        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
+
     html_parts = ["""
     <style>
     .heatmap-wrapper .noise-cell { background-color: transparent !important; }
     .heatmap-wrapper .noise-cell span { display: none; }
-    
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
-    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { 
-        display: inline; 
-        color: var(--txt-color) !important; 
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.6); 
-    }
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { display: inline; color: var(--txt-color) !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
     #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
-
-    .heatmap-toggle-label {
-        display: inline-block; margin-bottom: 12px; padding: 6px 12px; 
-        background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc;
-        cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none;
-    }
-    #heatmap-toggle:checked + .heatmap-toggle-label {
-        background-color: #e3f2fd; border-color: #90caf9;
-    }
+    .heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
+    #heatmap-toggle:checked + .heatmap-toggle-label { background-color: #e3f2fd; border-color: #90caf9; }
     </style>
-    
     <input type="checkbox" id="heatmap-toggle" style="display: none;">
     <label for="heatmap-toggle" class="heatmap-toggle-label">👁️ 切換顯示：所有隱藏數值 (含 0 與雜訊)</label>
-    
     <div class='full-table-container heatmap-wrapper'><table><thead><tr>
     """]
+    
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
-    html_parts.append("<th style='min-width: 100px; position: sticky; left: 140px; z-index: 6;'>標籤</th>")
+    html_parts.append("<th style='min-width: 90px;'>標籤</th>")
+    html_parts.append("<th style='min-width: 80px;'>黏著度</th>")
+    html_parts.append("<th style='min-width: 90px;'>囤/出貨率</th>")
+    html_parts.append("<th style='min-width: 90px;'>區間累計</th>")
     for d in display_dates:
         html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px;'>{d[5:]}</th>")
     html_parts.append("</tr></thead><tbody>")
 
-    for trader in target_traders:
-        html_parts.append("<tr>")
-        tag = intel_tags.get(trader, "路人雜訊")
-        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold;'>{trader}</td>")
-        html_parts.append(f"<td style='position: sticky; left: 140px; background-color: #f8f9fa; z-index: 4;'>{tag}</td>")
+    def build_rows(traders, is_sell_side):
+        if not traders: return
+        
+        sec_title = "🔴 賣超主力陣營" if is_sell_side else "🟢 買超主力陣營"
+        sec_color = "#f44336" if is_sell_side else "#4caf50"
+        html_parts.append(f"<tr><td colspan='{5 + len(display_dates)}' style='background-color: #f1f3f5; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 2px;'>{sec_title}</td></tr>")
 
-        for d in display_dates:
-            val = p.at[trader, d]
-            is_noise = abs(val) < noise_threshold
+        for trader in traders:
+            html_parts.append("<tr>")
+            tag = intel_tags.get(trader, "路人雜訊")
             
-            alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
+            st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
+            hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
+            total_val = rank_sum.get(trader, 0)
             
-            if val > 0:
-                bg = f"rgba(229, 57, 53, {alpha:.2f})"
-                txt = f"+{val}"
-                txt_color = "#fff"
-                zero_class = ""
-            elif val < 0:
-                bg = f"rgba(67, 160, 71, {alpha:.2f})"
-                txt = str(val)
-                txt_color = "#fff"
-                zero_class = ""
-            else:
-                bg = "transparent"
-                txt = "0"
-                txt_color = "#aaa"
-                zero_class = "val-zero"
-                is_noise = True 
-
-            cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
+            total_str = f"<span style='color:#d32f2f; font-weight:bold;'>+{total_val}</span>" if total_val > 0 else f"<span style='color:#2e7d32; font-weight:bold;'>{total_val}</span>"
             
-            cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; "
-            if not is_noise:
-                cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
-            else:
-                cell_style += "background-color: transparent;"
+            html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold;'>{trader}</td>")
+            html_parts.append(f"<td style='text-align: center;'>{tag}</td>")
+            html_parts.append(f"<td style='text-align: right;'>{st_val}%</td>")
+            html_parts.append(f"<td style='text-align: right;'>{hr_val}%</td>")
+            html_parts.append(f"<td style='text-align: right; background-color: #fffde7;'>{total_str}</td>")
 
-            tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
-            html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
+            for d in display_dates:
+                val = p.at[trader, d]
+                is_noise = abs(val) < noise_threshold
+                alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
+                
+                if val > 0:
+                    bg = f"rgba(229, 57, 53, {alpha:.2f})"
+                    txt = f"+{val}"
+                    txt_color = "#fff"
+                    zero_class = ""
+                elif val < 0:
+                    bg = f"rgba(67, 160, 71, {alpha:.2f})"
+                    txt = str(val)
+                    txt_color = "#fff"
+                    zero_class = ""
+                else:
+                    bg = "transparent"
+                    txt = "0"
+                    txt_color = "#aaa"
+                    zero_class = "val-zero"
+                    is_noise = True 
 
-        html_parts.append("</tr>")
+                cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
+                cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; "
+                if not is_noise:
+                    cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
+                else:
+                    cell_style += "background-color: transparent;"
+
+                tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
+                html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
+            html_parts.append("</tr>")
+
+    build_rows(top_b, False)
+    build_rows(top_s, True)
     
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
@@ -1066,55 +1075,6 @@ def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
         
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
-
-
-def process_footprint(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n):
-    if df_raw.empty or not display_dates or not rank_dates: return pd.DataFrame(), pd.DataFrame()
-    
-    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
-    df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
-    rank_sum_shares = df_rank.groupby('securities_trader')['net_shares'].sum()
-    rank_sum = (rank_sum_shares / 1000).round().astype(int)
-    
-    top_b_names = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
-    top_s_names = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
-    
-    df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
-    if df_disp.empty: return pd.DataFrame(), pd.DataFrame()
-    
-    df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
-    p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
-    p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
-    p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
-    p = p.reindex(columns=display_dates, fill_value=0)
-    
-    fp_dict = {}
-    if not df_fingerprint.empty:
-        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
-    
-    def build_df(trader_list, is_sell_side=False):
-        out = []
-        for trader in trader_list:
-            st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
-            hr_name = "出貨率(%)" if is_sell_side else "囤貨率(%)"
-            hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
-            total_val = rank_sum.get(trader, 0)
-            
-            row_dict = {
-                "分點名稱": trader, 
-                "標籤": intel_tags.get(trader, "路人雜訊"),
-                "黏著度(%)": st_val, 
-                hr_name: hr_val,
-                f"區間累計(張)": f"+{total_val}" if total_val > 0 else str(total_val)
-            }
-            
-            for i, d in enumerate(display_dates):
-                v = p.at[trader, d] if trader in p.index and d in p.columns else 0
-                row_dict[f"T-{i}" if i > 0 else "今日(T)"] = f"+{v}" if v > 0 else str(v)
-            out.append(row_dict)
-        return pd.DataFrame(out)
-
-    return build_df(top_b_names, False), build_df(top_s_names, True)
 
 def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, stick_thresh, global_days):
     try:
@@ -1315,9 +1275,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         st.info("💡 提示：這通常是因為該檔股票的特定資料表格式突變，或含有無法解析的空值。系統其他模組不受影響。")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-# ==========================================
-# 【新增/替換模組 1】監管套利預警模組 (V2)
-# ==========================================
 def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
     if df_price.empty or len(df_price) < 6: return None
     df_asc = df_price.sort_values('日期', ascending=True).reset_index(drop=True)
@@ -1326,19 +1283,17 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
     volumes_lots = df_asc['成交量(張)'].tolist()
 
     res = {
-        'limit_6d': closes[-6] * 1.32 if len(closes) >= 6 else None, # 6日漲幅32%紅線
+        'limit_6d': closes[-6] * 1.32 if len(closes) >= 6 else None,
         'limit_amp': min(lows[-5:]) * 1.25 if len(lows) >= 5 else None,
         'limit_30d': closes[-30] * 2.0 if len(closes) >= 30 else None,
         'limit_60d': closes[-60] * 2.3 if len(closes) >= 60 else None,
     }
 
-    # 加入當沖過熱紅線預測 (連續兩日大於60%)
     res['day_trade_warning'] = False
     if not df_day_trade.empty and len(df_day_trade) >= 2:
         dt_vol = df_day_trade['當沖總張數'].tolist()[:6]
         vol_recent = volumes_lots[-6:]
         dt_ratios = [d / v if v > 0 else 0 for d, v in zip(dt_vol, reversed(vol_recent))]
-        # 修正您的 V2 原始碼：原本的陣列比較會有錯誤，改為精準取得前兩個值
         if len(dt_ratios) >= 2 and dt_ratios[0] > 0.6 and dt_ratios[1] > 0.6:
             res['day_trade_warning'] = True
 
@@ -1348,7 +1303,6 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         res['current_5d_turnover'] = (recent_5d_vol_lots / total_lots) * 100
         res['max_vol_6d'] = max_volume_tomorrow_lots
         res['max_vol_1d'] = total_lots * 0.1
-        # 週轉率極端過高紅線 (10%以上)
         res['turnover_warning'] = res['current_5d_turnover'] > 10.0 
     else:
         res['current_5d_turnover'] = 0
@@ -1357,9 +1311,6 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         res['turnover_warning'] = False
     return res
 
-# ==========================================
-# 【新增/替換模組 2】籌碼甜區與極端過濾模組 (V2)
-# ==========================================
 def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
     df_s, df_p = df_share_wide.copy(), df_price.copy()
@@ -1394,17 +1345,14 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         total_lots = row.get('總張數', 0)
         safe_dead_ratio = max(0.0, min(99.9, cur_dead))
         
-        # 取得大戶真實比例
         ct = get_smart_threshold(p, total_lots, safe_dead_ratio)
-        lp = get_pct(row, ct) # 保留原本精算門檻機制以維護精準度
+        lp = get_pct(row, ct) 
         
-        # 為了相容下游追蹤矩陣，需保留 C_Value 的計算
         cd = "-"
         if 0 < safe_dead_ratio < 100:
             cv = max(0, (lp - safe_dead_ratio) / (100.0 - safe_dead_ratio))
             cd = round(cv * 100, 2)
             
-        # 導入老手甜區判斷邏輯
         st_val = "籌碼渙散"
         if 40.0 <= lp <= 70.0:
             st_val = "波段甜區 (易吸量推升)"
@@ -1416,17 +1364,14 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
         out.append({
             "日期": row['日期'], 
             "收盤價(元)": round(float(p), 2), 
-            "大戶精算門檻": f"系統判定 ({int(ct)}張)", # 相容原版保留
+            "大戶精算門檻": f"系統判定 ({int(ct)}張)",
             "大戶原持股(%)": round(lp, 2), 
             "董監死籌碼(%)": f"{float(safe_dead_ratio):.2f}% ({cl})" if safe_dead_ratio > 0 else "-", 
-            "純淨活大戶C_Value(%)": cd, # 相容原版保留
+            "純淨活大戶C_Value(%)": cd,
             "實戰判定": st_val
         })
     return pd.DataFrame(out)
 
-# ==========================================
-# 【新增/替換模組 3】資金接力與主力成交力模組 (V2)
-# ==========================================
 def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
     if df_raw.empty or not actual_dates: return pd.DataFrame()
     out = [] 
@@ -1437,7 +1382,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
         
         buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
         
-        # 保留 V1 所需的火力與集中度計算 (供其他模組使用)
         buy_count = buy_branches['securities_trader'].nunique()
         sell_count = sell_branches['securities_trader'].nunique()
         diff_count = buy_count - sell_count
@@ -1449,7 +1393,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
         avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
         firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
         
-        # 新增 V2 的主力成交力 (Main Power) 計算
         daily_total_vol = df_d['buy'].sum() 
         main_power = 0
         if daily_total_vol > 0:
@@ -1459,7 +1402,6 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
             main_power = (top_15_buy_vol - top_15_sell_vol) / daily_total_vol * 100
         
         diag = []
-        # 綜合診斷判定
         if firepower >= fire_thresh and concentration > 5: diag.append(f"大戶火力壓制 ({fire_thresh}倍↑)")
         elif firepower < 0.7 and diff_count > 50: diag.append("散戶進場 (主力倒貨)")
         elif active_count > 500 and firepower < 1.0: diag.append("籌碼極度發散 (熱門當沖雷區)")
@@ -1473,9 +1415,9 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
             "日期": d, 
             "活躍家數": active_count, 
             "買賣家數差": diff_count, 
-            "籌碼集中度(%)": round(concentration, 1), # 保留 V1
-            "買方火力(倍)": round(firepower, 2), # 保留 V1
-            "主力成交力(%)": round(main_power, 2), # 新增 V2
+            "籌碼集中度(%)": round(concentration, 1), 
+            "買方火力(倍)": round(firepower, 2), 
+            "主力成交力(%)": round(main_power, 2), 
             "鷹眼診斷": " | ".join(diag) if diag else "中性換手"
         })
     return pd.DataFrame(out)
@@ -2077,6 +2019,124 @@ def format_to_csv_string(df, title):
     if df is None or df.empty: return header + "此區塊查無數據或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
+def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
+    if df_raw.empty or not display_dates or not rank_dates:
+        st.warning("查無足夠資料產生熱力圖。")
+        return
+
+    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
+    df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
+    rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+
+    top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
+    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
+    
+    if not top_b and not top_s:
+        st.warning("無符合條件的活躍分點。")
+        return
+
+    df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
+    df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
+    p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
+    p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
+    p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
+    
+    target_traders = top_b + top_s
+    p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
+
+    max_val = p.abs().max().max()
+    if max_val == 0: max_val = 1
+
+    fp_dict = {}
+    if not df_fingerprint.empty:
+        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
+
+    html_parts = ["""
+    <style>
+    .heatmap-wrapper .noise-cell { background-color: transparent !important; }
+    .heatmap-wrapper .noise-cell span { display: none; }
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { display: inline; color: var(--txt-color) !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
+    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
+    .heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
+    #heatmap-toggle:checked + .heatmap-toggle-label { background-color: #e3f2fd; border-color: #90caf9; }
+    </style>
+    <input type="checkbox" id="heatmap-toggle" style="display: none;">
+    <label for="heatmap-toggle" class="heatmap-toggle-label">👁️ 切換顯示：所有隱藏數值 (含 0 與雜訊)</label>
+    <div class='full-table-container heatmap-wrapper'><table><thead><tr>
+    """]
+    
+    html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
+    html_parts.append("<th style='min-width: 90px;'>標籤</th>")
+    html_parts.append("<th style='min-width: 80px;'>黏著度</th>")
+    html_parts.append("<th style='min-width: 90px;'>囤/出貨率</th>")
+    html_parts.append("<th style='min-width: 90px;'>區間累計</th>")
+    for d in display_dates:
+        html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px;'>{d[5:]}</th>")
+    html_parts.append("</tr></thead><tbody>")
+
+    def build_rows(traders, is_sell_side):
+        if not traders: return
+        
+        sec_title = "🔴 賣超主力陣營" if is_sell_side else "🟢 買超主力陣營"
+        sec_color = "#f44336" if is_sell_side else "#4caf50"
+        html_parts.append(f"<tr><td colspan='{5 + len(display_dates)}' style='background-color: #f1f3f5; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 2px;'>{sec_title}</td></tr>")
+
+        for trader in traders:
+            html_parts.append("<tr>")
+            tag = intel_tags.get(trader, "路人雜訊")
+            
+            st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
+            hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
+            total_val = rank_sum.get(trader, 0)
+            
+            total_str = f"<span style='color:#d32f2f; font-weight:bold;'>+{total_val}</span>" if total_val > 0 else f"<span style='color:#2e7d32; font-weight:bold;'>{total_val}</span>"
+            
+            html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold;'>{trader}</td>")
+            html_parts.append(f"<td style='text-align: center;'>{tag}</td>")
+            html_parts.append(f"<td style='text-align: right;'>{st_val}%</td>")
+            html_parts.append(f"<td style='text-align: right;'>{hr_val}%</td>")
+            html_parts.append(f"<td style='text-align: right; background-color: #fffde7;'>{total_str}</td>")
+
+            for d in display_dates:
+                val = p.at[trader, d]
+                is_noise = abs(val) < noise_threshold
+                alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
+                
+                if val > 0:
+                    bg = f"rgba(229, 57, 53, {alpha:.2f})"
+                    txt = f"+{val}"
+                    txt_color = "#fff"
+                    zero_class = ""
+                elif val < 0:
+                    bg = f"rgba(67, 160, 71, {alpha:.2f})"
+                    txt = str(val)
+                    txt_color = "#fff"
+                    zero_class = ""
+                else:
+                    bg = "transparent"
+                    txt = "0"
+                    txt_color = "#aaa"
+                    zero_class = "val-zero"
+                    is_noise = True 
+
+                cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
+                cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; "
+                if not is_noise:
+                    cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
+                else:
+                    cell_style += "background-color: transparent;"
+
+                tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
+                html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
+            html_parts.append("</tr>")
+
+    build_rows(top_b, False)
+    build_rows(top_s, True)
+    
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
 # ==========================================
 # 執行主引擎
 # ==========================================
@@ -2085,7 +2145,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.12.6 終極解鎖版決策引擎..."):
+    with st.spinner(f"正在啟動 V71.12.7 終極解鎖版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2233,10 +2293,9 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.6)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.7)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
-        # 套用升級的 V2 模組，並確保取得已處理的當沖資料
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
         
         bias = ((curr_price - pure_vwap) / pure_vwap * 100) if pure_vwap > 0 else 0
@@ -2680,17 +2739,19 @@ if run_btn:
         st.caption(f"備註：所有數據皆已透過 V71.12 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
+        
+        stat_days = footprint_stat_days if len(dates) >= footprint_stat_days else len(dates)
+        if stat_days == 0: stat_days = 1
+        
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
         
-        st.markdown("<div class='category-title'>01. 主力分點全息透視區 (依戰略天數排檔)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='category-title'>01. 終極全息透視區 (依戰略天數動態排檔)</div>", unsafe_allow_html=True)
         
-        # 僅熱力圖預設展開 (expanded=True)
-        with st.expander(f"【視覺系主菜】 {actual_foot_days}天主力戰鬥熱力圖 (Heatmap)", expanded=True):
-            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已套用動態過濾：預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
-            render_footprint_heatmap(df_b_raw, display_dates, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, tags, footprint_rows, dynamic_noise_threshold)
+        with st.expander(f"【終極全息熱力圖】 戰略排行 {stat_days} 天 ✕ 戰鬥足跡 {actual_foot_days} 天", expanded=True):
+            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已完美整合「動向排行」與「熱力圖足跡」，一表看懂大戶戰略！\n預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
+            render_ultimate_heatmap(df_b_raw, display_dates, dates[:stat_days], tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
             
-        # 其他模組皆預設摺疊 (expanded=False)
         with st.expander(f"【戰略系海鮮】 {actual_foot_days}天大戶建倉成本區間分佈 (Volume Profile)", expanded=False):
             st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
             render_volume_profile(df_b_raw, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, footprint_rows)
@@ -2698,16 +2759,6 @@ if run_btn:
         with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
-
-        st.info(f"以下買賣超排行已切換至您在側邊欄指定的「{footprint_stat_days}日」戰略視角。")
-        
-        stat_days = footprint_stat_days if len(dates) >= footprint_stat_days else len(dates)
-        if stat_days == 0: stat_days = 1
-        
-        df_fb_main, df_fs_main = process_footprint(df_b_raw, display_dates, dates[:stat_days], tags, df_debug_tags, footprint_rows)
-        with st.expander(f"【近 {stat_days} 日動向排行】 買賣超前 {footprint_rows} 大 (顯示 {actual_foot_days} 日足跡明細)", expanded=False):
-            render_clean_html_table(df_fb_main, f"近 {stat_days} 日買超前 {footprint_rows} 大")
-            render_clean_html_table(df_fs_main, f"近 {stat_days} 日賣超前 {footprint_rows} 大")
 
         with st.expander(f"主力分點 - 今日 ({dates[0]})", expanded=False):
             render_clean_html_table(df_b_today)
@@ -2741,7 +2792,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.12.6 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V71.12.7 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2792,8 +2843,8 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.12.6 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V71.12.7 已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
 
 st.divider()
-st.caption("V71.12.6 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
+st.caption("V71.12.7 備註：熱力圖支援純前端無刷新切換，並修復零成交區間顯示異常。已掛載最新老手主力戰鬥動量預測引擎。")
