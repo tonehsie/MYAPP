@@ -362,7 +362,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
     g = g.assign(b_str = np.where((g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0), "(虧) " + b_strs, b_strs), pos = g['last_date'].map(pos_dict).fillna(0.5).round(2))
     
-    return tags, pd.DataFrame({"分點名稱": g.index, "最終標籤": g['tag'], "近60日淨買(張)": g['net_60d'].astype(int), "近20日淨買(張)": g['net_20d'].astype(int), "近5日淨買(張)": g['net_5d'].astype(int), "黏著度(%)": g['stickiness'].round(1), "囤出貨率(%)": g['hoard_ratio'], "總買(張)": g['tb'], "總賣(張)": g['ts'], "淨留仓": g['net_lots'], "買均價": g['b_str'], "賣均價": np.where(g['avg_s'] > 0, g['avg_s'].round(2).astype(str), "-"), "收盤位階": g['pos']}).sort_values('近60日淨買(張)', ascending=False)
+    return tags, pd.DataFrame({"分點名稱": g.index, "最終標籤": g['tag'], "近60日淨買(張)": g['net_60d'].astype(int), "近20日淨買(張)": g['net_20d'].astype(int), "近5日淨買(張)": g['net_5d'].astype(int), "黏著度(%)": g['stickiness'].round(1), "囤出貨率(%)": g['hoard_ratio'], "總買(張)": g['tb'], "總賣(張)": g['ts'], "淨留倉": g['net_lots'], "買均價": g['b_str'], "賣均價": np.where(g['avg_s'] > 0, g['avg_s'].round(2).astype(str), "-"), "收盤位階": g['pos']}).sort_values('近60日淨買(張)', ascending=False)
 
 def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     if total_lots <= 0 or not is_valid(df_b_raw): return 15, "缺資料"
@@ -493,7 +493,11 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
     lvls = np.array([100, 200, 400, 600, 800, 1000])
     raw_th = np.clip(np.minimum(np.where(df['收盤價(元)'] > 0, 15000 / df['收盤價(元)'], 1000), df['總張數'] * np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000)
-    df['ct'] = lvls[np.abs(raw_th.to_numpy()[:, None] - lvls).argmin(axis=1)]
+    
+    # 🎯 拆分修正：不再連續把括號卡在一起，避免語法解析錯誤
+    diffs = np.abs(raw_th.to_numpy()[:, None] - lvls)
+    df['ct'] = lvls[diffs.argmin(axis=1)]
+    
     conds = [df['ct'] <= 100, df['ct'] <= 200, df['ct'] <= 400, df['ct'] <= 600, df['ct'] <= 800]
     df['current_large_pct'] = np.select(conds, [df['pct_100'], df['pct_200'], df['pct_400'], df['pct_600'], df['pct_800']], default=df['pct_1000'])
     for c in ['pct_100', 'pct_200', 'pct_400', 'pct_600', 'pct_800', 'pct_1000']: df[f'prev_{c}'] = df[c].shift(1)
@@ -548,7 +552,11 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     df_m['safe_dead_ratio'], df_m['cl'] = dead_info.apply(lambda x: max(0.0, min(99.9, x[0]))), dead_info.apply(lambda x: x[1])
     lvls = np.array([100, 200, 400, 600, 800, 1000])
     raw_th = np.clip(np.minimum(15000 / df_m['收盤價(元)'], df_m['總張數'] * np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000)
-    df_m['ct'] = lvls[np.abs(raw_th.to_numpy()[:, None] - lvls).argmin(axis=1)]
+    
+    # 🎯 拆分修正：不再連續把括號卡在一起，避免語法解析錯誤
+    diffs = np.abs(raw_th.to_numpy()[:, None] - lvls)
+    df_m['ct'] = lvls[diffs.argmin(axis=1)]
+    
     df_m['lp'] = np.select([df_m['ct'] <= 100, df_m['ct'] <= 200, df_m['ct'] <= 400, df_m['ct'] <= 600, df_m['ct'] <= 800], [df_m['pct_100'], df_m['pct_200'], df_m['pct_400'], df_m['pct_600'], df_m['pct_800']], default=df_m['pct_1000'])
     df_m['cd'] = np.where((df_m['safe_dead_ratio'] > 0) & (df_m['safe_dead_ratio'] < 100), np.round(np.maximum(0, (df_m['lp'] - df_m['safe_dead_ratio']) / (100.0 - df_m['safe_dead_ratio'])) * 100, 2), "-")
     df_m['st_val'] = np.select([df_m['lp'] > 80.0, df_m['lp'] > 70.0, (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0)], ["極度集中", "高度鎖碼", "波段甜區"], default="籌碼渙散")
@@ -623,9 +631,9 @@ def clean_level_by_math(x):
             if n := _num_re.findall(s):
                 if len(n) > 1:
                     u = int(n[-1])
-                    res = "1-999股" if u <= 999 else ("1-5張" if u <= 5000 else ("5-10張" if u <= 10000 else ("10-15張" if u <= 15000 else ("15-20張" if u <= 20000 else ("20-30張" if u <= 30000 else ("30-40張" if u <= 40000 else ("40-50張" if u <= 50000 else ("50-100張" if u <= 100000 else ("100-200張" if u <= 200000 else ("200-400張" if u <= 400000 else ("400-600張" if u <= 600000 else ("600-800張" if u <= 800000 else ("800-1000張" if u <= 1000000 else "1000張以上"))))))))))))))
+                    res = "1000張以上" if u >= 1000000 else ("800-1000張" if u >= 800000 else ("600-800張" if u >= 600000 else ("400-600張" if u >= 400000 else ("200-400張" if u >= 200000 else ("100-200張" if u >= 100000 else ("50-100張" if u >= 50000 else ("40-50張" if u >= 40000 else ("30-40張" if u >= 30000 else ("20-30張" if u >= 20000 else ("15-20張" if u >= 15000 else ("10-15張" if u >= 10000 else ("5-10張" if u >= 5000 else ("1-5張" if u >= 1000 else "1-999股")))))))))))))
                 elif (v := int(n[0])) <= 21: res = _LEVEL_MAP.get(v, s) if 1 <= v <= 14 else "1000張以上"
-                else: res = "1000張以上" if v >= 1000000 else ("800-1000張" if v >= 800000 else ("600-800張" if v >= 600000 else ("400-600張" if v >= 400000 else ("200-400張" if v >= 200000 else ("100-200張" if v >= 100000 else ("50-100張" if v >= 5000 else ("40-50張" if v >= 40000 else ("30-40張" if v >= 30000 else ("20-30張" if v >= 20000 else ("15-20張" if v >= 15000 else ("10-15張" if v >= 10000 else ("5-10張" if v >= 5000 else ("1-5張" if v >= 1000 else "1-999股"))))))))))))))
+                else: res = "1000張以上" if v >= 1000000 else ("800-1000張" if v >= 800000 else ("600-800張" if v >= 600000 else ("400-600張" if v >= 400000 else ("200-400張" if v >= 200000 else ("100-200張" if v >= 100000 else ("50-100張" if v >= 50000 else ("40-50張" if v >= 40000 else ("30-40張" if v >= 30000 else ("20-30張" if v >= 20000 else ("15-20張" if v >= 15000 else ("10-15張" if v >= 10000 else ("5-10張" if v >= 5000 else ("1-5張" if v >= 1000 else "1-999股"))))))))))))))
             else: res = s
     _LEVEL_CLEAN_CACHE[s] = res
     return res
@@ -703,8 +711,8 @@ def process_per(df):
 
 def process_disp(df):
     if not is_valid(df): return pd.DataFrame()
-    df_out = df.copy().rename(columns={"date":"公告","disposition_cnt":"處次","condition":"條件","measure":"措施","period_start":"起日","period_end":"迄日"}).loc[:, ~df_out.columns.duplicated()]
-    return df_out[[c for c in ['公告', '處次', '起日', '迄日', '條件', '措施'] if c in df_out.columns]].tail(5).sort_values('公告', ascending=False)
+    df_out = df.copy().rename(columns={"date":"公告日期","disposition_cnt":"處次","condition":"條件","measure":"措施","period_start":"起日","period_end":"迄日"}).loc[:, ~df_out.columns.duplicated()]
+    return df_out[[c for c in ['公告日期', '處次', '起日', '迄日', '條件', '措施'] if c in df_out.columns]].tail(5).sort_values('公告日期', ascending=False)
 
 def process_div(df):
     if not is_valid(df): return pd.DataFrame()
@@ -743,6 +751,83 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
         else: df_out["未償還(%)"] = "缺代號"
     else: df_out["未償還(%)"] = "缺額"
     return df_out[[c for c in ["日期", "代號", "名稱", "CB收", "股價", "轉換價", "價值", "溢價(%)", "餘額", "未償還(%)", "到期"] if c in df_out.columns]]
+
+def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
+    try:
+        if not is_valid(df_price, ['收盤價(元)', '日期'], 30): return pd.DataFrame()
+        s_ma, m_ma, l_ma = int(s_ma), int(m_ma), int(l_ma) 
+        df_ta = df_price[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
+        df_ta['收盤價(元)'] = pd.to_numeric(df_ta['收盤價(元)'], errors='coerce').astype('float64')
+        df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
+        df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
+        df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
+        df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
+        df_ta['技術面診斷'] = np.select([df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)'], df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']], ["站上中線防守", "跌破中線防守"], default="盤整")
+        return df_ta.sort_values('日期', ascending=False)
+    except Exception: return pd.DataFrame()
+
+def process_linear_regression(df_price, lr_days):
+    try:
+        if not is_valid(df_price, ['收盤價(元)'], 2): return pd.DataFrame()
+        df_lr = df_price.head(lr_days)[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
+        df_lr['收盤價(元)'] = pd.to_numeric(df_lr['收盤價(元)'], errors='coerce').astype('float64')
+        y = df_lr['收盤價(元)'].dropna().values
+        if len(y) < 2: return pd.DataFrame()
+        x = np.arange(len(y))
+        m, c = np.linalg.lstsq(np.vstack([x, np.ones(len(x))]).T, y, rcond=None)[0]
+        y_pred = m * x + c
+        std_err = np.std(y - y_pred)
+        df_lr['LR_Mid'], df_lr['LR_Upper'], df_lr['LR_Lower'] = y_pred, y_pred + 2 * std_err, y_pred - 2 * std_err
+        return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
+    except Exception: return pd.DataFrame()
+
+def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
+    try:
+        if not is_valid(df_price, min_len=order * 2): return {}
+        df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
+        lows_vals, highs_vals, dates_vals = df['最低價(元)'].values, df['最高價(元)'].values, df['日期'].values
+        highs, lows = [], []
+        for i in range(order, len(df) - order):
+            if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]): lows.append((dates_vals[i], float(lows_vals[i]), i))
+            if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]): highs.append((dates_vals[i], float(highs_vals[i]), i))
+        if len(lows) < 2 or len(highs) < 2: return {}
+        last_date, tol, is_auto = dates_vals[-1], 0.03, "Auto" in mode
+        
+        if "三重底" in mode or is_auto:
+            if len(lows) >= 3 and (l1 := lows[-3])[1] > 0 and (l2 := lows[-2])[1] > 0 and abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-(l3 := lows[-1])[1])/l2[1] < tol and (b_h := [h for h in highs if l1[2] < h[2] < l3[2]]):
+                return {'name': '三重底', 'shape_x': [l1[0], b_h[0][0], l2[0], b_h[-1][0], l3[0]], 'shape_y': [l1[1], b_h[0][1], l2[1], b_h[-1][1], l3[1]], 'neck_x': [l1[0], last_date], 'neck_y': [(h_max := max(b_h, key=lambda x: x[1]))[1], h_max[1]], 'color': '#9c27b0', 'desc': f"三重底 ({'突破' if current_price > h_max[1] else '成型中'})", 'signal': 'bullish'}
+        if "三重頂" in mode or is_auto:
+            if len(highs) >= 3 and (h1 := highs[-3])[1] > 0 and (h2 := highs[-2])[1] > 0 and abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-(h3 := highs[-1])[1])/h2[1] < tol and (b_l := [l for l in lows if h1[2] < l[2] < h3[2]]):
+                return {'name': '三重頂', 'shape_x': [h1[0], b_l[0][0], h2[0], b_l[-1][0], h3[0]], 'shape_y': [h1[1], b_l[0][1], h2[1], b_l[-1][1], h3[1]], 'neck_x': [h1[0], last_date], 'neck_y': [(l_min := min(b_l, key=lambda x: x[1]))[1], l_min[1]], 'color': '#d32f2f', 'desc': f"三重頂 ({'跌破' if current_price < l_min[1] else '成型中'})", 'signal': 'bearish'}
+        if "頭肩底" in mode or is_auto:
+            if len(lows) >= 3 and (l1 := lows[-3])[1] > 0 and (l2 := lows[-2])[1] < l1[1] and l2[1] < (l3 := lows[-1])[1] and abs(l1[1]-l3[1])/l1[1] < 0.05 and (b_h1 := [h for h in highs if l1[2] < h[2] < l2[2]]) and (b_h2 := [h for h in highs if l2[2] < h[2] < l3[2]]):
+                return {'name': '頭肩底', 'shape_x': [l1[0], (h1 := max(b_h1, key=lambda x: x[1]))[0], l2[0], (h2 := max(b_h2, key=lambda x: x[1]))[0], l3[0]], 'shape_y': [l1[1], h1[1], l2[1], h2[1], l3[1]], 'neck_x': [h1[0], last_date], 'neck_y': [h1[1], h2[1]], 'color': '#e91e63', 'desc': f"頭肩底 ({'突破' if current_price > max(h1[1], h2[1]) else '右肩中'})", 'signal': 'bullish'}
+        if "頭肩頂" in mode or is_auto:
+            if len(highs) >= 3 and (h1 := highs[-3])[1] > 0 and (h2 := highs[-2])[1] > h1[1] and h2[1] > (h3 := highs[-1])[1] and abs(h1[1]-h3[1])/h1[1] < 0.05 and (b_l1 := [l for l in lows if h1[2] < l[2] < h2[2]]) and (b_l2 := [l for l in lows if h2[2] < l[2] < h3[2]]):
+                return {'name': '頭肩頂', 'shape_x': [h1[0], (l1 := min(b_l1, key=lambda x: x[1]))[0], h2[0], (l2 := min(b_l2, key=lambda x: x[1]))[0], h3[0]], 'shape_y': [h1[1], l1[1], h2[1], l2[1], h3[1]], 'neck_x': [l1[0], last_date], 'neck_y': [l1[1], l2[1]], 'color': '#d32f2f', 'desc': f"頭肩頂 ({'跌破' if current_price < min(l1[1], l2[1]) else '右肩中'})", 'signal': 'bearish'}
+        if "W底" in mode or is_auto:
+            if len(lows) >= 2 and (b_h := [h for h in highs if (l1 := lows[-2])[2] < h[2] < (l2 := lows[-1])[2]]) and l1[1] > 0 and ((diff := abs(l1[1] - l2[1]) / l1[1]) <= tol or "W底" in mode):
+                return {'name': 'W底', 'shape_x': [l1[0], (h1 := max(b_h, key=lambda x: x[1]))[0], l2[0]], 'shape_y': [l1[1], h1[1], l2[1]], 'neck_x': [l1[0], last_date], 'neck_y': [h1[1], h1[1]], 'color': '#9c27b0', 'desc': f"{'標準' if diff<=tol else '強制'} W底 ({'突破' if current_price > h1[1] else '成型中'})", 'signal': 'bullish'}
+        if "M頭" in mode or is_auto:
+            if len(highs) >= 2 and (b_l := [l for l in lows if (h1 := highs[-2])[2] < l[2] < (h2 := highs[-1])[2]]) and h1[1] > 0 and ((diff := abs(h1[1] - h2[1]) / h1[1]) <= tol or "M頭" in mode):
+                return {'name': 'M頭', 'shape_x': [h1[0], (l1 := min(b_l, key=lambda x: x[1]))[0], h2[0]], 'shape_y': [h1[1], l1[1], h2[1]], 'neck_x': [h1[0], last_date], 'neck_y': [l1[1], l1[1]], 'color': '#d32f2f', 'desc': f"{'標準' if diff<=tol else '強制'} M頭 ({'跌破' if current_price < l1[1] else '成型中'})", 'signal': 'bearish'}
+        if any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto:
+            if len(highs) >= 2 and len(lows) >= 2:
+                h1, h2, l1, l2 = highs[-2], highs[-1], lows[-2], lows[-1]
+                h_diff, l_diff = (h2[1] - h1[1]) / h1[1] if h1[1] > 0 else 0, (l2[1] - l1[1]) / l1[1] if l1[1] > 0 else 0
+                p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
+                if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto): p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理"
+                elif abs(h_diff) < tol and l_diff > tol and ("上升三角形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "上升三角形", "#4caf50", "上升三角形", "bullish"
+                elif h_diff < -tol and abs(l_diff) < tol and ("下降三角形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "下降三角形", "#f44336", "下降三角形", "bearish"
+                elif h_diff < -tol and l_diff > tol and ("對稱" in mode or "收斂" in mode or is_auto): p_name, p_color, p_desc = "對稱三角形", "#ff9800", "對稱三角形"
+                elif h_diff > tol and l_diff > tol and l_diff > h_diff and ("上升楔形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "上升楔形", "#ff5722", "上升楔形", "bearish"
+                elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and ("下降楔形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "下降楔形", "#8bc34a", "下降楔形", "bullish"
+                if p_name or not is_auto: return {'name': p_name or mode.split('：')[-1].strip(), 'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], 'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]], 'color': p_color or "#999", 'desc': p_desc or mode.split('：')[-1], 'signal': p_sig}
+        if "V型反轉" in mode or is_auto:
+            if len(lows) >= 1 and len(highs) >= 2 and (h_before := [h for h in highs if h[2] < (l1 := lows[-1])[2]]) and (h_after := [h for h in highs if h[2] > l1[2]]) and l1[1] > 0 and ((hb := h_before[-1])[1]-l1[1])/l1[1] > 0.1 and ((ha := h_after[0])[1]-l1[1])/l1[1] > 0.1: 
+                return {'name': 'V型反轉', 'shape_x': [hb[0], l1[0], ha[0]], 'shape_y': [hb[1], l1[1], ha[1]], 'neck_x': [hb[0], ha[0]], 'neck_y': [hb[1], ha[1]], 'color': '#00bcd4', 'desc': f"深V反轉 ({'突破' if current_price > ha[1] else '反轉中'})", 'signal': 'bullish'}
+        return {}
+    except Exception: return {}
 
 def render_clean_html_table(df, title=""):
     if not is_valid(df):
