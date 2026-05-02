@@ -22,6 +22,9 @@ st.set_page_config(layout="wide", page_title="全息量化系統 (V71.12版)", i
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
+# ==========================================
+# 前端語法模板集中區 (CSS/HTML/JS)
+# ==========================================
 CSS = """
 <style>
 /* 一般表格，最高 600px 捲動 */
@@ -85,6 +88,187 @@ CSS = """
 }
 </style>
 """
+
+HEATMAP_STYLE_TEMPLATE = """
+<style>
+.heatmap-wrapper .noise-cell { background-color: transparent !important; }
+.heatmap-wrapper .noise-cell span { display: none; }
+#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
+#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { display: inline; color: var(--txt-color) !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
+#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
+.heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
+#heatmap-toggle:checked + .heatmap-toggle-label { background-color: #e3f2fd; border-color: #90caf9; }
+</style>
+<input type="checkbox" id="heatmap-toggle" style="display: none;">
+<label for="heatmap-toggle" class="heatmap-toggle-label">👁️ 切換顯示：所有隱藏數值 (含 0 與雜訊)</label>
+"""
+
+KLINE_CHART_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
+        #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
+        #chart-vol { flex: 0.8; position: relative;}
+        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
+        
+        /* 圖表區深色模式自動反轉 */
+        @media (prefers-color-scheme: dark) {
+            body { background: #1e1e1e; }
+            #chart-main { border-bottom: 2px solid #444; }
+            .legend { background: rgba(30,30,30,0.7); color: #e0e0e0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="chart-main"><div id="legend" class="legend"></div></div>
+    <div id="chart-vol"></div>
+    <script>
+        const kData = KLINE_DATA;
+        const tVol = TOTAL_VOL;
+        const dtVol = DAYTRADE_VOL;
+        const ma = MA_DATA;
+        
+        const kDataMap = new Map(kData.map(x => [x.time, x]));
+        const tVolMap = new Map(tVol.map(x => [x.time, x.value]));
+        const dtVolMap = new Map(dtVol.map(x => [x.time, x.value]));
+
+        const commonLocalization = {
+            timeFormatter: businessDayOrTimestamp => {
+                if (businessDayOrTimestamp.year) {
+                    const y = String(businessDayOrTimestamp.year).slice(-2);
+                    const m = String(businessDayOrTimestamp.month).padStart(2, '0');
+                    const d = String(businessDayOrTimestamp.day).padStart(2, '0');
+                    return `${y}/${m}/${d}`;
+                }
+                if (typeof businessDayOrTimestamp === 'string') {
+                    return businessDayOrTimestamp.substring(2).replace(/-/g, '/');
+                }
+                return businessDayOrTimestamp;
+            }
+        };
+
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const chartBgColor = isDark ? '#1e1e1e' : '#ffffff';
+        const chartTxtColor = isDark ? '#e0e0e0' : '#333';
+        const chartGridColor = isDark ? '#333333' : '#f5f5f5';
+
+        const priceScaleConfig = {
+            borderColor: chartGridColor,
+            autoScale: true,
+            minimumWidth: 80, 
+            alignLabels: true
+        };
+
+        const mainOptions = {
+            autoSize: true,
+            localization: commonLocalization,
+            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
+            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
+            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.05, bottom: 0.05 } },
+            timeScale: { visible: false, rightOffset: 10 }
+        };
+
+        const volOptions = {
+            autoSize: true,
+            localization: commonLocalization,
+            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
+            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
+            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.02, bottom: 0 } },
+            timeScale: { borderColor: chartGridColor, rightOffset: 10 }
+        };
+
+        const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), mainOptions);
+        const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), volOptions);
+
+        const candleSeries = mainChart.addCandlestickSeries({
+            upColor: chartBgColor, borderUpColor: isDark ? '#fff' : '#000', wickUpColor: isDark ? '#fff' : '#000',
+            downColor: isDark ? '#fff' : '#000', borderDownColor: isDark ? '#fff' : '#000', wickDownColor: isDark ? '#fff' : '#000'
+        });
+        candleSeries.setData(kData);
+
+        const lineOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
+        mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
+        mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
+        mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
+
+        const lr = LR_DATA;
+        if (lr && lr.upper && lr.upper.length > 0) {
+            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
+            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.8)' : 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
+            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.lower);
+        }
+
+        const pat = PAT_DATA;
+        const neck = NECK_DATA;
+        const patColor = PAT_COLOR;
+        if (pat && pat.length > 0) {
+            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(pat);
+        }
+        if (neck && neck.length > 0) {
+            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
+        }
+
+        const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+        totalVolSeries.setData(tVol);
+        const dayTradeVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
+        dayTradeVolSeries.setData(dtVol);
+
+        const legend = document.getElementById('legend');
+        const updateLegend = (p) => {
+            let d, dtVal, tvVal;
+            if (p.time) {
+                d = kDataMap.get(p.time);
+                dtVal = dtVolMap.get(p.time);
+                tvVal = tVolMap.get(p.time);
+            } else {
+                d = kData[kData.length-1];
+                dtVal = dtVol[dtVol.length-1].value;
+                tvVal = tVol[tVol.length-1].value;
+            }
+            
+            if (!d || dtVal === undefined || tvVal === undefined) return;
+
+            const shortDate = d.time.substring(2).replace(/-/g, '/');
+            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${chartTxtColor}">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`;
+        };
+        updateLegend({time: null});
+
+        mainChart.subscribeCrosshairMove(p => {
+            updateLegend(p);
+            if (p.time) volChart.setCrosshairPosition(0, p.time, totalVolSeries);
+            else volChart.clearCrosshairPosition();
+        });
+        volChart.subscribeCrosshairMove(p => {
+            updateLegend(p);
+            if (p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
+            else mainChart.clearCrosshairPosition();
+        });
+
+        let isSyncingMain = false;
+        let isSyncingVol = false;
+
+        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+            if (!isSyncingMain && r !== null) {
+                isSyncingVol = true;
+                volChart.timeScale().setVisibleLogicalRange(r);
+                isSyncingVol = false;
+            }
+        });
+        volChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+            if (!isSyncingVol && r !== null) {
+                isSyncingMain = true;
+                mainChart.timeScale().setVisibleLogicalRange(r);
+                isSyncingMain = false;
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
 st.markdown(CSS, unsafe_allow_html=True)
 
 def optimize_memory(df):
@@ -1273,7 +1457,7 @@ def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if df_branch_raw.empty or len(actual_dates) < period_days: return pd.DataFrame(), pd.DataFrame()
     out, audit_smart_money = [], []
-    # 🎯 BUG 修正：將 period 修正為 period_days
+    # 🎯 BUG 修正：確保切片變數名稱正確
     df_b = df_branch_raw[df_branch_raw['date'].isin(actual_dates[:period_days])]
 
     df_smart_all = df_b[df_b['is_smart']].groupby(['date', 'securities_trader', 'tag']).agg(
@@ -1606,7 +1790,7 @@ def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
             return pd.DataFrame()
         
         s_ma, m_ma, l_ma = int(s_ma), int(m_ma), int(l_ma) 
-        df_ta = df_price[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
+        df_ta = df_price.sort_values('日期', ascending=True).copy()
         
         df_ta['收盤價(元)'] = pd.to_numeric(df_ta['收盤價(元)'], errors='coerce').astype('float64')
         
@@ -1627,7 +1811,7 @@ def process_linear_regression(df_price, lr_days):
     try:
         if df_price is None or df_price.empty or len(df_price) < 2 or '收盤價(元)' not in df_price.columns: 
             return pd.DataFrame()
-        df_lr = df_price.head(lr_days)[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
+        df_lr = df_price.head(lr_days).sort_values('日期', ascending=True).copy()
         df_lr['收盤價(元)'] = pd.to_numeric(df_lr['收盤價(元)'], errors='coerce').astype('float64')
         y = df_lr['收盤價(元)'].dropna().values
         if len(y) < 2: return pd.DataFrame()
@@ -1886,20 +2070,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     if not df_fingerprint.empty:
         fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
 
-    html_parts = ["""
-    <style>
-    .heatmap-wrapper .noise-cell { background-color: transparent !important; }
-    .heatmap-wrapper .noise-cell span { display: none; }
-    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell { background-color: var(--bg-color) !important; }
-    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span { display: inline; color: var(--txt-color) !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6); }
-    #heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span { text-shadow: none !important; }
-    .heatmap-toggle-label { display: inline-block; margin-bottom: 12px; padding: 6px 12px; background-color: #f1f3f5; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-weight: bold; color: #1e3a8a; user-select: none; }
-    #heatmap-toggle:checked + .heatmap-toggle-label { background-color: #e3f2fd; border-color: #90caf9; }
-    </style>
-    <input type="checkbox" id="heatmap-toggle" style="display: none;">
-    <label for="heatmap-toggle" class="heatmap-toggle-label">👁️ 切換顯示：所有隱藏數值 (含 0 與雜訊)</label>
-    <div class='full-table-container heatmap-wrapper'><table><thead><tr>
-    """]
+    html_parts = [HEATMAP_STYLE_TEMPLATE + "<div class='full-table-container heatmap-wrapper'><table><thead><tr>"]
     
     html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
     html_parts.append("<th style='min-width: 90px;'>標籤</th>")
@@ -2264,172 +2435,8 @@ if run_btn:
                     "ma_long": prep_ma(df_plot[f'MA{ma_long}(長線)'], time_series)
                 }
 
-                html_template = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
-                    <style>
-                        body { margin: 0; background: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;}
-                        #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
-                        #chart-vol { flex: 0.8; position: relative;}
-                        .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
-                        
-                        /* 圖表區深色模式自動反轉 */
-                        @media (prefers-color-scheme: dark) {
-                            body { background: #1e1e1e; }
-                            #chart-main { border-bottom: 2px solid #444; }
-                            .legend { background: rgba(30,30,30,0.7); color: #e0e0e0; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div id="chart-main"><div id="legend" class="legend"></div></div>
-                    <div id="chart-vol"></div>
-                    <script>
-                        const kData = KLINE_DATA;
-                        const tVol = TOTAL_VOL;
-                        const dtVol = DAYTRADE_VOL;
-                        const ma = MA_DATA;
-                        
-                        const kDataMap = new Map(kData.map(x => [x.time, x]));
-                        const tVolMap = new Map(tVol.map(x => [x.time, x.value]));
-                        const dtVolMap = new Map(dtVol.map(x => [x.time, x.value]));
-
-                        const commonLocalization = {
-                            timeFormatter: businessDayOrTimestamp => {
-                                if (businessDayOrTimestamp.year) {
-                                    const y = String(businessDayOrTimestamp.year).slice(-2);
-                                    const m = String(businessDayOrTimestamp.month).padStart(2, '0');
-                                    const d = String(businessDayOrTimestamp.day).padStart(2, '0');
-                                    return `${y}/${m}/${d}`;
-                                }
-                                if (typeof businessDayOrTimestamp === 'string') {
-                                    return businessDayOrTimestamp.substring(2).replace(/-/g, '/');
-                                }
-                                return businessDayOrTimestamp;
-                            }
-                        };
-
-                        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                        const chartBgColor = isDark ? '#1e1e1e' : '#ffffff';
-                        const chartTxtColor = isDark ? '#e0e0e0' : '#333';
-                        const chartGridColor = isDark ? '#333333' : '#f5f5f5';
-
-                        const priceScaleConfig = {
-                            borderColor: chartGridColor,
-                            autoScale: true,
-                            minimumWidth: 80, 
-                            alignLabels: true
-                        };
-
-                        const mainOptions = {
-                            autoSize: true,
-                            localization: commonLocalization,
-                            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
-                            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
-                            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.05, bottom: 0.05 } },
-                            timeScale: { visible: false, rightOffset: 10 }
-                        };
-
-                        const volOptions = {
-                            autoSize: true,
-                            localization: commonLocalization,
-                            layout: { background: { color: chartBgColor }, textColor: chartTxtColor },
-                            grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
-                            rightPriceScale: { ...priceScaleConfig, scaleMargins: { top: 0.02, bottom: 0 } },
-                            timeScale: { borderColor: chartGridColor, rightOffset: 10 }
-                        };
-
-                        const mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), mainOptions);
-                        const volChart = LightweightCharts.createChart(document.getElementById('chart-vol'), volOptions);
-
-                        const candleSeries = mainChart.addCandlestickSeries({
-                            upColor: chartBgColor, borderUpColor: isDark ? '#fff' : '#000', wickUpColor: isDark ? '#fff' : '#000',
-                            downColor: isDark ? '#fff' : '#000', borderDownColor: isDark ? '#fff' : '#000', wickDownColor: isDark ? '#fff' : '#000'
-                        });
-                        candleSeries.setData(kData);
-
-                        const lineOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
-                        mainChart.addLineSeries({ color: '#ff9800', ...lineOpt }).setData(ma.ma_short);
-                        mainChart.addLineSeries({ color: '#2196f3', ...lineOpt }).setData(ma.ma_mid);
-                        mainChart.addLineSeries({ color: '#9c27b0', ...lineOpt }).setData(ma.ma_long);
-
-                        const lr = LR_DATA;
-                        if (lr && lr.upper && lr.upper.length > 0) {
-                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.upper);
-                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.8)' : 'rgba(30, 58, 138, 0.6)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.mid);
-                            mainChart.addLineSeries({ color: isDark ? 'rgba(100, 181, 246, 0.5)' : 'rgba(30, 58, 138, 0.4)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(lr.lower);
-                        }
-
-                        const pat = PAT_DATA;
-                        const neck = NECK_DATA;
-                        const patColor = PAT_COLOR;
-                        if (pat && pat.length > 0) {
-                            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(pat);
-                        }
-                        if (neck && neck.length > 0) {
-                            mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
-                        }
-
-                        const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        totalVolSeries.setData(tVol);
-                        const dayTradeVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
-                        dayTradeVolSeries.setData(dtVol);
-
-                        const legend = document.getElementById('legend');
-                        const updateLegend = (p) => {
-                            let d, dtVal, tvVal;
-                            if (p.time) {
-                                d = kDataMap.get(p.time);
-                                dtVal = dtVolMap.get(p.time);
-                                tvVal = tVolMap.get(p.time);
-                            } else {
-                                d = kData[kData.length-1];
-                                dtVal = dtVol[dtVol.length-1].value;
-                                tvVal = tVol[tVol.length-1].value;
-                            }
-                            
-                            if (!d || dtVal === undefined || tvVal === undefined) return;
-
-                            const shortDate = d.time.substring(2).replace(/-/g, '/');
-                            legend.innerHTML = `<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${chartTxtColor}">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`;
-                        };
-                        updateLegend({time: null});
-
-                        mainChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
-                            if (p.time) volChart.setCrosshairPosition(0, p.time, totalVolSeries);
-                            else volChart.clearCrosshairPosition();
-                        });
-                        volChart.subscribeCrosshairMove(p => {
-                            updateLegend(p);
-                            if (p.time) mainChart.setCrosshairPosition(0, p.time, candleSeries);
-                            else mainChart.clearCrosshairPosition();
-                        });
-
-                        let isSyncingMain = false;
-                        let isSyncingVol = false;
-
-                        mainChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
-                            if (!isSyncingMain && r !== null) {
-                                isSyncingVol = true;
-                                volChart.timeScale().setVisibleLogicalRange(r);
-                                isSyncingVol = false;
-                            }
-                        });
-                        volChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
-                            if (!isSyncingVol && r !== null) {
-                                isSyncingMain = true;
-                                mainChart.timeScale().setVisibleLogicalRange(r);
-                                isSyncingMain = false;
-                            }
-                        });
-                    </script>
-                </body>
-                </html>
-                """
-                html_code = html_template.replace("KLINE_DATA", json.dumps(kline_data))\
+                # 使用全局 KLINE_CHART_TEMPLATE 並進行內容替換
+                html_code = KLINE_CHART_TEMPLATE.replace("KLINE_DATA", json.dumps(kline_data))\
                                          .replace("TOTAL_VOL", json.dumps(total_vol_data))\
                                          .replace("DAYTRADE_VOL", json.dumps(day_trade_vol_data))\
                                          .replace("MA_DATA", json.dumps(ma_data))\
@@ -2685,4 +2692,4 @@ if run_btn:
         gc.collect()
 
 st.divider()
-st.caption("V71.12.7 輕量加速版 備註：已完成「記憶體管控優化（移除所有不必要的 df.copy() 與重複賦值）」、「Pandas 向量化運算升級」與「正則表達式 Regex 集中清洗」。整體 CPU 與 RAM 消耗大幅降低。")
+st.caption("V71.12.7 輕量加速版 備註：前端 HTML/CSS 語法已全數封裝抽離。已完成 Pandas 向量化運算升級、Regex 清洗、與記憶體最佳化。")
