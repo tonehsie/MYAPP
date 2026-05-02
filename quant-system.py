@@ -17,10 +17,10 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V71.12版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
-GITHUB_MANUAL_URL = "https://github.com/tonehsie/stock/blob/main/README.md"
+GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 # ==========================================
 # 前端語法模板集中區 (CSS/HTML/JS)
@@ -399,10 +399,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V71.12.7 終極版)")
+st.title("全息量化系統 (V73.00 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V71.12.7：排行榜與熱力圖完美一體化，大幅提升實戰判讀效率。{usage_text}")
+st.caption(f"V73.00：排行榜與熱力圖完美一體化，大幅提升實戰判讀效率。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -412,7 +412,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V71.12.7 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V73.00 決策引擎", use_container_width=True, key="run_engine")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -1165,21 +1165,6 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
         return pd.DataFrame(out)
     except Exception:
         return pd.DataFrame()
-
-def get_smart_threshold(price, total_lots, dead_float):
-    if pd.isna(price) or price <= 0: return 1000 
-    
-    base_lots = 15000 / price
-    safe_dead_ratio = max(0.0, min(99.9, dead_float))
-    free_float_ratio = max(0.05, (100 - safe_dead_ratio) / 100) 
-    float_1pct_lots = total_lots * free_float_ratio * 0.01
-    
-    raw_threshold = min(base_lots, float_1pct_lots)
-    raw_threshold = max(100, min(1000, raw_threshold))
-    
-    levels = [100, 200, 400, 600, 800, 1000]
-    al = min(levels, key=lambda x: abs(x - raw_threshold))
-    return al
 
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if not is_valid(df_wide, min_len=2):
@@ -2087,8 +2072,8 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     def build_rows(traders, is_sell_side):
         if not traders: return
         
-        sec_title = "🔴 賣超主力陣營" if is_sell_side else "🟢 買超主力陣營"
-        sec_color = "#f44336" if is_sell_side else "#4caf50"
+        sec_title = "🟢 賣超主力陣營" if is_sell_side else "🔴 買超主力陣營"
+        sec_color = "#4caf50" if is_sell_side else "#f44336"
         html_parts.append(f"<tr><td colspan='{5 + len(display_dates)}' style='background-color: #f1f3f5; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 2px;'>{sec_title}</td></tr>")
 
         for trader in traders:
@@ -2154,7 +2139,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V71.12.7 終極解鎖版決策引擎 (極速向量無分身版)..."):
+    with st.spinner(f"正在啟動 V73.00 終極解鎖版決策引擎 (極速向量無分身版)..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2307,7 +2292,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V71.12.7 防呆精簡版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 防呆精簡版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2585,7 +2570,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V71.12 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V73.00 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         
@@ -2641,7 +2626,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V71.12.7 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V73.00 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2692,8 +2677,5 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V71.12.7 防呆精簡版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V73.00 防呆精簡版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
-
-st.divider()
-st.caption("V71.12.7 輕量加速版 備註：已完成「統一防呆過濾工具 (is_valid)」、「記憶體管控優化」、「Pandas 向量化運算升級」與「前端模板抽離」。整體 CPU 與 RAM 消耗大幅降低，程式碼邏輯更清晰。")
