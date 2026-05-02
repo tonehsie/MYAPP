@@ -1014,7 +1014,7 @@ def get_smart_threshold(price, total_lots, dead_float):
     al = min(levels, key=lambda x: abs(x - raw_threshold))
     return al
 
-# 向量化終極雷達模組
+# 向量化終極雷達模組 (已修復 .to_numpy() bug)
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if df_wide.empty or len(df_wide) < 2:
         st.warning("⚠️ [V27 終極雷達] 集保股權分佈資料不足 (少於2週)，無法比對趨勢，雷達模組已暫停。")
@@ -1064,7 +1064,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 fake_dict = df_fake_daily.groupby('date').apply(lambda x: x[['securities_trader', 'net_buy_exact']].to_dict('records')).to_dict()
 
         arr_dates_str = np.sort(df_branch_raw['date'].unique()) if not df_branch_raw.empty else np.array([])
-        arr_dates_dt = pd.to_datetime(arr_dates_str) if len(arr_dates_str) > 0 else pd.Series([])
+        arr_dates_dt = pd.to_datetime(arr_dates_str) if len(arr_dates_str) > 0 else pd.Series([], dtype='datetime64[ns]')
 
         df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
 
@@ -1074,7 +1074,8 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
 
         raw_threshold = np.clip(np.minimum(base_lots, float_1pct_lots), 100, 1000)
         levels = np.array([100, 200, 400, 600, 800, 1000])
-        diffs = np.abs(raw_threshold[:, None] - levels)
+        
+        diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
         df['ct'] = levels[diffs.argmin(axis=1)]
 
         conds = [df['ct'] <= 100, df['ct'] <= 200, df['ct'] <= 400, df['ct'] <= 600, df['ct'] <= 800]
@@ -1184,7 +1185,7 @@ def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
         res['turnover_warning'] = False
     return res
 
-# 向量化動態集保模組
+# 向量化動態集保模組 (已修復 .to_numpy() bug)
 def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_dict, static_val, chip_engine):
     if df_share_wide.empty or df_price.empty: return pd.DataFrame()
     df_s, df_p = df_share_wide.copy(), df_price.copy()
@@ -1217,7 +1218,8 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     raw_threshold = np.clip(np.minimum(base_lots, float_1pct_lots), 100, 1000)
 
     levels = np.array([100, 200, 400, 600, 800, 1000])
-    diffs = np.abs(raw_threshold.values[:, None] - levels)
+    
+    diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
     df_m['ct'] = levels[diffs.argmin(axis=1)]
 
     conds = [df_m['ct'] <= 100, df_m['ct'] <= 200, df_m['ct'] <= 400, df_m['ct'] <= 600, df_m['ct'] <= 800]
@@ -2512,7 +2514,7 @@ if run_btn:
             st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
             render_volume_profile(df_b_raw, dates[:actual_foot_days] if len(dates)>=actual_foot_days else dates, footprint_rows)
 
-        with st.expander(f"【甜點】 土洋聯合作作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
+        with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
 
