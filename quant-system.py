@@ -23,7 +23,7 @@ GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads
 
 CSS = "<style>.table-container{overflow:auto;max-height:600px;width:100%;margin-bottom:25px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding-bottom:10px}.table-container table{width:max-content !important;min-width:40%;border-collapse:separate !important;border-spacing:0;font-size:15px !important;font-family:sans-serif;background-color:#fff}.table-container th,.table-container td{white-space:nowrap !important;padding:10px 12px !important;border-bottom:1px solid #dee2e6;border-right:1px solid #dee2e6;vertical-align:middle}.table-container th{border-top:1px solid #dee2e6;word-break:keep-all !important;text-align:center !important;background-color:#f1f3f5 !important;color:#333 !important;font-weight:700 !important;line-height:1.4;position:sticky;top:0;z-index:3}.table-container th:first-child,.table-container td:first-child{position:sticky;left:0;background-color:#f8f9fa;z-index:4;font-weight:bold;text-align:center !important;border-left:1px solid #dee2e6}.table-container thead th:first-child{z-index:5}.full-table-container{overflow-x:auto;overflow-y:visible;width:100%;margin-bottom:25px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);display:block;padding-bottom:10px}.full-table-container table{width:max-content !important;min-width:40%;border-collapse:separate !important;border-spacing:0;font-size:15px !important;font-family:sans-serif;background-color:#fff}.full-table-container th,.full-table-container td{white-space:nowrap !important;padding:10px 12px !important;border-bottom:1px solid #dee2e6;border-right:1px solid #dee2e6;vertical-align:middle}.full-table-container th{border-top:1px solid #dee2e6;word-break:keep-all !important;text-align:center !important;background-color:#f1f3f5 !important;color:#333 !important;font-weight:700 !important;line-height:1.4;position:sticky;top:0;z-index:3}.full-table-container th:first-child,.full-table-container td:first-child{position:sticky;left:0;background-color:#f8f9fa;z-index:4;font-weight:bold;text-align:center !important;border-left:1px solid #dee2e6}.full-table-container thead th:first-child{z-index:5}.text-left{text-align:left !important}.text-right{text-align:right !important;font-variant-numeric:tabular-nums}.loss-warning{color:#d9480f;font-weight:bold}.profit-warning{color:#6a1b9a;font-weight:900;background-color:#f3e5f5;padding:3px 6px;border-radius:4px;border:1px solid #ce93d8}.highlight-red{color:#d32f2f;font-weight:bold}.highlight-green{color:#2e7d32;font-weight:bold}.info-box{background-color:#f8f9fa;padding:15px 20px;border-radius:8px;margin-bottom:25px;border-left:6px solid #1e3a8a;font-size:1.1rem;font-weight:bold;color:#1e3a8a}.section-title{margin-top:35px;margin-bottom:15px;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:5px;font-size:1.3rem !important;font-weight:700 !important}.category-title{font-size:1.6rem !important;font-weight:900 !important;margin-top:40px;color:#333}.stTabs [data-baseweb='tab-list']{gap:10px}.stTabs [data-baseweb='tab']{height:50px;white-space:pre-wrap;background-color:#f8f9fa;border-radius:4px 4px 0 0;padding:10px 20px;font-weight:bold}.stTabs [aria-selected='true']{background-color:#e3f2fd !important;color:#1e3a8a !important;border-bottom:3px solid #1e3a8a !important}.ai-report-box{background-color:#fcfdfe;border:1px solid #e9ecef;border-left:6px solid #b71c1c;border-radius:8px;padding:25px;margin-bottom:30px;box-shadow:0 4px 10px rgba(0,0,0,0.08);line-height:1.8}.ai-report-box h4{margin-top:0;color:#b71c1c;font-weight:900;font-size:1.6rem;border-bottom:2px dashed #ccc;padding-bottom:10px;margin-bottom:20px}.ai-report-box ul{margin-bottom:20px;padding-left:20px}.ai-report-box li{margin-bottom:18px;font-size:1.25rem;color:#222}.ai-report-box b{font-size:1.4rem;color:#b71c1c}.ai-conclusion{background-color:#fff3cd;padding:22px;border-radius:8px;border:2px solid #ffe69c;font-weight:700;color:#856404;font-size:1.45rem}.progress-text{font-size:1.1rem;color:#1e3a8a;font-weight:bold;margin-bottom:5px}@media (prefers-color-scheme: dark){.table-container table,.full-table-container table{background-color:#1e1e1e !important;color:#e0e0e0 !important}.table-container th,.table-container td,.full-table-container th,.full-table-container td{border-color:#444 !important;color:#e0e0e0 !important}.table-container th,.full-table-container th{background-color:#2d2d2d !important;color:#fff !important}.table-container th:first-child,.table-container td:first-child,.full-table-container th:first-child,.full-table-container td:first-child{background-color:#252525 !important}.info-box{background-color:#2d2d2d !important;color:#64b5f6 !important;border-left-color:#64b5f6 !important}.section-title{color:#64b5f6 !important;border-bottom-color:#64b5f6 !important}.category-title{color:#fff !important}.stTabs [data-baseweb='tab']{background-color:#2d2d2d !important;color:#aaa !important}.stTabs [aria-selected='true']{background-color:#1a237e !important;color:#64b5f6 !important;border-bottom-color:#64b5f6 !important}.ai-report-box{background-color:#252525 !important;border-color:#444 !important;border-left-color:#ef5350 !important;color:#e0e0e0 !important}.ai-report-box h4{color:#ef5350 !important;border-bottom-color:#444 !important}.ai-report-box li{color:#e0e0e0 !important}.ai-report-box b{color:#ef5350 !important}.ai-conclusion{background-color:#3e2723 !important;border-color:#5d4037 !important;color:#ffb74d !important}.progress-text{color:#64b5f6 !important}.profit-warning{background-color:#4a148c !important;color:#e1bee7 !important;border-color:#7b1fa2 !important}.loss-warning{color:#ff7043 !important}.highlight-red{color:#ef5350 !important}.highlight-green{color:#66bb6a !important}}</style>"
 HEATMAP_STYLE_TEMPLATE = "<style>.heatmap-wrapper .noise-cell{background-color:transparent !important}.heatmap-wrapper .noise-cell span{display:none}#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell{background-color:var(--bg-color) !important;}#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell span{display:inline;color:var(--txt-color) !important;text-shadow:1px 1px 2px rgba(0,0,0,0.6)}#heatmap-toggle:checked ~ .heatmap-wrapper .noise-cell.val-zero span{text-shadow:none !important}.heatmap-toggle-label{display:inline-block;margin-bottom:12px;padding:6px 12px;background-color:#f1f3f5;border-radius:6px;border:1px solid #ccc;cursor:pointer;font-weight:bold;color:#1e3a8a;user-select:none}#heatmap-toggle:checked + .heatmap-toggle-label{background-color:#e3f2fd;border-color:#90caf9}</style><input type='checkbox' id='heatmap-toggle' style='display:none;'><label for='heatmap-toggle' class='heatmap-toggle-label'>👁️ 切換顯示：隱藏數值</label>"
-KLINE_CHART_TEMPLATE = """<!DOCTYPE html><html><head><script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script><style>body{margin:0;background:#fff;font-family:sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}#chart-main{flex:3.2;border-bottom:2px solid #f0f3fa;position:relative}#chart-vol{flex:0.8;position:relative}.legend{position:absolute;top:4px;left:8px;z-index:10;font-size:13px;pointer-events:none;background:rgba(255,255,255,0.7);padding:2px 6px;border-radius:4px;color:#333}@media (prefers-color-scheme: dark){body{background:#1e1e1e}#chart-main{border-bottom:2px solid #444}.legend{background:rgba(30,30,30,0.7);color:#e0e0e0}}</style></head><body><div id="chart-main"><div id="legend" class="legend"></div></div><div id="chart-vol"></div><script>const kData=KLINE_DATA;const tVol=TOTAL_VOL;const dtVol=DAYTRADE_VOL;const ma=MA_DATA;const kDataMap=new Map(kData.map(x=>[x.time,x]));const tVolMap=new Map(tVol.map(x=>[x.time,x.value]));const dtVolMap=new Map(dtVol.map(x=>[x.time,x.value]));const commonLocalization={timeFormatter:t=>{if(t.year){return `${String(t.year).slice(-2)}/${String(t.month).padStart(2,'0')}/${String(t.day).padStart(2,'0')}`}if(typeof t==='string'){return t.substring(2).replace(/-/g,'/')}return t}};const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const chartBgColor=isDark?'#1e1e1e':'#ffffff';const chartTxtColor=isDark?'#e0e0e0':'#333';const chartGridColor=isDark?'#333333':'#f5f5f5';const priceScaleConfig={borderColor:chartGridColor,autoScale:true,minimumWidth:80,alignLabels:true};const mainOptions={autoSize:true,localization:commonLocalization,layout:{background:{color:chartBgColor},textColor:chartTxtColor},grid:{vertLines:{color:chartGridColor},horzLines:{color:chartGridColor}},rightPriceScale:{...priceScaleConfig,scaleMargins:{top:0.05,bottom:0.05}},timeScale:{visible:false,rightOffset:10}};const volOptions={autoSize:true,localization:commonLocalization,layout:{background:{color:chartBgColor},textColor:chartTxtColor},grid:{vertLines:{color:chartGridColor},horzLines:{color:chartGridColor}},rightPriceScale:{...priceScaleConfig,scaleMargins:{top:0.02,bottom:0}},timeScale:{borderColor:chartGridColor,rightOffset:10}};const mainChart=LightweightCharts.createChart(document.getElementById('chart-main'),mainOptions);const volChart=LightweightCharts.createChart(document.getElementById('chart-vol'),volOptions);const candleSeries=mainChart.addCandlestickSeries({upColor:chartBgColor,borderUpColor:isDark?'#fff':'#000',wickUpColor:isDark?'#fff':'#000',downColor:isDark?'#fff':'#000',borderDownColor:isDark?'#fff':'#000',wickDownColor:isDark?'#fff':'#000'});candleSeries.setData(kData);const lineOpt={lineWidth:1,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false};mainChart.addLineSeries({color:'#ff9800',...lineOpt}).setData(ma.ma_short);mainChart.addLineSeries({color:'#2196f3',...lineOpt}).setData(ma.ma_mid);mainChart.addLineSeries({color:'#9c27b0',...lineOpt}).setData(ma.ma_long);const lr=LR_DATA;if(lr&&lr.upper&&lr.upper.length>0){mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.5)':'rgba(30,58,138,0.4)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.upper);mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.8)':'rgba(30,58,138,0.6)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.mid);mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.5)':'rgba(30,58,138,0.4)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.lower)}const pat=PAT_DATA;const neck=NECK_DATA;const patColor=PAT_COLOR;if(pat&&pat.length>0){mainChart.addLineSeries({color:patColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(pat)}if(neck&&neck.length>0){mainChart.addLineSeries({color:patColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dotted,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(neck)}const totalVolSeries=volChart.addHistogramSeries({priceFormat:{type:'volume'}});totalVolSeries.setData(tVol);const dayTradeVolSeries=volChart.addHistogramSeries({priceFormat:{type:'volume'}});dayTradeVolSeries.setData(dtVol);const legend=document.getElementById('legend');const updateLegend=(p)=>{let d,dtVal,tvVal;if(p.time){d=kDataMap.get(p.time);dtVal=dtVolMap.get(p.time);tvVal=tVolMap.get(p.time)}else{d=kData[kData.length-1];dtVal=dtVol[dtVol.length-1].value;tvVal=tVol[tVol.length-1].value}if(!d||dtVal===undefined||tvVal===undefined)return;legend.innerHTML=`<b>${d.time.substring(2).replace(/-/g,'/')}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${chartTxtColor}">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`};updateLegend({time:null});mainChart.subscribeCrosshairMove(p=>{updateLegend(p);if(p.time)volChart.setCrosshairPosition(0,p.time,totalVolSeries);else volChart.clearCrosshairPosition()});volChart.subscribeCrosshairMove(p=>{updateLegend(p);if(p.time)mainChart.setCrosshairPosition(0,p.time,candleSeries);else mainChart.clearCrosshairPosition()});let isSyncMain=false,isSyncVol=false;mainChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!isSyncMain&&r){isSyncVol=true;volChart.timeScale().setVisibleLogicalRange(r);isSyncVol=false}});volChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!isSyncVol&&r){isSyncMain=true;mainChart.timeScale().setVisibleLogicalRange(r);isSyncMain=false}});</script></body></html>"""
+KLINE_CHART_TEMPLATE = """<!DOCTYPE html><html><head><script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script><style>body{margin:0;background:#fff;font-family:sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}#chart-main{flex:3.2;border-bottom:2px solid #f0f3fa;position:relative}#chart-vol{flex:0.8;position:relative}.legend{position:absolute;top:4px;left:8px;z-index:10;font-size:13px;pointer-events:none;background:rgba(255,255,255,0.7);padding:2px 6px;border-radius:4px;color:#333}@media (prefers-color-scheme: dark){body{background:#1e1e1e}#chart-main{border-bottom:2px solid #444}.legend{background:rgba(30,30,30,0.7);color:#e0e0e0}}</style></head><body><div id="chart-main"><div id="legend" class="legend"></div></div><div id="chart-vol"></div><script>const kData=KLINE_DATA;const tVol=TOTAL_VOL;const dtVol=DAYTRADE_VOL;const ma=MA_DATA;const kDataMap=new Map(kData.map(x=>[x.time,x]));const tVolMap=new Map(tVol.map(x=>[x.time,x.value]));const dtVolMap=new Map(dtVol.map(x=>[x.time,x.value]));const commonLocalization={timeFormatter:t=>{if(t.year){return `${String(t.year).slice(-2)}/${String(t.month).padStart(2,'0')}/${String(t.day).padStart(2,'0')}`}if(typeof t==='string'){return t.substring(2).replace(/-/g,'/')}return t}};const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;const chartBgColor=isDark?'#1e1e1e':'#ffffff';const chartTxtColor=isDark?'#e0e0e0':'#333';const chartGridColor=isDark?'#333333':'#f5f5f5';const priceScaleConfig={borderColor:chartGridColor,autoScale:true,minimumWidth:80,alignLabels:true};const mainOptions={autoSize:true,localization:commonLocalization,layout:{background:{color:chartBgColor},textColor:chartTxtColor},grid:{vertLines:{color:chartGridColor},horzLines:{color:chartGridColor}},rightPriceScale:{...priceScaleConfig,scaleMargins:{top:0.05,bottom:0.05}},timeScale:{visible:false,rightOffset:10}};const volOptions={autoSize:true,localization:commonLocalization,layout:{background:{color:chartBgColor},textColor:chartTxtColor},grid:{vertLines:{color:chartGridColor},horzLines:{color:chartGridColor}},rightPriceScale:{...priceScaleConfig,scaleMargins:{top:0.02,bottom:0}},timeScale:{borderColor:chartGridColor,rightOffset:10}};const mainChart=LightweightCharts.createChart(document.getElementById('chart-main'),mainOptions);const volChart=LightweightCharts.createChart(document.getElementById('chart-vol'),volOptions);const candleSeries=mainChart.addCandlestickSeries({upColor:chartBgColor,borderUpColor:isDark?'#fff':'#000',wickUpColor:isDark?'#fff':'#000',downColor:isDark?'#fff':'#000',borderDownColor:isDark?'#fff':'#000',wickDownColor:isDark?'#fff':'#000'});candleSeries.setData(kData);const lineOpt={lineWidth:1,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false};mainChart.addLineSeries({color:'#ff9800',...lineOpt}).setData(ma.ma_short);mainChart.addLineSeries({color:'#2196f3',...lineOpt}).setData(ma.ma_mid);mainChart.addLineSeries({color:'#9c27b0',...lineOpt}).setData(ma.ma_long);const lr=LR_DATA;if(lr&&lr.upper&&lr.upper.length>0){mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.5)':'rgba(30,58,138,0.4)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.upper);mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.8)':'rgba(30,58,138,0.6)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.mid);mainChart.addLineSeries({color:isDark?'rgba(100,181,246,0.5)':'rgba(30,58,138,0.4)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(lr.lower)}const pat=PAT_DATA;const neck=NECK_DATA;const patColor=PAT_COLOR;if(pat&&pat.length>0){mainChart.addLineSeries({color:patColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(pat)}if(neck&&neck.length>0){mainChart.addLineSeries({color:patColor,lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dotted,crosshairMarkerVisible:false,lastValueVisible:false,priceLineVisible:false}).setData(neck)}const totalVolSeries=volChart.addHistogramSeries({priceFormat:{type:'volume'}});totalVolSeries.setData(tVol);const dayTradeVolSeries=volChart.addHistogramSeries({priceFormat:{type:'volume'}});dayTradeVolSeries.setData(dtVol);const legend=document.getElementById('legend');const updateLegend=(p)=>{let d,dtVal,tvVal;if(p.time){d=kDataMap.get(p.time);dtVal=dtVolMap.get(p.time);tvVal=tVolMap.get(p.time)}else{d=kData[kData.length-1];dtVal=dtVol[dtVol.length-1].value;tvVal=tVol[tVol.length-1].value}if(!d||dtVal===undefined||tvVal===undefined)return;const shortDate=d.time.substring(2).replace(/-/g,'/');legend.innerHTML=`<b>${shortDate}</b> &nbsp; 開:${d.open} 高:${d.high} 低:${d.low} 收:<span style="color:${chartTxtColor}">${d.close}</span> &nbsp; <span style="color:#888">總量:${Math.round(tvVal)}</span> &nbsp; <span style="color:#FF9800">當沖:${Math.round(dtVal)}</span>`};updateLegend({time:null});mainChart.subscribeCrosshairMove(p=>{updateLegend(p);if(p.time)volChart.setCrosshairPosition(0,p.time,totalVolSeries);else volChart.clearCrosshairPosition()});volChart.subscribeCrosshairMove(p=>{updateLegend(p);if(p.time)mainChart.setCrosshairPosition(0,p.time,candleSeries);else mainChart.clearCrosshairPosition()});let isSyncingMain=false;let isSyncingVol=false;mainChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!isSyncingMain&&r!==null){isSyncingVol=true;volChart.timeScale().setVisibleLogicalRange(r);isSyncingVol=false}});volChart.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(!isSyncingVol&&r!==null){isSyncingMain=true;mainChart.timeScale().setVisibleLogicalRange(r);isSyncingMain=false}});</script></body></html>"""
 
 st.markdown(CSS, unsafe_allow_html=True)
 
@@ -362,7 +362,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
     g = g.assign(b_str = np.where((g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0), "(虧) " + b_strs, b_strs), pos = g['last_date'].map(pos_dict).fillna(0.5).round(2))
     
-    return tags, pd.DataFrame({"分點名稱": g.index, "最終標籤": g['tag'], "近60日淨買(張)": g['net_60d'].astype(int), "近20日淨買(張)": g['net_20d'].astype(int), "近5日淨買(張)": g['net_5d'].astype(int), "黏著度(%)": g['stickiness'].round(1), "囤出貨率(%)": g['hoard_ratio'], "總買(張)": g['tb'], "總賣(張)": g['ts'], "淨留倉": g['net_lots'], "買均價": g['b_str'], "賣均價": np.where(g['avg_s'] > 0, g['avg_s'].round(2).astype(str), "-"), "收盤位階": g['pos']}).sort_values('近60日淨買(張)', ascending=False)
+    return tags, pd.DataFrame({"分點名稱": g.index, "最終標籤": g['tag'], "近60日淨買(張)": g['net_60d'].astype(int), "近20日淨買(張)": g['net_20d'].astype(int), "近5日淨買(張)": g['net_5d'].astype(int), "黏著度(%)": g['stickiness'].round(1), "囤出貨率(%)": g['hoard_ratio'], "總買(張)": g['tb'], "總賣(張)": g['ts'], "淨留仓": g['net_lots'], "買均價": g['b_str'], "賣均價": np.where(g['avg_s'] > 0, g['avg_s'].round(2).astype(str), "-"), "收盤位階": g['pos']}).sort_values('近60日淨買(張)', ascending=False)
 
 def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     if total_lots <= 0 or not is_valid(df_b_raw): return 15, "缺資料"
@@ -491,7 +491,9 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
     arr_dates_str = np.sort(df_branch_raw['date'].unique()) if not df_branch_raw.empty else np.array([])
     arr_dates_dt = pd.to_datetime(arr_dates_str) if len(arr_dates_str) > 0 else pd.Series([], dtype='datetime64[ns]')
     df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
-    df['ct'] = np.array([100, 200, 400, 600, 800, 1000])[np.abs(np.clip(np.minimum(np.where(df['收盤價(元)'] > 0, 15000 / df['收盤價(元)'], 1000), df['總張數'] * np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000).to_numpy()[:, None] - np.array([100, 200, 400, 600, 800, 1000])].argmin(axis=1)]
+    lvls = np.array([100, 200, 400, 600, 800, 1000])
+    raw_th = np.clip(np.minimum(np.where(df['收盤價(元)'] > 0, 15000 / df['收盤價(元)'], 1000), df['總張數'] * np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000)
+    df['ct'] = lvls[np.abs(raw_th.to_numpy()[:, None] - lvls).argmin(axis=1)]
     conds = [df['ct'] <= 100, df['ct'] <= 200, df['ct'] <= 400, df['ct'] <= 600, df['ct'] <= 800]
     df['current_large_pct'] = np.select(conds, [df['pct_100'], df['pct_200'], df['pct_400'], df['pct_600'], df['pct_800']], default=df['pct_1000'])
     for c in ['pct_100', 'pct_200', 'pct_400', 'pct_600', 'pct_800', 'pct_1000']: df[f'prev_{c}'] = df[c].shift(1)
@@ -544,7 +546,9 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     if df_m.empty: return pd.DataFrame()
     dead_info = df_m['日期'].apply(lambda d: get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, chip_engine))
     df_m['safe_dead_ratio'], df_m['cl'] = dead_info.apply(lambda x: max(0.0, min(99.9, x[0]))), dead_info.apply(lambda x: x[1])
-    df_m['ct'] = np.array([100, 200, 400, 600, 800, 1000])[np.abs(np.clip(np.minimum(15000 / df_m['收盤價(元)'], df_m['總張數'] * np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000).to_numpy()[:, None] - np.array([100, 200, 400, 600, 800, 1000])].argmin(axis=1)]
+    lvls = np.array([100, 200, 400, 600, 800, 1000])
+    raw_th = np.clip(np.minimum(15000 / df_m['收盤價(元)'], df_m['總張數'] * np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0) * 0.01), 100, 1000)
+    df_m['ct'] = lvls[np.abs(raw_th.to_numpy()[:, None] - lvls).argmin(axis=1)]
     df_m['lp'] = np.select([df_m['ct'] <= 100, df_m['ct'] <= 200, df_m['ct'] <= 400, df_m['ct'] <= 600, df_m['ct'] <= 800], [df_m['pct_100'], df_m['pct_200'], df_m['pct_400'], df_m['pct_600'], df_m['pct_800']], default=df_m['pct_1000'])
     df_m['cd'] = np.where((df_m['safe_dead_ratio'] > 0) & (df_m['safe_dead_ratio'] < 100), np.round(np.maximum(0, (df_m['lp'] - df_m['safe_dead_ratio']) / (100.0 - df_m['safe_dead_ratio'])) * 100, 2), "-")
     df_m['st_val'] = np.select([df_m['lp'] > 80.0, df_m['lp'] > 70.0, (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0)], ["極度集中", "高度鎖碼", "波段甜區"], default="籌碼渙散")
@@ -591,16 +595,16 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         gap = cp - smart_avg_cost if smart_avg_cost > 0 and cp > 0 else 0
         
         adv = []
-        if cp <= 0: adv.append("缺股價")
+        if cp <= 0: adv.append("缺價")
         else:
-            if hp - lp > 0 and (min(cp, op) - lp) / (hp - lp) > 0.5 and smart_net > 0: adv.append("探底洗盤，主力護盤")
-            if smart_avg_cost == 0 and smart_net < 0: adv.append("[危險]無本出貨")
-            elif smart_net > 300 and diff_row.get('買方火力(倍)', 1.0) > 1.5: adv.append("[點火]重力掃貨")
+            if hp - lp > 0 and (min(cp, op) - lp) / (hp - lp) > 0.5 and smart_net > 0: adv.append("洗盤護盤")
+            if smart_avg_cost == 0 and smart_net < 0: adv.append("無本出貨")
+            elif smart_net > 300 and diff_row.get('買方火力(倍)', 1.0) > 1.5: adv.append("點火掃貨")
             elif smart_net > 50 and gap > 0: adv.append("強勢鎖碼")
-            elif smart_net > 50 and gap < 0: adv.append("大戶承接")
+            elif smart_net > 50 and gap < 0: adv.append("逢低承接")
             elif smart_net < -100 and sp_num > 0: adv.append("拉高派發")
-            elif smart_net < -100 and sp_num <= 0: adv.append("波段棄守")
-        if (eye := diff_row.get('鷹眼診斷', "")) and eye != "中性換手": adv.append(eye)
+            elif smart_net < -100 and sp_num <= 0: adv.append("多殺多棄守")
+        if (eye := diff_row.get('鷹眼診斷', "")) and eye != "中性": adv.append(eye)
         elif not adv: adv.append("盤整")
 
         out.append({"日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("無本" if smart_avg_cost == 0 and total_n > 0 else "-"), "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", "活躍家數": diff_row.get('活躍家數', 0), "買賣家數差": diff_row.get('買賣家數差', 0), "籌碼集中度(%)": diff_row.get('籌碼集中度(%)', 0), "買方火力(倍)": diff_row.get('買方火力(倍)', 1.0), "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)})
@@ -667,11 +671,10 @@ def process_inst(df):
     pdf = df.pivot_table(index='date', columns='name', values=['buy', 'sell'], fill_value=0).reset_index()
     pdf.columns = ['_'.join(c).strip('_') for c in pdf.columns.values]
     out, length = pd.DataFrame({'日期': pdf['date']}), len(pdf)
-    out['外資買賣超(張)'] = ((safe_to_num(pdf.get('buy_Foreign_Investor', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Foreign_Investor', pd.Series([0]*length)))) / 1000).round().astype(int)
-    out['投信買賣超(張)'] = ((safe_to_num(pdf.get('buy_Investment_Trust', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Investment_Trust', pd.Series([0]*length)))) / 1000).round().astype(int)
-    out['自營商(自行)買賣超(張)'] = ((safe_to_num(pdf.get('buy_Dealer_self', pdf.get('buy_Dealer', pd.Series([0]*length)))) - safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))) / 1000).round().astype(int)
-    out['自營商(避險)買賣超(張)'] = ((safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length)))) / 1000).round().astype(int)
-    out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
+    out['外資買超(張)'] = ((safe_to_num(pdf.get('buy_Foreign_Investor', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Foreign_Investor', pd.Series([0]*length)))) / 1000).round().astype(int)
+    out['投信買超(張)'] = ((safe_to_num(pdf.get('buy_Investment_Trust', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Investment_Trust', pd.Series([0]*length)))) / 1000).round().astype(int)
+    out['自營買超(張)'] = (((safe_to_num(pdf.get('buy_Dealer_self', pdf.get('buy_Dealer', pd.Series([0]*length)))) - safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))) + (safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length))) - safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length))))) / 1000).round().astype(int)
+    out['三大法人(張)'] = out['外資買超(張)'] + out['投信買超(張)'] + out['自營買超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
 
 def process_fut_inst(df):
@@ -693,15 +696,15 @@ def process_fut_inst(df):
 
 def process_per(df):
     if not is_valid(df): return pd.DataFrame()
-    df_out = df.copy().rename(columns={"date":"日期","dividend_yield":"殖利率(%)","PER":"本益比(倍)","PBR":"淨值比(倍)"}).loc[:, ~df_out.columns.duplicated()]
-    for col in ["殖利率(%)", "本益比(倍)", "淨值比(倍)"]: 
+    df_out = df.copy().rename(columns={"date":"日期","dividend_yield":"殖利率(%)","PER":"本益比","PBR":"淨值比"}).loc[:, ~df_out.columns.duplicated()]
+    for col in ["殖利率(%)", "本益比", "淨值比"]: 
         if col in df_out.columns: df_out[col] = safe_to_num(df_out[col]).round(2)
-    return df_out[[c for c in ['日期', '本益比(倍)', '淨值比(倍)', '殖利率(%)'] if c in df_out.columns]].tail(10).sort_values('日期', ascending=False)
+    return df_out[[c for c in ['日期', '本益比', '淨值比', '殖利率(%)'] if c in df_out.columns]].tail(10).sort_values('日期', ascending=False)
 
 def process_disp(df):
     if not is_valid(df): return pd.DataFrame()
-    df_out = df.copy().rename(columns={"date":"公告日期","disposition_cnt":"處次","condition":"條件","measure":"措施","period_start":"起日","period_end":"迄日"}).loc[:, ~df_out.columns.duplicated()]
-    return df_out[[c for c in ['公告日期', '處次', '起日', '迄日', '條件', '措施'] if c in df_out.columns]].tail(5).sort_values('公告日期', ascending=False)
+    df_out = df.copy().rename(columns={"date":"公告","disposition_cnt":"處次","condition":"條件","measure":"措施","period_start":"起日","period_end":"迄日"}).loc[:, ~df_out.columns.duplicated()]
+    return df_out[[c for c in ['公告', '處次', '起日', '迄日', '條件', '措施'] if c in df_out.columns]].tail(5).sort_values('公告', ascending=False)
 
 def process_div(df):
     if not is_valid(df): return pd.DataFrame()
@@ -727,96 +730,19 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
         if "溢價(%)" not in df_out.columns or df_out["溢價(%)"].isna().all():
             if "CB收" in df_out.columns and "價值" in df_out.columns: df_out["價值"] = df_out["價值"].replace(0, np.nan); df_out["溢價(%)"] = ((df_out["CB收"] - df_out["價值"]) / df_out["價值"] * 100).round(2)
             else: df_out["溢價(%)"] = "-"
-    if df_cb_info is not None and not df_cb_info.empty and "餘額" in df_out.columns:
-        df_cb_info_clean = df_cb_info.rename(columns={"stock_id": "代號", "bond_id": "代號", "cb_id": "代號", "issue_amount": "發行總額", "IssueAmount": "發行總額", "IssuanceAmount": "發行總額", "DueDateOfConversion": "到期日", "maturity_date": "到期日"}).loc[:, ~df_cb_info_clean.columns.duplicated()]
+    if is_valid(df_cb_info) and "餘額" in df_out.columns:
+        df_cb_info_clean = df_cb_info.rename(columns={"stock_id": "代號", "bond_id": "代號", "cb_id": "代號", "issue_amount": "發行額", "IssueAmount": "發行額", "IssuanceAmount": "發行額", "DueDateOfConversion": "到期", "maturity_date": "到期"}).loc[:, ~df_cb_info_clean.columns.duplicated()]
         if "代號" in df_cb_info_clean.columns:
             df_cb_info_clean['代號'] = df_cb_info_clean['代號'].astype(str).str.replace(r'(\.0$|,)', '', regex=True).str.strip()
             cols_to_merge = ['代號']
-            if "發行總額" in df_cb_info_clean.columns: cols_to_merge.append("發行總額")
-            if "到期日" in df_cb_info_clean.columns: cols_to_merge.append("到期日")
+            if "發行額" in df_cb_info_clean.columns: cols_to_merge.append("發行額")
+            if "到期" in df_cb_info_clean.columns: cols_to_merge.append("到期")
             df_out = pd.merge(df_out, df_cb_info_clean[cols_to_merge].drop_duplicates('代號'), on='代號', how='left')
-            if "發行總額" in df_out.columns: df_out["發行總額"] = safe_to_num(df_out["發行總額"], fill_val=np.nan).replace(0, np.nan); df_out["未償還比例(%)"] = (df_out["餘額"] / df_out["發行總額"] * 100).round(2)
-            else: df_out["未償還比例(%)"] = "缺發行總額"
-        else: df_out["未償還比例(%)"] = "缺代號"
-    else: df_out["未償還比例(%)"] = "需原始總額"
-    return df_out[[c for c in ["日期", "代號", "名稱", "CB收", "股價", "轉換價", "價值", "溢價(%)", "餘額", "未償還比例(%)", "到期日"] if c in df_out.columns]]
-
-def process_technical_analysis(df_price, s_ma, m_ma, l_ma):
-    try:
-        if not is_valid(df_price, ['收盤價(元)', '日期'], 30): return pd.DataFrame()
-        s_ma, m_ma, l_ma = int(s_ma), int(m_ma), int(l_ma) 
-        df_ta = df_price[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
-        df_ta['收盤價(元)'] = pd.to_numeric(df_ta['收盤價(元)'], errors='coerce').astype('float64')
-        df_ta[f'MA{s_ma}'] = df_ta['收盤價(元)'].rolling(window=s_ma, min_periods=1).mean().round(2)
-        df_ta[f'MA{m_ma}(中線)'] = df_ta['收盤價(元)'].rolling(window=m_ma, min_periods=1).mean().round(2)
-        df_ta[f'MA{l_ma}(長線)'] = df_ta['收盤價(元)'].rolling(window=l_ma, min_periods=1).mean().round(2)
-        df_ta['中線乖離(%)'] = ((df_ta['收盤價(元)'] - df_ta[f'MA{m_ma}(中線)']) / df_ta[f'MA{m_ma}(中線)'].replace(0, np.nan) * 100).round(2)
-        df_ta['技術面診斷'] = np.select([df_ta['收盤價(元)'] > df_ta[f'MA{m_ma}(中線)'], df_ta['收盤價(元)'] < df_ta[f'MA{m_ma}(中線)']], ["站上中線防守", "跌破中線防守"], default="盤整")
-        return df_ta.sort_values('日期', ascending=False)
-    except Exception: return pd.DataFrame()
-
-def process_linear_regression(df_price, lr_days):
-    try:
-        if not is_valid(df_price, ['收盤價(元)'], 2): return pd.DataFrame()
-        df_lr = df_price.head(lr_days)[['日期', '收盤價(元)']].sort_values('日期', ascending=True)
-        df_lr['收盤價(元)'] = pd.to_numeric(df_lr['收盤價(元)'], errors='coerce').astype('float64')
-        y = df_lr['收盤價(元)'].dropna().values
-        if len(y) < 2: return pd.DataFrame()
-        x = np.arange(len(y))
-        m, c = np.linalg.lstsq(np.vstack([x, np.ones(len(x))]).T, y, rcond=None)[0]
-        y_pred = m * x + c
-        std_err = np.std(y - y_pred)
-        df_lr['LR_Mid'], df_lr['LR_Upper'], df_lr['LR_Lower'] = y_pred, y_pred + 2 * std_err, y_pred - 2 * std_err
-        return df_lr[['日期', 'LR_Mid', 'LR_Upper', 'LR_Lower']]
-    except Exception: return pd.DataFrame()
-
-def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
-    try:
-        if not is_valid(df_price, min_len=order * 2): return {}
-        df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
-        lows_vals, highs_vals, dates_vals = df['最低價(元)'].values, df['最高價(元)'].values, df['日期'].values
-        highs, lows = [], []
-        for i in range(order, len(df) - order):
-            if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]): lows.append((dates_vals[i], float(lows_vals[i]), i))
-            if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]): highs.append((dates_vals[i], float(highs_vals[i]), i))
-        if len(lows) < 2 or len(highs) < 2: return {}
-        last_date, tol, is_auto = dates_vals[-1], 0.03, "Auto" in mode
-        
-        if "三重底" in mode or is_auto:
-            if len(lows) >= 3 and (l1 := lows[-3])[1] > 0 and (l2 := lows[-2])[1] > 0 and abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-(l3 := lows[-1])[1])/l2[1] < tol and (b_h := [h for h in highs if l1[2] < h[2] < l3[2]]):
-                return {'name': '三重底', 'shape_x': [l1[0], b_h[0][0], l2[0], b_h[-1][0], l3[0]], 'shape_y': [l1[1], b_h[0][1], l2[1], b_h[-1][1], l3[1]], 'neck_x': [l1[0], last_date], 'neck_y': [(h_max := max(b_h, key=lambda x: x[1]))[1], h_max[1]], 'color': '#9c27b0', 'desc': f"三重底 ({'突破' if current_price > h_max[1] else '成型中'})", 'signal': 'bullish'}
-        if "三重頂" in mode or is_auto:
-            if len(highs) >= 3 and (h1 := highs[-3])[1] > 0 and (h2 := highs[-2])[1] > 0 and abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-(h3 := highs[-1])[1])/h2[1] < tol and (b_l := [l for l in lows if h1[2] < l[2] < h3[2]]):
-                return {'name': '三重頂', 'shape_x': [h1[0], b_l[0][0], h2[0], b_l[-1][0], h3[0]], 'shape_y': [h1[1], b_l[0][1], h2[1], b_l[-1][1], h3[1]], 'neck_x': [h1[0], last_date], 'neck_y': [(l_min := min(b_l, key=lambda x: x[1]))[1], l_min[1]], 'color': '#d32f2f', 'desc': f"三重頂 ({'跌破' if current_price < l_min[1] else '成型中'})", 'signal': 'bearish'}
-        if "頭肩底" in mode or is_auto:
-            if len(lows) >= 3 and (l1 := lows[-3])[1] > 0 and (l2 := lows[-2])[1] < l1[1] and l2[1] < (l3 := lows[-1])[1] and abs(l1[1]-l3[1])/l1[1] < 0.05 and (b_h1 := [h for h in highs if l1[2] < h[2] < l2[2]]) and (b_h2 := [h for h in highs if l2[2] < h[2] < l3[2]]):
-                return {'name': '頭肩底', 'shape_x': [l1[0], (h1 := max(b_h1, key=lambda x: x[1]))[0], l2[0], (h2 := max(b_h2, key=lambda x: x[1]))[0], l3[0]], 'shape_y': [l1[1], h1[1], l2[1], h2[1], l3[1]], 'neck_x': [h1[0], last_date], 'neck_y': [h1[1], h2[1]], 'color': '#e91e63', 'desc': f"頭肩底 ({'突破' if current_price > max(h1[1], h2[1]) else '右肩中'})", 'signal': 'bullish'}
-        if "頭肩頂" in mode or is_auto:
-            if len(highs) >= 3 and (h1 := highs[-3])[1] > 0 and (h2 := highs[-2])[1] > h1[1] and h2[1] > (h3 := highs[-1])[1] and abs(h1[1]-h3[1])/h1[1] < 0.05 and (b_l1 := [l for l in lows if h1[2] < l[2] < h2[2]]) and (b_l2 := [l for l in lows if h2[2] < l[2] < h3[2]]):
-                return {'name': '頭肩頂', 'shape_x': [h1[0], (l1 := min(b_l1, key=lambda x: x[1]))[0], h2[0], (l2 := min(b_l2, key=lambda x: x[1]))[0], h3[0]], 'shape_y': [h1[1], l1[1], h2[1], l2[1], h3[1]], 'neck_x': [l1[0], last_date], 'neck_y': [l1[1], l2[1]], 'color': '#d32f2f', 'desc': f"頭肩頂 ({'跌破' if current_price < min(l1[1], l2[1]) else '右肩中'})", 'signal': 'bearish'}
-        if "W底" in mode or is_auto:
-            if len(lows) >= 2 and (b_h := [h for h in highs if (l1 := lows[-2])[2] < h[2] < (l2 := lows[-1])[2]]) and l1[1] > 0 and ((diff := abs(l1[1] - l2[1]) / l1[1]) <= tol or "W底" in mode):
-                return {'name': 'W底', 'shape_x': [l1[0], (h1 := max(b_h, key=lambda x: x[1]))[0], l2[0]], 'shape_y': [l1[1], h1[1], l2[1]], 'neck_x': [l1[0], last_date], 'neck_y': [h1[1], h1[1]], 'color': '#9c27b0', 'desc': f"{'標準' if diff<=tol else '強制'} W底 ({'突破' if current_price > h1[1] else '成型中'})", 'signal': 'bullish'}
-        if "M頭" in mode or is_auto:
-            if len(highs) >= 2 and (b_l := [l for l in lows if (h1 := highs[-2])[2] < l[2] < (h2 := highs[-1])[2]]) and h1[1] > 0 and ((diff := abs(h1[1] - h2[1]) / h1[1]) <= tol or "M頭" in mode):
-                return {'name': 'M頭', 'shape_x': [h1[0], (l1 := min(b_l, key=lambda x: x[1]))[0], h2[0]], 'shape_y': [h1[1], l1[1], h2[1]], 'neck_x': [h1[0], last_date], 'neck_y': [l1[1], l1[1]], 'color': '#d32f2f', 'desc': f"{'標準' if diff<=tol else '強制'} M頭 ({'跌破' if current_price < l1[1] else '成型中'})", 'signal': 'bearish'}
-        if any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto:
-            if len(highs) >= 2 and len(lows) >= 2:
-                h1, h2, l1, l2 = highs[-2], highs[-1], lows[-2], lows[-1]
-                h_diff, l_diff = (h2[1] - h1[1]) / h1[1] if h1[1] > 0 else 0, (l2[1] - l1[1]) / l1[1] if l1[1] > 0 else 0
-                p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
-                if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto): p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理"
-                elif abs(h_diff) < tol and l_diff > tol and ("上升三角形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "上升三角形", "#4caf50", "上升三角形", "bullish"
-                elif h_diff < -tol and abs(l_diff) < tol and ("下降三角形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "下降三角形", "#f44336", "下降三角形", "bearish"
-                elif h_diff < -tol and l_diff > tol and ("對稱" in mode or "收斂" in mode or is_auto): p_name, p_color, p_desc = "對稱三角形", "#ff9800", "對稱三角形"
-                elif h_diff > tol and l_diff > tol and l_diff > h_diff and ("上升楔形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "上升楔形", "#ff5722", "上升楔形", "bearish"
-                elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and ("下降楔形" in mode or is_auto): p_name, p_color, p_desc, p_sig = "下降楔形", "#8bc34a", "下降楔形", "bullish"
-                if p_name or not is_auto: return {'name': p_name or mode.split('：')[-1].strip(), 'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], 'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]], 'color': p_color or "#999", 'desc': p_desc or mode.split('：')[-1], 'signal': p_sig}
-        if "V型反轉" in mode or is_auto:
-            if len(lows) >= 1 and len(highs) >= 2 and (h_before := [h for h in highs if h[2] < (l1 := lows[-1])[2]]) and (h_after := [h for h in highs if h[2] > l1[2]]) and l1[1] > 0 and ((hb := h_before[-1])[1]-l1[1])/l1[1] > 0.1 and ((ha := h_after[0])[1]-l1[1])/l1[1] > 0.1: 
-                return {'name': 'V型反轉', 'shape_x': [hb[0], l1[0], ha[0]], 'shape_y': [hb[1], l1[1], ha[1]], 'neck_x': [hb[0], ha[0]], 'neck_y': [hb[1], ha[1]], 'color': '#00bcd4', 'desc': f"深V反轉 ({'突破' if current_price > ha[1] else '反轉中'})", 'signal': 'bullish'}
-        return {}
-    except Exception: return {}
+            if "發行額" in df_out.columns: df_out["發行額"] = safe_to_num(df_out["發行額"], fill_val=np.nan).replace(0, np.nan); df_out["未償還(%)"] = (df_out["餘額"] / df_out["發行額"] * 100).round(2)
+            else: df_out["未償還(%)"] = "缺額"
+        else: df_out["未償還(%)"] = "缺代號"
+    else: df_out["未償還(%)"] = "缺額"
+    return df_out[[c for c in ["日期", "代號", "名稱", "CB收", "股價", "轉換價", "價值", "溢價(%)", "餘額", "未償還(%)", "到期"] if c in df_out.columns]]
 
 def render_clean_html_table(df, title=""):
     if not is_valid(df):
