@@ -224,6 +224,7 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V71.12.7 決策引擎", use_container_width=True, key="run_engine")
 
+# 🎯 優化升級：純 Regex 字串清洗引擎，消滅 `.replace().replace()` 接力賽
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
         if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
@@ -467,7 +468,8 @@ def extract_fubon_table(ht, trg, cols):
     for tr in trs:
         tds = tdp.findall(tr)
         if tds:
-            r = [re.sub(r'<[^>]+>', '', td).replace('&nbsp;', '').replace(' ', '').replace('\r', '').replace('\n', '').strip() for td in tds]
+            # 🎯 優化升級：Regex 清洗引擎
+            r = [re.sub(r'<[^>]+>|&nbsp;|\s', '', td).strip() for td in tds]
             if trg in "".join(r): ist = True
             elif ist and len(r) >= cols:
                 if r[0] == "" or "註" in r[0]: ist = False
@@ -1333,7 +1335,8 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         lp = pr_row.get('最低價(元)', 0)
         sp_raw = pr_row.get('漲跌(元)', 0)
         
-        try: sp_num = float(str(sp_raw).replace('+', '').replace(',', '').strip())
+        # 🎯 優化升級：Regex 清洗引擎
+        try: sp_num = float(re.sub(r'[+,]', '', str(sp_raw)).strip())
         except: sp_num = 0.0
         
         diff_row = diff_dict.get(d, {})
@@ -1394,7 +1397,8 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
 
 def clean_level_by_math(x):
-    s = str(x).replace(',', '').replace(' ', '').replace('.0', '')
+    # 🎯 優化升級：Regex 清洗引擎
+    s = re.sub(r'[, ]|\.0', '', str(x))
     if s in _LEVEL_CLEAN_CACHE: return _LEVEL_CLEAN_CACHE[s]
     
     res = "合計"
@@ -1608,7 +1612,8 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
     df_out = df.copy().rename(columns={"date": "日期", "cb_id": "可轉債代號", "cb_name": "可轉債名稱", "conversion_price": "轉換價(元)", "ConversionPrice": "轉換價(元)", "underlying_stock_price": "標的股價(元)", "PriceOfUnderlyingStock": "標的股價(元)", "outstanding_amount": "未償還餘額", "OutstandingAmount": "未償還餘額", "outstanding_balance": "未償還餘額", "close": "CB收盤價", "closing_price": "CB收盤價", "conversion_premium_rate": "溢價率(%)", "premium_rate": "溢價率(%)", "PremiumRate": "溢價率(%)", "theoretical_value": "轉換價值", "TheoreticalValue": "轉換價值"})
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
     
-    if "可轉債代號" in df_out.columns: df_out['可轉債代號'] = df_out['可轉債代號'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip()
+    # 🎯 優化升級：Regex 清洗引擎
+    if "可轉債代號" in df_out.columns: df_out['可轉債代號'] = df_out['可轉債代號'].astype(str).str.replace(r'(\.0$|,)', '', regex=True).str.strip()
     for c in ["轉換價(元)", "標的股價(元)", "未償還餘額", "CB收盤價", "溢價率(%)", "轉換價值"]:
         if c in df_out.columns: df_out[c] = safe_to_num(df_out[c], fill_val=np.nan)
     if "標的股價(元)" not in df_out.columns or df_out["標的股價(元)"].isna().all(): df_out["標的股價(元)"] = current_stock_price
@@ -1624,7 +1629,8 @@ def process_cbas(df, current_stock_price, df_cb_info=None):
         df_cb_info_clean = df_cb_info.rename(columns={"stock_id": "可轉債代號", "bond_id": "可轉債代號", "cb_id": "可轉債代號", "issue_amount": "發行總額", "IssueAmount": "發行總額", "IssuanceAmount": "發行總額", "DueDateOfConversion": "到期日", "maturity_date": "到期日"})
         df_cb_info_clean = df_cb_info_clean.loc[:, ~df_cb_info_clean.columns.duplicated()]
         if "可轉債代號" in df_cb_info_clean.columns:
-            df_cb_info_clean['可轉債代號'] = df_cb_info_clean['可轉債代號'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip()
+            # 🎯 優化升級：Regex 清洗引擎
+            df_cb_info_clean['可轉債代號'] = df_cb_info_clean['可轉債代號'].astype(str).str.replace(r'(\.0$|,)', '', regex=True).str.strip()
             cols_to_merge = ['可轉債代號']
             if "發行總額" in df_cb_info_clean.columns: cols_to_merge.append("發行總額")
             if "到期日" in df_cb_info_clean.columns: cols_to_merge.append("到期日")
@@ -2181,7 +2187,8 @@ if run_btn:
             today_smart_net = df_daily_tracker.iloc[0].get('聰明錢淨流(張)', 0)
             today_short_trap = df_daily_tracker.iloc[0].get('潛在賣壓(張)', 0)
             gap_raw = df_daily_tracker.iloc[0].get('均價落差', 0)
-            try: today_gap = float(str(gap_raw).replace('+', '').replace(',', '').strip())
+            # 🎯 優化升級：Regex 清洗引擎
+            try: today_gap = float(re.sub(r'[+,]', '', str(gap_raw)).strip())
             except: today_gap = 0.0
 
         today_fp = 1.0
@@ -2201,12 +2208,14 @@ if run_btn:
                 if str(c_val_raw).strip() == "-":
                     c_val_text = f"{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)"
                 else:
-                    radar_c_val = float(str(c_val_raw).replace('+', '').replace(',', '').replace('%', '').strip())
+                    # 🎯 優化升級：Regex 清洗引擎
+                    radar_c_val = float(re.sub(r'[+,%]', '', str(c_val_raw)).strip())
                     c_val_text = f"{radar_c_val}%"
             except: pass
             
             try: 
-                radar_chg = float(str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)).replace('+', '').replace(',', '').replace('%', '').strip())
+                # 🎯 優化升級：Regex 清洗引擎
+                radar_chg = float(re.sub(r'[+,%]', '', str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0))).strip())
                 if radar_chg > 0: dir_str = "增加"
                 elif radar_chg < 0: dir_str = "減少"
                 else: dir_str = "無變動"
