@@ -2276,7 +2276,7 @@ if run_btn:
         if enable_pattern:
             pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as bg_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as bg_executor:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
 
