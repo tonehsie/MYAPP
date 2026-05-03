@@ -10,6 +10,7 @@ import urllib.request
 import ssl
 import urllib3
 import gc
+import time
 from io import StringIO
 import streamlit.components.v1 as components
 from requests.adapters import HTTPAdapter
@@ -17,9 +18,9 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 最終潔淨版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 終極測試版)", initial_sidebar_state="expanded")
 
-FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
+FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
 
 # ==========================================
@@ -27,6 +28,7 @@ GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads
 # ==========================================
 CSS = """
 <style>
+/* 一般表格，最高 600px 捲動 */
 .table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding-bottom: 10px; }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
@@ -34,6 +36,7 @@ CSS = """
 .table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .table-container thead th:first-child { z-index: 5; }
 
+/* 視覺化圖表專用：無限長高、無垂直捲軸、完美推擠下層 */
 .full-table-container { overflow-x: auto; overflow-y: visible; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; padding-bottom: 10px; }
 .full-table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .full-table-container th, .full-table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
@@ -54,6 +57,7 @@ CSS = """
 .stTabs [data-baseweb='tab'] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 4px 4px 0 0; padding: 10px 20px; font-weight: bold; }
 .stTabs [aria-selected='true'] { background-color: #e3f2fd !important; color: #1e3a8a !important; border-bottom: 3px solid #1e3a8a !important; }
 
+/* 強化版 AI 報告樣式 */
 .ai-report-box { background-color: #fcfdfe; border: 1px solid #e9ecef; border-left: 6px solid #b71c1c; border-radius: 8px; padding: 25px; margin-bottom: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); line-height: 1.8; }
 .ai-report-box h4 { margin-top: 0; color: #b71c1c; font-weight: 900; font-size: 1.6rem; border-bottom: 2px dashed #ccc; padding-bottom: 10px; margin-bottom: 20px; }
 .ai-report-box ul { margin-bottom: 20px; padding-left: 20px; }
@@ -111,6 +115,7 @@ KLINE_CHART_TEMPLATE = """
         #chart-vol { flex: 0.8; position: relative;}
         .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
         
+        /* 圖表區深色模式自動反轉 */
         @media (prefers-color-scheme: dark) {
             body { background: #1e1e1e; }
             #chart-main { border-bottom: 2px solid #444; }
@@ -264,6 +269,7 @@ KLINE_CHART_TEMPLATE = """
 </body>
 </html>
 """
+
 st.markdown(CSS, unsafe_allow_html=True)
 
 # 🎯 統一防呆檢驗工具
@@ -285,33 +291,12 @@ def optimize_memory(df):
                 df[col] = df[col].astype('category')
     return df
 
-def safe_to_num(series, fill_val=0):
-    if isinstance(series, pd.Series):
-        if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
-        valid_mask = series.notna()
-        converted = pd.Series(fill_val, index=series.index, dtype=float)
-        if valid_mask.any():
-            cleaned = series[valid_mask].astype(str).str.replace(r'[,%＊*]', '', regex=True).str.strip()
-            ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']
-            cleaned = cleaned.replace(ignore_list, np.nan)
-            temp_converted = pd.to_numeric(cleaned, errors='coerce')
-            converted.loc[valid_mask] = temp_converted.fillna(fill_val)
-        return converted
-    elif isinstance(series, (int, float)): 
-        return series
-    else:
-        if pd.isna(series): return fill_val
-        s_str = re.sub(r'[,%＊*]', '', str(series)).strip()
-        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
-        try: return float(s_str)
-        except: return fill_val
-
 @st.cache_resource(max_entries=3)
 def get_finmind_session():
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
     retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+    adapter = HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
@@ -320,7 +305,7 @@ def get_finmind_session():
 def get_generic_session():
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+    adapter = HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
@@ -415,10 +400,18 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V73.00 最終潔淨版)")
+st.sidebar.divider()
+st.sidebar.markdown("### ⚡ API 壓力測試模組 (高頻抓取)")
+test_stock = st.sidebar.text_input("測試股票代號", value="2330", key="test_stock")
+test_requests = st.sidebar.selectbox("測試 Request 數量", [10, 50, 100, 500, 1000], index=2)
+test_concurrency = st.sidebar.selectbox("併發連線數 (Concurrency)", [2, 5, 10, 20], index=2)
+run_test_btn = st.sidebar.button("🚀 執行 API 壓力測試")
+
+
+st.title("全息量化系統 (V73.00 極限測試版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.00：穩定單核防呆架構，移除測試模組。新增鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V73.00：新增高頻壓力測試模組、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -430,14 +423,95 @@ with col2:
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V73.00 決策引擎", use_container_width=True, key="run_engine")
 
+# ==========================================
+# 執行 API 壓力測試模組 (優先攔截)
+# ==========================================
+if run_test_btn:
+    if not test_stock.strip():
+        st.warning("請輸入測試股票代號！")
+        st.stop()
+        
+    st.subheader(f"🚀 API 高頻壓力測試報告： {test_stock}")
+    st.write(f"正在模擬 **{test_concurrency}** 個併發連線，總共發送 **{test_requests}** 個請求...")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    start_time = time.time()
+    success_count = 0
+    fail_count = 0
+    latencies = []
+    
+    def test_worker(_):
+        url = "https://api.finmindtrade.com/api/v4/data"
+        params = {"dataset": "TaiwanStockPriceTick", "data_id": test_stock, "start_date": datetime.date.today().strftime("%Y-%m-%d")}
+        req_start = time.time()
+        try:
+            r = FM_SESSION.get(url, params=params, timeout=5)
+            r.raise_for_status()
+            latencies.append(time.time() - req_start)
+            return True
+        except Exception:
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=test_concurrency) as executor:
+        futures = [executor.submit(test_worker, i) for i in range(test_requests)]
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            if future.result():
+                success_count += 1
+            else:
+                fail_count += 1
+                
+            progress = (i + 1) / test_requests
+            progress_bar.progress(progress)
+            status_text.text(f"已完成: {i+1} / {test_requests} (成功: {success_count}, 失敗: {fail_count})")
+            
+    end_time = time.time()
+    total_time = end_time - start_time
+    req_per_sec = test_requests / total_time if total_time > 0 else 0
+    avg_latency = (sum(latencies) / len(latencies) * 1000) if latencies else 0
+    
+    st.success("測試完成！")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("總花費時間", f"{total_time:.2f} 秒")
+    col2.metric("每秒承受請求數 (RPS)", f"{req_per_sec:.2f} 次/秒")
+    col3.metric("平均回應延遲", f"{avg_latency:.2f} 毫秒")
+    col4.metric("成功/失敗率", f"{success_count}/{fail_count}")
+    
+    st.stop() # 確保壓力測試跑完不會繼續往下執行主引擎
+
+# ==========================================
+# 基礎資料處理函式
+# ==========================================
+def safe_to_num(series, fill_val=0):
+    if isinstance(series, pd.Series):
+        if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
+        valid_mask = series.notna()
+        converted = pd.Series(fill_val, index=series.index, dtype=float)
+        if valid_mask.any():
+            cleaned = series[valid_mask].astype(str).str.replace(r'[,%＊*]', '', regex=True).str.strip()
+            ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']
+            cleaned = cleaned.replace(ignore_list, np.nan)
+            temp_converted = pd.to_numeric(cleaned, errors='coerce')
+            converted.loc[valid_mask] = temp_converted.fillna(fill_val)
+        return converted
+    elif isinstance(series, (int, float)): 
+        return series
+    else:
+        if pd.isna(series): return fill_val
+        s_str = re.sub(r'[,%＊*]', '', str(series)).strip()
+        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
+        try: return float(s_str)
+        except: return fill_val
+
 def cached_finmind_api_call(url, params_tuple):
-    try:
-        r = FM_SESSION.get(url, params=dict(params_tuple), timeout=15)
-        if r.status_code == 200:
-            return r.json().get("data", [])
-        return []
-    except Exception:
-        return []
+    r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
+    r.raise_for_status() 
+    data = r.json().get("data")
+    if data is None:
+        raise ValueError("FinMind 回傳資料為空")
+    return data
 
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def get_basic_info_finmind(tid):
@@ -486,8 +560,8 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockPER", d_end, None, user_stock_id),
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
         ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None),
-        ("TaiwanStockBlockTrade", d_end, None, user_stock_id),
-        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id)
+        ("TaiwanStockBlockTrade", d_end, None, user_stock_id), # 已更新為正確的鉅額交易 API
+        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) # 借券成交明細
     ]
 
     total_tasks = max_len + len(api_targets)
@@ -514,7 +588,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         except:
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
         future_to_type = {}
         for d in dates[:max_len]:
             future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
@@ -577,8 +651,12 @@ def scrape_director_v50(tid):
     dd, sv = {}, 0.0
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
             "Referer": f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={tid}"
         }
         r = GENERIC_SESSION.get(f"https://goodinfo.tw/tw/StockDirectorSharehold.asp?STOCK_ID={tid}", headers=headers, timeout=10)
@@ -1666,8 +1744,33 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
     cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)','本日借券成交(張)'] if c in df_out.columns]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
+def process_securities_lending_detail(df):
+    if not is_valid(df, ['date', 'volume']): return pd.DataFrame()
+    df_out = df.copy()
+    df_out['volume'] = (safe_to_num(df_out['volume']) / 1000).round().astype(int)
+    
+    if 'fee_rate' in df_out.columns: df_out['fee_rate'] = safe_to_num(df_out['fee_rate'])
+    else: df_out['fee_rate'] = 0.0
+        
+    if 'transaction_type' not in df_out.columns: df_out['transaction_type'] = '未知'
+        
+    pivot_df = df_out.pivot_table(index='date', columns='transaction_type', values='volume', aggfunc='sum', fill_value=0)
+    daily_stats = df_out.groupby('date').agg(總成交張數=('volume', 'sum'), 平均費率=('fee_rate', 'mean'))
+    
+    res = daily_stats.join(pivot_df).reset_index().rename(columns={'date': '日期', '平均費率': '平均費率(%)'}).fillna(0)
+    res['平均費率(%)'] = res['平均費率(%)'].round(2)
+    
+    col_map = {'定價': '定價交易(張)', '競價': '競價交易(張)', '議借': '議借交易(張)'}
+    res = res.rename(columns=col_map)
+    for c in ['定價交易(張)', '競價交易(張)', '議借交易(張)']:
+        if c not in res.columns: res[c] = 0
+        
+    cols = ['日期', '總成交張數', '平均費率(%)', '定價交易(張)', '競價交易(張)', '議借交易(張)']
+    return res[[c for c in cols if c in res.columns]].tail(10).sort_values('日期', ascending=False)
+
 def process_block_trading(df_block_raw, rank_dates):
     if not is_valid(df_block_raw, ['date']): return pd.DataFrame()
+    # 取最新的五個有交易的日期
     target_dates = rank_dates[:5]
     df_b = df_block_raw[df_block_raw['date'].isin(target_dates)].copy()
     if df_b.empty: return pd.DataFrame()
@@ -2158,7 +2261,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V73.00 最終潔淨版決策引擎..."):
+    with st.spinner(f"正在啟動 V73.00 終極測試版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2271,10 +2374,12 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
-        # 整合融資融券與借券賣出明細
+        # 整合融資融券與新增借券成交明細模組
         df_margin_raw = ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())
         df_lending_raw = ds_dict.get("TaiwanStockSecuritiesLending", pd.DataFrame())
+        
         df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw))
+        df_lending_detail = optimize_memory(process_securities_lending_detail(df_lending_raw))
         
         df_block_trade = optimize_memory(process_block_trading(ds_dict.get("TaiwanStockBlockTrade", pd.DataFrame()), dates))
         df_inst = optimize_memory(process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame())))
@@ -2314,7 +2419,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 最終潔淨版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 終極測試版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2383,7 +2488,6 @@ if run_btn:
             df_t_plot = df_ta_full[['日期', f'MA{ma_short}', f'MA{ma_mid}(中線)', f'MA{ma_long}(長線)']].head(kline_days).copy()
             df_plot = pd.merge(df_plot, df_t_plot, on='日期', how='inner').sort_values('日期', ascending=True)
             
-            df_day_trade_raw = ds_dict.get("TaiwanStockDayTrading", pd.DataFrame())
             if is_valid(df_day_trade_raw):
                 df_dt_chart = df_day_trade_raw.copy()
                 df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
@@ -2448,13 +2552,13 @@ if run_btn:
                 }
 
                 html_code = KLINE_CHART_TEMPLATE.replace("KLINE_DATA", json.dumps(kline_data))\
-                                                 .replace("TOTAL_VOL", json.dumps(total_vol_data))\
-                                                 .replace("DAYTRADE_VOL", json.dumps(day_trade_vol_data))\
-                                                 .replace("MA_DATA", json.dumps(ma_data))\
-                                                 .replace("LR_DATA", lr_data_json)\
-                                                 .replace("PAT_DATA", pat_js)\
-                                                 .replace("NECK_DATA", neck_js)\
-                                                 .replace("PAT_COLOR", pat_color_js)
+                                         .replace("TOTAL_VOL", json.dumps(total_vol_data))\
+                                         .replace("DAYTRADE_VOL", json.dumps(day_trade_vol_data))\
+                                         .replace("MA_DATA", json.dumps(ma_data))\
+                                         .replace("LR_DATA", lr_data_json)\
+                                         .replace("PAT_DATA", pat_js)\
+                                         .replace("NECK_DATA", neck_js)\
+                                         .replace("PAT_COLOR", pat_color_js)
                 components.html(html_code, height=736)
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
@@ -2628,7 +2732,11 @@ if run_btn:
 
         render_clean_html_table(df_block_trade, "04. 鉅額交易日報表 (大額換手追蹤)")
         render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
-        render_clean_html_table(df_margin_lending, "06. 散戶資券與借券餘額 (近10天)")
+        
+        # 渲染全新的資券與借券分離模組
+        render_clean_html_table(df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
+        render_clean_html_table(df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+        
         render_clean_html_table(df_day_trade, "07. 現股當沖明細 (近10天)")
         render_clean_html_table(df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
 
@@ -2675,7 +2783,11 @@ if run_btn:
             p1 += format_to_csv_string(df_combined_display.head(4) if is_valid(df_combined_display) else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
             p1 += format_to_csv_string(df_block_trade, "04. 鉅額交易日報表")
             p1 += format_to_csv_string(df_inst.head(10) if is_valid(df_inst) else df_inst, "05. 法人買賣超 (近10天)")
-            p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06. 散戶資券與借券餘額 (近10天)")
+            
+            # 加入新增的借券詳細匯出
+            p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
+            p1 += format_to_csv_string(df_lending_detail.head(10) if is_valid(df_lending_detail) else df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+            
             p1 += format_to_csv_string(df_day_trade.head(10) if is_valid(df_day_trade) else df_day_trade, "07. 現股當沖明細 (近10天)")
             p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
             p1 += format_to_csv_string(df_rev.head(12) if is_valid(df_rev) else df_rev, "09. 月營收 (百萬元) (近12個月)")
@@ -2685,5 +2797,22 @@ if run_btn:
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
 
-        st.success(f"V73.00 最終潔淨版已成功處理 {user_stock_id}。當前系統使用狀態健康。")
+        st.divider()
+        st.markdown("<div class='category-title'>系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
+        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
+            st.info("這裡傾印了供驗證技術面與主力戰情所需的近 60 天核心基礎資料。")
+            dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
+            
+            df_price_dump = df_price.head(60).copy() if is_valid(df_price) else pd.DataFrame()
+            # 下面這行原本被系統訊息截斷破壞了
+            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
+            
+            df_tdcc_dump = df_s_wide.head(10).copy() if is_valid(df_s_wide) else pd.DataFrame()
+            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
+            
+            st.code(dump_text, language="text")
+            
+        st.success(f"V73.00 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
