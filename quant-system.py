@@ -588,7 +588,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         except:
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         future_to_type = {}
         for d in dates[:max_len]:
             future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
