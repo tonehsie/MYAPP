@@ -400,18 +400,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.sidebar.divider()
-st.sidebar.markdown("### ⚡ API 壓力測試模組 (高頻抓取)")
-test_stock = st.sidebar.text_input("測試股票代號", value="2330", key="test_stock")
-test_requests = st.sidebar.selectbox("測試 Request 數量", [10, 50, 100, 500, 1000], index=2)
-test_concurrency = st.sidebar.selectbox("併發連線數 (Concurrency)", [2, 5, 10, 20], index=2)
-run_test_btn = st.sidebar.button("🚀 執行 API 壓力測試")
-
-
 st.title("全息量化系統 (V73.00 極限測試版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.00：新增高頻壓力測試模組、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V73.00：新增鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -422,64 +414,6 @@ with col1:
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V73.00 決策引擎", use_container_width=True, key="run_engine")
-
-# ==========================================
-# 執行 API 壓力測試模組 (優先攔截)
-# ==========================================
-if run_test_btn:
-    if not test_stock.strip():
-        st.warning("請輸入測試股票代號！")
-        st.stop()
-        
-    st.subheader(f"🚀 API 高頻壓力測試報告： {test_stock}")
-    st.write(f"正在模擬 **{test_concurrency}** 個併發連線，總共發送 **{test_requests}** 個請求...")
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    start_time = time.time()
-    success_count = 0
-    fail_count = 0
-    latencies = []
-    
-    def test_worker(_):
-        url = "https://api.finmindtrade.com/api/v4/data"
-        params = {"dataset": "TaiwanStockPriceTick", "data_id": test_stock, "start_date": datetime.date.today().strftime("%Y-%m-%d")}
-        req_start = time.time()
-        try:
-            r = FM_SESSION.get(url, params=params, timeout=5)
-            r.raise_for_status()
-            latencies.append(time.time() - req_start)
-            return True
-        except Exception:
-            return False
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=test_concurrency) as executor:
-        futures = [executor.submit(test_worker, i) for i in range(test_requests)]
-        for i, future in enumerate(concurrent.futures.as_completed(futures)):
-            if future.result():
-                success_count += 1
-            else:
-                fail_count += 1
-                
-            progress = (i + 1) / test_requests
-            progress_bar.progress(progress)
-            status_text.text(f"已完成: {i+1} / {test_requests} (成功: {success_count}, 失敗: {fail_count})")
-            
-    end_time = time.time()
-    total_time = end_time - start_time
-    req_per_sec = test_requests / total_time if total_time > 0 else 0
-    avg_latency = (sum(latencies) / len(latencies) * 1000) if latencies else 0
-    
-    st.success("測試完成！")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("總花費時間", f"{total_time:.2f} 秒")
-    col2.metric("每秒承受請求數 (RPS)", f"{req_per_sec:.2f} 次/秒")
-    col3.metric("平均回應延遲", f"{avg_latency:.2f} 毫秒")
-    col4.metric("成功/失敗率", f"{success_count}/{fail_count}")
-    
-    st.stop() # 確保壓力測試跑完不會繼續往下執行主引擎
 
 # ==========================================
 # 基礎資料處理函式
@@ -2796,23 +2730,6 @@ if run_btn:
             p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
-
-        st.divider()
-        st.markdown("<div class='category-title'>系統底層數據 Raw Data Dump 驗證區 (CSV 格式 / 60天)</div>", unsafe_allow_html=True)
-        with st.expander("點此展開系統原始擷取數據 (供驗證 00, 01 等模組計算邏輯)", expanded=False):
-            st.info("這裡傾印了供驗證技術面與主力戰情所需的近 60 天核心基礎資料。")
-            dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
-            
-            df_price_dump = df_price.head(60).copy() if is_valid(df_price) else pd.DataFrame()
-            # 下面這行原本被系統訊息截斷破壞了
-            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
-            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
-            
-            df_tdcc_dump = df_s_wide.head(10).copy() if is_valid(df_s_wide) else pd.DataFrame()
-            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
-            
-            st.code(dump_text, language="text")
             
         st.success(f"V73.00 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
