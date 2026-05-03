@@ -2188,19 +2188,25 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
 def get_contract_liabilities(df_fs):
     if not is_valid(df_fs, ['date', 'type', 'value']): return "無合約負債紀錄"
     
-    df_cl = df_fs[df_fs['type'].astype(str).str.contains('合約負債', na=False)].copy()
+    # 整合專業財報字典，建立無死角的關鍵字掃描引擎 (支援新舊制與美股用語)
+    keyword_pattern = r'合約負債|預收帳款|預收款|預收工程款|Contract Liabilit|Deferred Revenue|Unearned Revenue|Advance Receipt'
+    
+    # 使用 regex 進行模糊匹配，忽略大小寫，徹底囊括所有變體科目
+    df_cl = df_fs[df_fs['type'].astype(str).str.contains(keyword_pattern, flags=re.IGNORECASE, na=False)].copy()
     if df_cl.empty: return "無合約負債紀錄"
 
     df_cl['value'] = pd.to_numeric(df_cl['value'], errors='coerce').fillna(0)
+    
+    # 針對同一季度的不同子科目（例如同時有：流動合約負債 + 非流動合約負債）進行精準加總
     g = df_cl.groupby('date')['value'].sum().reset_index().sort_values('date', ascending=False)
     
-    if g.empty: return "無合約負債紀錄"
+    if g.empty or g['value'].sum() == 0: return "無合約負債紀錄"
 
     recent_4 = g.head(4).reset_index(drop=True)
     res_str = []
     
     for _, row in recent_4.iterrows():
-        val_yi = row['value'] / 100000000
+        val_yi = row['value'] / 100000000  # 轉換為「億」為單位
         d_str = str(row['date'])
         try:
             d = pd.to_datetime(d_str)
@@ -2212,6 +2218,7 @@ def get_contract_liabilities(df_fs):
         res_str.append(f"{q_str}: {val_yi:.2f}億")
 
     return " ➔ ".join(res_str)
+
 
 # ==========================================
 # 執行主引擎
