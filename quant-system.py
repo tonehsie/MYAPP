@@ -18,7 +18,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 極速版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.04 雙引擎版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -268,23 +268,12 @@ def get_finmind_session():
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
     retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-@st.cache_resource(max_entries=3)
-def get_generic_session():
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retry, pool_connections=50, pool_maxsize=50)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
 FM_SESSION = get_finmind_session()
-GENERIC_SESSION = get_generic_session()
-
 _num_re = re.compile(r'\d+')
 _LEVEL_MAP = {
     1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張",
@@ -296,17 +285,15 @@ _LEVEL_CLEAN_CACHE = {}
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def fetch_github_manual(url):
     try:
-        r = GENERIC_SESSION.get(url, timeout=5)
-        if r.status_code == 200:
-            r.encoding = 'utf-8'
-            return r.text
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200: return r.text
         return "無法載入說明書，請確認 GitHub Raw 網址是否正確。"
     except Exception as e: return f"說明書載入失敗: {e}"
 
 @st.cache_data(ttl=300, max_entries=2, show_spinner=False)
 def get_api_usage(token):
     try:
-        r = GENERIC_SESSION.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
+        r = requests.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
         if r.status_code == 200:
             data = r.json()
             return data.get("user_count", 0), data.get("api_request_limit", 0)
@@ -322,9 +309,7 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-footprint_stat_days = st.sidebar.select_slider(
-    "買賣超排行統計天數", options=[5, 10, 30, 45, 60, 90, 120], value=10 if is_right_side else 45
-)
+footprint_stat_days = st.sidebar.select_slider("買賣超排行統計天數", options=[5, 10, 30, 45, 60, 90, 120], value=10 if is_right_side else 45)
 display_map = {5: 20, 10: 20, 30: 45, 45: 60, 60: 60, 90: 90, 120: 120}
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 5, 120, display_map[footprint_stat_days], 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
@@ -361,13 +346,13 @@ st.sidebar.divider()
 st.sidebar.markdown("### ⚡ API 壓力測試模組 (高頻抓取)")
 test_stock = st.sidebar.text_input("測試股票代號", value="2330", key="test_stock")
 test_requests = st.sidebar.selectbox("測試 Request 數量", [10, 50, 100, 500, 1000, 2000], index=4)
-test_concurrency = st.sidebar.selectbox("併發連線數 (Concurrency)", [2, 5, 10, 20, 32, 50], index=4)
+test_concurrency = st.sidebar.selectbox("併發連線數 (Concurrency)", [2, 5, 10, 20, 32, 50], index=3)
 run_test_btn = st.sidebar.button("🚀 執行 API 壓力測試")
 
-st.title("全息量化系統 (V73.00 極速測試版)")
+st.title("全息量化系統 (V73.04 雙引擎版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.00：引擎再升級 32 執行緒極速併發！完美導入主日曆過濾非交易日，鉅額與借券無縫整合。{usage_text}")
+st.caption(f"V73.04：雙軌非同步引擎！分點專屬穩定池(10天/20核) ＋ 大數據極速併發池(32核)。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -377,10 +362,10 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V73.00 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V73.04 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
-# 執行 API 壓力測試模組 (優先攔截)
+# 執行 API 壓力測試模組
 # ==========================================
 if run_test_btn:
     if not test_stock.strip():
@@ -433,51 +418,44 @@ if run_test_btn:
 # ==========================================
 # 基礎資料處理函式
 # ==========================================
-def safe_to_num(series, fill_val=0):
-    if isinstance(series, pd.Series):
-        if pd.api.types.is_numeric_dtype(series): return series.fillna(fill_val)
-        valid_mask = series.notna()
-        converted = pd.Series(fill_val, index=series.index, dtype=float)
-        if valid_mask.any():
-            cleaned = series[valid_mask].astype(str).str.replace(r'[,%＊*]', '', regex=True).str.strip()
-            ignore_list = ['', 'nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']
-            cleaned = cleaned.replace(ignore_list, np.nan)
-            temp_converted = pd.to_numeric(cleaned, errors='coerce')
-            converted.loc[valid_mask] = temp_converted.fillna(fill_val)
-        return converted
-    elif isinstance(series, (int, float)): 
-        return series
-    else:
-        if pd.isna(series): return fill_val
-        s_str = re.sub(r'[,%＊*]', '', str(series)).strip()
-        if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
-        try: return float(s_str)
-        except: return fill_val
-
-def cached_finmind_api_call(url, params_tuple):
-    r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
-    r.raise_for_status() 
-    data = r.json().get("data")
-    if data is None: raise ValueError("FinMind 回傳資料為空")
-    return data
+@st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
+def get_basic_info_finmind(tid):
+    # 絕對防呆機制：被限速或斷線絕不報錯
+    try:
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": "TaiwanStockInfo", "data_id": tid, "start_date": "2000-01-01"}
+        r = requests.get(url, params=p, headers={"Authorization": f"Bearer {FINMIND_TOKEN}"}, timeout=10)
+        if r.status_code == 200:
+            data = r.json().get("data", [])
+            if data and len(data) > 0:
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    name = df['stock_name'].iloc[0] if 'stock_name' in df.columns else "未知名稱"
+                    ind = df['industry_category'].iloc[0] if 'industry_category' in df.columns else "未知產業"
+                    return name, ind
+    except Exception:
+        pass
+    return "未知名稱", "未知產業"
 
 def fetch_finmind_v50(ds, sd, tid=None, ed=None):
-    url = "https://api.finmindtrade.com/api/v4/data"
-    p = {"dataset": ds, "start_date": sd}
-    if tid: p["data_id"] = tid
-    if ed: p["end_date"] = ed
     try:
-        data = cached_finmind_api_call(url, tuple(sorted(p.items())))
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    except: return pd.DataFrame()
+        url = "https://api.finmindtrade.com/api/v4/data"
+        p = {"dataset": ds, "start_date": sd}
+        if tid: p["data_id"] = tid
+        if ed: p["end_date"] = ed
+        r = FM_SESSION.get(url, params=p, timeout=15)
+        if r.status_code == 200:
+            return pd.DataFrame(r.json().get("data", []))
+    except Exception:
+        pass
+    return pd.DataFrame()
 
-# 滿血 32 執行緒狂飆版
-def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
-    dates = list(dates_tuple) 
+# V73.04 雙引擎極速架構：分點 10天/20核 + 其他資料極速 32核
+def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
     b_results, a_results, cb_info_list = [], {}, []
 
     tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
-    d_end = dates[max_len-1] if max_len > 0 else dates[0]
+    d_end = dates_list[max_len-1] if max_len > 0 and len(dates_list) >= max_len else dates_list[-1]
     dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
 
     api_targets = [
@@ -490,56 +468,70 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockDividend", "2015-01-01", None, user_stock_id),
         ("TaiwanStockPER", d_end, None, user_stock_id),
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
-        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None),
+        ("TaiwanStockConvertibleBondDailyOverview", dates_list[0], None, None),
         ("TaiwanStockBlockTrade", d_end, None, user_stock_id), 
         ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) 
     ]
 
-    total_tasks = max_len + len(api_targets)
+    # 分點嚴格限制 10 天，避免被 API 阻擋
+    branch_dates = dates_list[:10]
+    total_tasks = len(branch_dates) + len(api_targets)
+    
     prog_container, text_container = st.empty(), st.empty()
     prog_bar = prog_container.progress(0.0)
+    completed = 0
 
-    def fetch_api(dataset, sd, ed, tid):
-        url = "https://api.finmindtrade.com/api/v4/data"
-        p = {"dataset": dataset, "start_date": sd}
-        if tid: p["data_id"] = tid
-        if ed: p["end_date"] = ed
-        try: return dataset, cached_finmind_api_call(url, tuple(sorted(p.items())))
-        except: return dataset, []
+    def fetch_api(ds, sd, ed, tid):
+        try:
+            url = "https://api.finmindtrade.com/api/v4/data"
+            p = {"dataset": ds, "start_date": sd}
+            if tid: p["data_id"] = tid
+            if ed: p["end_date"] = ed
+            r = FM_SESSION.get(url, params=p, timeout=15)
+            return ds, r.json().get("data", []) if r.status_code == 200 else []
+        except Exception: 
+            return ds, []
 
     def fetch_branch(d, tid):
-        url = "https://api.finmindtrade.com/api/v4/data"
-        p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
-        try: return cached_finmind_api_call(url, tuple(sorted(p.items())))
-        except: return []
+        try:
+            url = "https://api.finmindtrade.com/api/v4/data"
+            p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
+            r = FM_SESSION.get(url, params=p, timeout=15)
+            return r.json().get("data", []) if r.status_code == 200 else []
+        except Exception: 
+            return []
 
-    # 榨乾網路頻寬，直接開 32 執行緒
-    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
-        future_to_type = {}
-        for d in dates[:max_len]: future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
-        for ds, sd, ed, tid in api_targets: future_to_type[executor.submit(fetch_api, ds, sd, ed, tid)] = 'api'
+    def update_progress():
+        nonlocal completed
+        completed += 1
+        prog_bar.progress(min(1.0, completed / total_tasks))
+        text_container.markdown(f"<div class='progress-text'>⚡ 雙引擎載入中... 同步 FinMind 資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
 
-        completed = 0
-        for future in concurrent.futures.as_completed(future_to_type):
-            completed += 1
-            prog_bar.progress(min(1.0, completed / total_tasks))
-            text_container.markdown(f"<div class='progress-text'>⚡ 系統載入中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+    # 引擎 1：分點專屬穩定池 (強制只取 10 天，並使用獨立的 max_workers=20)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor_branch:
+        future_branches = {executor_branch.submit(fetch_branch, d, user_stock_id): d for d in branch_dates}
+        for future in concurrent.futures.as_completed(future_branches):
+            res = future.result()
+            if res: b_results.extend(res)
+            update_progress()
 
-            f_type = future_to_type[future]
-            if f_type == 'branch':
-                res = future.result()
-                if res: b_results.extend(res)
-            else:
-                ds, data = future.result()
-                a_results[ds] = pd.DataFrame(data)
+    # 引擎 2：基礎大數據高速池 (提高並發，使用 max_workers=32 極速拉取其餘資料)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor_base:
+        future_apis = {executor_base.submit(fetch_api, ds, sd, ed, tid): ds for ds, sd, ed, tid in api_targets}
+        for future in concurrent.futures.as_completed(future_apis):
+            ds, data = future.result()
+            a_results[ds] = pd.DataFrame(data)
+            update_progress()
 
-        df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
-        if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
-            cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
-            target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
-            if len(target_cbs) > 0:
-                text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
-                cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
+    # CBAS 擴充資料 (依賴引擎 2 的結果，獨立執行)
+    df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
+    if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
+        cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
+        target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
+        if len(target_cbs) > 0:
+            text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor_cb:
+                cb_futures = [executor_cb.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
                 for f in concurrent.futures.as_completed(cb_futures):
                     _, cb_data = f.result()
                     if cb_data: cb_info_list.extend(cb_data)
@@ -1202,7 +1194,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         out.append({
             "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("0 (無本獲利)" if smart_avg_cost == 0 and total_n > 0 else "-"), 
-            "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
+            "均落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
@@ -1530,7 +1522,8 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V73.00 極速版決策引擎..."):
+    with st.spinner(f"正在啟動 V73.04 雙引擎極限版決策引擎..."):
+        
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
             st.error(f"查無股票代號 {user_stock_id} 的基本資料。請確認代號是否正確或 FinMind API 是否正常連線。")
@@ -1554,7 +1547,7 @@ if run_btn:
         # 雙重驗證交易日
         price_dates = df_p_raw['date'].dropna().astype(str).tolist()
         if master_dates:
-            dates = [d for d in master_dates if d in price_dates] # 交集確認
+            dates = [d for d in master_dates if d in price_dates]
         else:
             dates = sorted(list(set(price_dates)), reverse=True)
             
@@ -1580,11 +1573,12 @@ if run_btn:
         
         pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price) if enable_pattern else {}
         
-        # 雙通道並行抓取，大幅降低 I/O 等待
+        # 啟動雙引擎架構拉取所有大數據
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as bg_executor:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
-            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, tuple(dates), max_len)
+            # 這裡呼叫重構過的 dual_engine
+            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_dual_engine(user_stock_id, dates, max_len)
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
             df_p_sum, df_p_det = f_ple.result()
 
@@ -1637,7 +1631,6 @@ if run_btn:
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷'] if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
-        # 整合融資融券與借券賣出明細
         df_margin_lending = optimize_memory(process_margin_and_lending(ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame()), ds_dict.get("TaiwanStockSecuritiesLending", pd.DataFrame())))
         df_block_trade = optimize_memory(process_block_trading(ds_dict.get("TaiwanStockBlockTrade", pd.DataFrame()), dates))
         df_inst = optimize_memory(process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame())))
@@ -1669,7 +1662,7 @@ if run_btn:
         market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億" if is_valid(df_price) and current_total_shares > 0 else "計算中..."
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 極速測試版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.04 雙引擎版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -1826,7 +1819,7 @@ if run_btn:
         report_md += f"<div class='ai-conclusion'><b>🚀 最終操作定調：{conclusion}</b><br><span style='font-weight:normal; display:block; margin-top:10px;'>{action}</span></div>\n</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有數據皆已透過 V73.00 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有數據皆已透過 V73.04 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         
@@ -1882,7 +1875,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V73.00 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V73.04 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -1927,5 +1920,5 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V73.00 極速測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V73.04 雙引擎防呆版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
