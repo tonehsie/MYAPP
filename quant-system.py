@@ -18,7 +18,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.04 雙引擎版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.05 雙引擎回報版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -352,7 +352,7 @@ run_test_btn = st.sidebar.button("🚀 執行 API 壓力測試")
 st.title("全息量化系統 (V73.04 雙引擎版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.04：雙軌非同步引擎！分點專屬穩定池(10天/20核) ＋ 大數據極速併發池(32核)。{usage_text}")
+st.caption(f"V73.04：雙引擎極致防呆！分點專屬穩定池(強制10天/20核) ＋ 大數據極速併發池(32核)。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -418,9 +418,10 @@ if run_test_btn:
 # ==========================================
 # 基礎資料處理函式
 # ==========================================
+
+# 1. 終極防呆：取得基本資料
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def get_basic_info_finmind(tid):
-    # 絕對防呆機制：被限速或斷線絕不報錯
     try:
         url = "https://api.finmindtrade.com/api/v4/data"
         p = {"dataset": "TaiwanStockInfo", "data_id": tid, "start_date": "2000-01-01"}
@@ -433,10 +434,12 @@ def get_basic_info_finmind(tid):
                     name = df['stock_name'].iloc[0] if 'stock_name' in df.columns else "未知名稱"
                     ind = df['industry_category'].iloc[0] if 'industry_category' in df.columns else "未知產業"
                     return name, ind
-    except Exception:
+    except Exception as e:
+        # 即使發生錯誤，也不要阻斷程式，回傳預設值
         pass
     return "未知名稱", "未知產業"
 
+# 2. 終極防呆：單一資料抓取
 def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     try:
         url = "https://api.finmindtrade.com/api/v4/data"
@@ -446,13 +449,14 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
         r = FM_SESSION.get(url, params=p, timeout=15)
         if r.status_code == 200:
             return pd.DataFrame(r.json().get("data", []))
-    except Exception:
-        pass
+    except Exception as e:
+        st.warning(f"⚠️ API 擷取失敗 ({ds}): {str(e)}")
     return pd.DataFrame()
 
-# V73.04 雙引擎極速架構：分點 10天/20核 + 其他資料極速 32核
+# V73.04 雙引擎架構：加入錯誤回報，分開執行緒
 def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
     b_results, a_results, cb_info_list = [], {}, []
+    error_logs = []
 
     tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
     d_end = dates_list[max_len-1] if max_len > 0 and len(dates_list) >= max_len else dates_list[-1]
@@ -473,7 +477,7 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
         ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) 
     ]
 
-    # 分點嚴格限制 10 天，避免被 API 阻擋
+    # 分點嚴格限制 10 天，保護 API
     branch_dates = dates_list[:10]
     total_tasks = len(branch_dates) + len(api_targets)
     
@@ -488,18 +492,20 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
             if tid: p["data_id"] = tid
             if ed: p["end_date"] = ed
             r = FM_SESSION.get(url, params=p, timeout=15)
-            return ds, r.json().get("data", []) if r.status_code == 200 else []
-        except Exception: 
-            return ds, []
+            r.raise_for_status()
+            return ds, r.json().get("data", [])
+        except Exception as e:
+            return ds, f"Error: {str(e)}"
 
     def fetch_branch(d, tid):
         try:
             url = "https://api.finmindtrade.com/api/v4/data"
             p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
             r = FM_SESSION.get(url, params=p, timeout=15)
-            return r.json().get("data", []) if r.status_code == 200 else []
-        except Exception: 
-            return []
+            r.raise_for_status()
+            return r.json().get("data", [])
+        except Exception as e:
+            return f"Error: {d} - {str(e)}"
 
     def update_progress():
         nonlocal completed
@@ -507,20 +513,27 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
         prog_bar.progress(min(1.0, completed / total_tasks))
         text_container.markdown(f"<div class='progress-text'>⚡ 雙引擎載入中... 同步 FinMind 資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
 
-    # 引擎 1：分點專屬穩定池 (強制只取 10 天，並使用獨立的 max_workers=20)
+    # 引擎 1：分點專屬穩定池 (強制 10 天，max_workers=20)
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor_branch:
         future_branches = {executor_branch.submit(fetch_branch, d, user_stock_id): d for d in branch_dates}
         for future in concurrent.futures.as_completed(future_branches):
             res = future.result()
-            if res: b_results.extend(res)
+            if isinstance(res, str) and res.startswith("Error:"):
+                error_logs.append(res)
+            elif res: 
+                b_results.extend(res)
             update_progress()
 
-    # 引擎 2：基礎大數據高速池 (提高並發，使用 max_workers=32 極速拉取其餘資料)
+    # 引擎 2：基礎大數據高速池 (max_workers=32 極速拉取其餘資料)
     with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor_base:
         future_apis = {executor_base.submit(fetch_api, ds, sd, ed, tid): ds for ds, sd, ed, tid in api_targets}
         for future in concurrent.futures.as_completed(future_apis):
             ds, data = future.result()
-            a_results[ds] = pd.DataFrame(data)
+            if isinstance(data, str) and data.startswith("Error:"):
+                error_logs.append(f"[{ds}] {data}")
+                a_results[ds] = pd.DataFrame()
+            else:
+                a_results[ds] = pd.DataFrame(data)
             update_progress()
 
     # CBAS 擴充資料 (依賴引擎 2 的結果，獨立執行)
@@ -533,10 +546,18 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor_cb:
                 cb_futures = [executor_cb.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
                 for f in concurrent.futures.as_completed(cb_futures):
-                    _, cb_data = f.result()
-                    if cb_data: cb_info_list.extend(cb_data)
+                    ds, cb_data = f.result()
+                    if isinstance(cb_data, str):
+                         error_logs.append(f"[{ds}] {cb_data}")
+                    elif cb_data: 
+                         cb_info_list.extend(cb_data)
 
     prog_container.empty(); text_container.empty()
+    
+    if error_logs:
+        with st.expander("⚠️ API 擷取過程有部分錯誤 (不影響主程序，點此查看細節)", expanded=False):
+            for err in error_logs: st.warning(err)
+            
     df_b = optimize_memory(pd.DataFrame.from_records(b_results)) if b_results else pd.DataFrame()
     return df_b, a_results, pd.DataFrame(cb_info_list)
 
@@ -1194,7 +1215,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         out.append({
             "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("0 (無本獲利)" if smart_avg_cost == 0 and total_n > 0 else "-"), 
-            "均落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
+            "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
             "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
@@ -1526,8 +1547,7 @@ if run_btn:
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
-            st.error(f"查無股票代號 {user_stock_id} 的基本資料。請確認代號是否正確或 FinMind API 是否正常連線。")
-            st.stop()
+            st.warning(f"無法完整取得 {user_stock_id} 的基本資料，這可能是 API 連線不穩。系統將以預設名稱繼續執行核心分析。")
             
         # 1️⃣ 極致防呆：先拿台股主日曆，確保沒有遇到非交易日空抓的問題
         td_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
@@ -1541,7 +1561,7 @@ if run_btn:
             
         df_p_raw = fetch_finmind_v50("TaiwanStockPrice", td_sd, user_stock_id)
         if not is_valid(df_p_raw, ['date']): 
-            st.error("查無歷史股價資料。")
+            st.error("查無歷史股價資料或 API 回應超時。請稍後再試。")
             st.stop()
         
         # 雙重驗證交易日
@@ -1577,7 +1597,7 @@ if run_btn:
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as bg_executor:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
-            # 這裡呼叫重構過的 dual_engine
+            # 呼叫雙引擎拉取模組
             df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_dual_engine(user_stock_id, dates, max_len)
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
             df_p_sum, df_p_det = f_ple.result()
