@@ -513,8 +513,8 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
         prog_bar.progress(min(1.0, completed / total_tasks))
         text_container.markdown(f"<div class='progress-text'>⚡ 雙引擎載入中... 同步 FinMind 資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
 
-    # 引擎 1：分點專屬穩定池 (強制 10 天，max_workers=20)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor_branch:
+    # 引擎 1：分點專屬穩定池 (強制 10 天，max_workers=10)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor_branch:
         future_branches = {executor_branch.submit(fetch_branch, d, user_stock_id): d for d in branch_dates}
         for future in concurrent.futures.as_completed(future_branches):
             res = future.result()
@@ -524,8 +524,8 @@ def fetch_heavy_data_dual_engine(user_stock_id, dates_list, max_len):
                 b_results.extend(res)
             update_progress()
 
-    # 引擎 2：基礎大數據高速池 (max_workers=32 極速拉取其餘資料)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor_base:
+    # 引擎 2：基礎大數據高速池 (max_workers=20 極速拉取其餘資料)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor_base:
         future_apis = {executor_base.submit(fetch_api, ds, sd, ed, tid): ds for ds, sd, ed, tid in api_targets}
         for future in concurrent.futures.as_completed(future_apis):
             ds, data = future.result()
