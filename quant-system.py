@@ -10,6 +10,7 @@ import urllib.request
 import ssl
 import urllib3
 import gc
+import time
 from io import StringIO
 import streamlit.components.v1 as components
 from requests.adapters import HTTPAdapter
@@ -17,7 +18,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 終極測試版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wNC0xMCAyMDoyMDo0NiIsInVzZXJfaWQiOiJUb25lMSIsImVtYWlsIjoidG9uZWhzaWVAZ21haWwuY29tIiwiaXAiOiI2MS42Mi43LjE5OCJ9.7s3-IrkfdiUyTvGiZQGESBUBAPHQTnd4pwYcn8_J-CY"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -271,7 +272,7 @@ KLINE_CHART_TEMPLATE = """
 
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 🎯 統一防呆檢驗工具：一次取代所有繁瑣的 .empty 與 None 判斷
+# 🎯 統一防呆檢驗工具
 def is_valid(df, req_cols=None, min_len=1):
     if df is None or not isinstance(df, pd.DataFrame) or df.empty or len(df) < min_len: return False
     if req_cols and not all(c in df.columns for c in req_cols): return False
@@ -399,10 +400,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V73.00 終極版)")
+st.title("全息量化系統 (V73.00 終極測試版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.00：排行榜與熱力圖完美一體化，大幅提升實戰判讀效率。{usage_text}")
+st.caption(f"V73.00：排行榜與熱力圖完美一體化，大幅提升實戰判讀效率。新增高頻壓力測試模組、鉅額交易與借券明細整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -413,6 +414,13 @@ with col1:
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V73.00 決策引擎", use_container_width=True, key="run_engine")
+
+st.sidebar.divider()
+st.sidebar.markdown("### ⚡ API 壓力測試模組 (高頻抓取)")
+test_stock = st.sidebar.text_input("測試股票代號", value="2330", key="test_stock")
+test_requests = st.sidebar.selectbox("測試 Request 數量", [10, 50, 100, 500, 1000])
+test_concurrency = st.sidebar.selectbox("併發連線數 (Concurrency)", [2, 5, 10, 20])
+run_test_btn = st.sidebar.button("🚀 執行 API 壓力測試")
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -435,8 +443,8 @@ def safe_to_num(series, fill_val=0):
         try: return float(s_str)
         except: return fill_val
 
-@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
+    # 內部不用 @st.cache_data 來避免與多執行緒 UI 更新衝突
     r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
     r.raise_for_status() 
     data = r.json().get("data")
@@ -459,7 +467,6 @@ def get_basic_info_finmind(tid):
     except: pass
     return name, ind
 
-@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
 def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     url = "https://api.finmindtrade.com/api/v4/data"
     p = {"dataset": ds, "start_date": sd}
@@ -471,7 +478,7 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
+# 移除此處的 cache_data 避免 Streamlit UI (st.empty) 衝突報錯
 def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
     dates = list(dates_tuple) 
     b_results = []
@@ -492,7 +499,9 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockDividend", "2015-01-01", None, user_stock_id),
         ("TaiwanStockPER", d_end, None, user_stock_id),
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
-        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None)
+        ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None),
+        ("TaiwanStockBlockTradingDailyReport", d_end, None, user_stock_id),
+        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id)
     ]
 
     total_tasks = max_len + len(api_targets)
@@ -730,7 +739,8 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     actual_global_days = max(1, df_b_raw['date'].nunique())
 
     vol_col = 'Trading_Volume' if 'Trading_Volume' in df_p_raw.columns else 'Trading_volume'
-    df_p = df_p_raw[['date', 'close', 'max', 'min', vol_col]] if vol_col in df_p_raw.columns else df_p_raw[['date', 'close', 'max', 'min']]
+    # 補上 .copy() 防止 SettingWithCopyWarning
+    df_p = df_p_raw[['date', 'close', 'max', 'min', vol_col]].copy() if vol_col in df_p_raw.columns else df_p_raw[['date', 'close', 'max', 'min']].copy()
     df_p = df_p.assign(date=pd.to_datetime(df_p['date'])).sort_values('date', ascending=False)
     
     avg_vol_lots = (pd.to_numeric(df_p[vol_col], errors='coerce').head(20).mean()) / 1000 if vol_col in df_p.columns else 3000
@@ -1643,25 +1653,46 @@ def process_day_trading(df):
     cols = [c for c in ['日期', '當沖總張數'] if c in df_out.columns]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
 
-def process_margin(df):
-    if not is_valid(df): return pd.DataFrame()
+def process_margin_and_lending(df_margin_raw, df_lending_raw):
+    # 整合融資融券與借券賣出
+    if not is_valid(df_margin_raw): return pd.DataFrame()
+    df_m = df_margin_raw.copy()
     for c in ["MarginPurchaseBuy", "MarginPurchaseSell", "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance", "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell", "ShortSaleCashRepayment", "ShortSaleTodayBalance", "OffsetLoanAndShort", "ShortSaleYesterdayBalance"]:
-        if c in df.columns: df[c] = safe_to_num(df[c]).round().astype(int)
-    df_out = df.rename(columns={
+        if c in df_m.columns: df_m[c] = safe_to_num(df_m[c]).round().astype(int)
+    df_out = df_m.rename(columns={
         "date": "日期", "MarginPurchaseBuy": "融資買進(萬元)", "MarginPurchaseSell": "融資賣出(萬元)", 
         "MarginPurchaseCashRepayment": "融資現償(萬元)", "MarginPurchaseTodayBalance": "融資餘額(萬元)", 
         "ShortSaleBuy": "融券買進(張)", "ShortSaleSell": "融券賣出(張)", 
         "ShortSaleTodayBalance": "融券餘額(張)", "OffsetLoanAndShort": "資券相抵(張)"
     })
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
+    
     if '融資餘額(萬元)' in df_out.columns and 'MarginPurchaseYesterdayBalance' in df_out.columns:
         prev_margin = safe_to_num(df_out['MarginPurchaseYesterdayBalance']).round().astype(int)
         df_out['融資增減(萬元)'] = df_out['融資餘額(萬元)'] - prev_margin
     if '融券餘額(張)' in df_out.columns and 'ShortSaleYesterdayBalance' in df_out.columns:
         prev_short = safe_to_num(df_out['ShortSaleYesterdayBalance']).round().astype(int)
         df_out['融券增減(張)'] = df_out['融券餘額(張)'] - prev_short
-    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)'] if c in df_out.columns]
+        
+    df_out['借券賣出餘額(張)'] = 0
+    if is_valid(df_lending_raw, ['date']):
+        df_l = df_lending_raw.copy()
+        if 'balance' in df_l.columns:
+            df_l['借券賣出餘額(張)'] = (safe_to_num(df_l['balance']) / 1000).round().astype(int)
+            df_out = pd.merge(df_out, df_l[['date', '借券賣出餘額(張)']].rename(columns={'date':'日期'}), on='日期', how='left').fillna(0)
+    
+    cols = [c for c in ['日期','融資買進(萬元)','融資賣出(萬元)','融資現償(萬元)','融資餘額(萬元)','融資增減(萬元)','融券買進(張)','融券賣出(張)','融券餘額(張)','融券增減(張)','資券相抵(張)','借券賣出餘額(張)'] if c in df_out.columns]
     return df_out[cols].tail(10).sort_values('日期', ascending=False)
+
+def process_block_trading(df_block_raw):
+    if not is_valid(df_block_raw, ['date']): return pd.DataFrame()
+    df_b = df_block_raw.copy().rename(columns={
+        "date": "日期", "trade_volume": "成交張數", "trade_value": "成交金額(萬元)", "close": "成交價(元)"
+    })
+    if '成交張數' in df_b.columns: df_b['成交張數'] = (safe_to_num(df_b['成交張數']) / 1000).round().astype(int)
+    if '成交金額(萬元)' in df_b.columns: df_b['成交金額(萬元)'] = (safe_to_num(df_b['成交金額(萬元)']) / 10000).round().astype(int)
+    cols = [c for c in ['日期', '成交價(元)', '成交張數', '成交金額(萬元)'] if c in df_b.columns]
+    return df_b[cols].sort_values('日期', ascending=False).head(10)
 
 def process_inst(df):
     if not is_valid(df): return pd.DataFrame()
@@ -1868,7 +1899,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             if len(lows) >= 3:
                 l1, l2, l3 = lows[-3], lows[-2], lows[-1]
                 if l1[1] > 0 and l2[1] < l1[1] and l2[1] < l3[1] and abs(l1[1]-l3[1])/l1[1] < 0.05: 
-                    b_h1 = [h for h in highs if l1[2] < h[2] < l2[2]]
+                    b_h1 = [h for h in highs if l1[2] < l[2] < h2[2]]
                     b_h2 = [h for h in highs if l2[2] < h[2] < l3[2]]
                     if b_h1 and b_h2:
                         h1, h2 = max(b_h1, key=lambda x: x[1]), max(b_h2, key=lambda x: x[1])
@@ -2132,6 +2163,65 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 # ==========================================
+# 執行 API 壓力測試模組
+# ==========================================
+if run_test_btn:
+    if not test_stock.strip():
+        st.warning("請輸入測試股票代號！")
+        st.stop()
+        
+    st.subheader(f"🚀 API 高頻壓力測試報告： {test_stock}")
+    st.write(f"正在模擬 **{test_concurrency}** 個併發連線，總共發送 **{test_requests}** 個請求...")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    start_time = time.time()
+    success_count = 0
+    fail_count = 0
+    latencies = []
+    
+    def test_worker(_):
+        url = "https://api.finmindtrade.com/api/v4/data"
+        # 測試目標：台股即時 Tick 查詢 (模擬高頻)
+        params = {"dataset": "TaiwanStockPriceTick", "data_id": test_stock, "start_date": datetime.date.today().strftime("%Y-%m-%d")}
+        req_start = time.time()
+        try:
+            r = FM_SESSION.get(url, params=params, timeout=5)
+            r.raise_for_status()
+            latencies.append(time.time() - req_start)
+            return True
+        except Exception:
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=test_concurrency) as executor:
+        futures = [executor.submit(test_worker, i) for i in range(test_requests)]
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            if future.result():
+                success_count += 1
+            else:
+                fail_count += 1
+                
+            progress = (i + 1) / test_requests
+            progress_bar.progress(progress)
+            status_text.text(f"已完成: {i+1} / {test_requests} (成功: {success_count}, 失敗: {fail_count})")
+            
+    end_time = time.time()
+    total_time = end_time - start_time
+    req_per_sec = test_requests / total_time if total_time > 0 else 0
+    avg_latency = (sum(latencies) / len(latencies) * 1000) if latencies else 0
+    
+    st.success("測試完成！")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("總花費時間", f"{total_time:.2f} 秒")
+    col2.metric("每秒承受請求數 (RPS)", f"{req_per_sec:.2f} 次/秒")
+    col3.metric("平均回應延遲", f"{avg_latency:.2f} 毫秒")
+    col4.metric("成功/失敗率", f"{success_count}/{fail_count}")
+    
+    st.divider()
+
+# ==========================================
 # 執行主引擎
 # ==========================================
 if run_btn:
@@ -2139,7 +2229,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V73.00 終極解鎖版決策引擎 (極速向量無分身版)..."):
+    with st.spinner(f"正在啟動 V73.00 終極測試版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2191,7 +2281,6 @@ if run_btn:
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
             st.stop()
             
-        # 🎯 記憶體管控優化：直接在原表附加運算欄位，消滅底層副本
         df_b_raw['price'] = safe_to_num(df_b_raw['price'])
         df_b_raw['buy'] = safe_to_num(df_b_raw['buy'])
         df_b_raw['sell'] = safe_to_num(df_b_raw['sell'])
@@ -2207,7 +2296,6 @@ if run_btn:
             try: parsed_dead_chip = float(str(dead_chip_input).replace('%', '').strip())
             except: pass
 
-        # 🎯 記憶體管控優化：一次性掛載全局標籤，後續模組不再重複計算與複製
         tags, df_debug_tags = get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh=stickiness_threshold, global_days=max_len, dates_list=dates)
         df_b_raw['tag'] = df_b_raw['securities_trader'].map(tags).fillna("路人雜訊")
         df_b_raw['is_smart'] = df_b_raw['tag'].isin({"波段鎖碼", "避險造市", "獲利調節", "棄守提款", "主力重砲", "認錯回補"})
@@ -2254,7 +2342,12 @@ if run_btn:
                 display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
-        df_margin = optimize_memory(process_margin(ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())))
+        # 整合融資融券與借券賣出明細
+        df_margin_raw = ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())
+        df_lending_raw = ds_dict.get("TaiwanStockSecuritiesLending", pd.DataFrame())
+        df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw))
+        
+        df_block_trade = optimize_memory(process_block_trading(ds_dict.get("TaiwanStockBlockTradingDailyReport", pd.DataFrame())))
         df_inst = optimize_memory(process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame())))
         
         df_rev_raw = ds_dict.get("TaiwanStockMonthRevenue", pd.DataFrame())
@@ -2292,7 +2385,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 防呆精簡版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 終極測試版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2447,8 +2540,8 @@ if run_btn:
         is_double_counting = (inst_net_today > 0 and today_smart_net > 0 and abs(inst_net_today - today_smart_net) < inst_net_today * 0.2)
         
         today_margin_chg = 0
-        if is_valid(df_margin, ['融資餘額(萬元)'], 2):
-            today_margin_chg = safe_to_num(df_margin.iloc[0]['融資餘額(萬元)']) - safe_to_num(df_margin.iloc[1]['融資餘額(萬元)'])
+        if is_valid(df_margin_lending, ['融資餘額(萬元)'], 2):
+            today_margin_chg = safe_to_num(df_margin_lending.iloc[0]['融資餘額(萬元)']) - safe_to_num(df_margin_lending.iloc[1]['融資餘額(萬元)'])
         margin_shares_est = (today_margin_chg * 10 / curr_price) if curr_price > 0 else 0
         is_margin_trap = (today_smart_net > 100 and margin_shares_est > (today_smart_net * 0.6))
         
@@ -2604,25 +2697,26 @@ if run_btn:
         render_clean_html_table(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
         render_clean_html_table(df_combined_display, "03. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
 
-        render_clean_html_table(df_inst, "04. 法人買賣超 (近10天)")
-        render_clean_html_table(df_margin, "05. 散戶資券餘額 (近10天)")
-        render_clean_html_table(df_day_trade, "06. 現股當沖明細 (近10天)")
-        render_clean_html_table(df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
+        render_clean_html_table(df_block_trade, "04. 鉅額交易日報表 (大額換手追蹤)")
+        render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
+        render_clean_html_table(df_margin_lending, "06. 散戶資券與借券餘額 (近10天)")
+        render_clean_html_table(df_day_trade, "07. 現股當沖明細 (近10天)")
+        render_clean_html_table(df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
 
-        render_clean_html_table(df_rev, "08. 月營收 (百萬元) (近24個月)")
+        render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
         
         with st.expander("點此展開集保分級表 (近8週)", expanded=False):
-            render_clean_html_table(df_s_unit, "09-1. 集保分級 - 張數表")
-            render_clean_html_table(df_s_ppl, "09-2. 集保分級 - 人數表")
+            render_clean_html_table(df_s_unit, "10-1. 集保分級 - 張數表")
+            render_clean_html_table(df_s_ppl, "10-2. 集保分級 - 人數表")
             
-        render_clean_html_table(df_p_sum, "10.董監大股東質設總覽")
+        render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
         with st.expander("點此展開董監大股東質設明細", expanded=False):
-            render_clean_html_table(df_p_det, "11. 董監大股東質設明細")
+            render_clean_html_table(df_p_det, "12. 董監大股東質設明細")
             
-        render_clean_html_table(df_div, "12. 歷年股利政策 (近5年)")
-        render_clean_html_table(df_per, "13. 本益比、淨值比與殖利率")
-        render_clean_html_table(df_disp, "14. 處置有價證券狀態")
-        render_clean_html_table(df_cbas, "15. CBAS 可轉債數據")
+        render_clean_html_table(df_div, "13. 歷年股利政策 (近5年)")
+        render_clean_html_table(df_per, "14. 本益比、淨值比與殖利率")
+        render_clean_html_table(df_disp, "15. 處置有價證券狀態")
+        render_clean_html_table(df_cbas, "16. CBAS 可轉債數據")
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
@@ -2650,15 +2744,16 @@ if run_btn:
             
             p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
             p1 += format_to_csv_string(df_combined_display.head(4) if is_valid(df_combined_display) else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
-            p1 += format_to_csv_string(df_inst.head(10) if is_valid(df_inst) else df_inst, "04. 法人買賣超 (近10天)")
-            p1 += format_to_csv_string(df_margin.head(10) if is_valid(df_margin) else df_margin, "05. 散戶資券餘額 (近10天)")
-            p1 += format_to_csv_string(df_day_trade.head(10) if is_valid(df_day_trade) else df_day_trade, "06. 現股當沖明細 (近10天)")
-            p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "07. 台指期貨三大法人未平倉 (大盤)")
-            p1 += format_to_csv_string(df_rev.head(12) if is_valid(df_rev) else df_rev, "08. 月營收 (百萬元) (近12個月)")
-            p1 += format_to_csv_string(df_p_sum, "10. 董監大股東質設總覽")
-            p1 += format_to_csv_string(df_per.head(10) if is_valid(df_per) else df_per, "13. 本益比、淨值比與殖利率")
-            p1 += format_to_csv_string(df_disp, "14. 處置有價證券狀態")
-            p1 += format_to_csv_string(df_cbas, "15. CBAS 可轉債數據")
+            p1 += format_to_csv_string(df_block_trade, "04. 鉅額交易日報表")
+            p1 += format_to_csv_string(df_inst.head(10) if is_valid(df_inst) else df_inst, "05. 法人買賣超 (近10天)")
+            p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06. 散戶資券與借券餘額 (近10天)")
+            p1 += format_to_csv_string(df_day_trade.head(10) if is_valid(df_day_trade) else df_day_trade, "07. 現股當沖明細 (近10天)")
+            p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
+            p1 += format_to_csv_string(df_rev.head(12) if is_valid(df_rev) else df_rev, "09. 月營收 (百萬元) (近12個月)")
+            p1 += format_to_csv_string(df_p_sum, "11. 董監大股東質設總覽")
+            p1 += format_to_csv_string(df_per.head(10) if is_valid(df_per) else df_per, "14. 本益比、淨值比與殖利率")
+            p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
+            p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
             st.code(p1, language="text")
 
         st.divider()
@@ -2677,5 +2772,5 @@ if run_btn:
             
             st.code(dump_text, language="text")
             
-        st.success(f"V73.00 防呆精簡版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V73.00 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
