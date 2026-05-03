@@ -412,7 +412,7 @@ col1, col2 = st.columns([1, 1])
 with col1: 
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
-    dead_chip_input = st.text_input("死籌碼 % (董監事持股、董監事＋大股東持股，留空自動抓)")
+    dead_chip_input = st.text_input("死籌碼 % (董監事持股＋大股東持股，留空自動抓)")
 run_btn = st.button("啟動 V73.5 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
@@ -1219,11 +1219,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
 
         df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
 
-        base_lots = np.where(df['收盤價(元)'] > 0, 15000 / df['收盤價(元)'], 1000)
         free_float_ratio = np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0)
         float_1pct_lots = df['總張數'] * free_float_ratio * 0.01
 
-        raw_threshold = np.clip(np.minimum(base_lots, float_1pct_lots), 100, 1000)
+        raw_threshold = np.clip(float_1pct_lots, 100, 1000)
         levels = np.array([100, 200, 400, 600, 800, 1000])
         
         diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
@@ -1361,11 +1360,10 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     df_m['safe_dead_ratio'] = dead_info.apply(lambda x: max(0.0, min(99.9, x[0])))
     df_m['cl'] = dead_info.apply(lambda x: x[1])
 
-    base_lots = 15000 / df_m['收盤價(元)']
     free_float_ratio = np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0)
     float_1pct_lots = df_m['總張數'] * free_float_ratio * 0.01
 
-    raw_threshold = np.clip(np.minimum(base_lots, float_1pct_lots), 100, 1000)
+    raw_threshold = np.clip(float_1pct_lots, 100, 1000)
 
     levels = np.array([100, 200, 400, 600, 800, 1000])
     
@@ -1733,7 +1731,7 @@ def process_inst(df):
     ds_s = safe_to_num(pdf.get('sell_Dealer_self', pdf.get('sell_Dealer', pd.Series([0]*length))))
     out['自營商(自行)買賣超(張)'] = ((ds_b - ds_s) / 1000).round().astype(int)
     dh_b = safe_to_num(pdf.get('buy_Dealer_Hedging', pd.Series([0]*length)))
-    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length)))
+    dh_s = safe_to_num(pdf.get('sell_Dealer_Hedging', pd.Series([0]*length))))
     out['自營商(避險)買賣超(張)'] = ((dh_b - dh_s) / 1000).round().astype(int)
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
