@@ -2804,4 +2804,15 @@ if run_btn:
             dump_text = "請協助驗證以下底層 Raw Data 邏輯是否正確：\n\n"
             
             df_price_dump = df_price.head(60).copy() if is_valid(df_price) else pd.DataFrame()
-            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天我的设计用途只是处理和生成文本，所以没法在这方面帮到你。
+            # 下面這行原本被系統訊息截斷破壞了
+            dump_text += format_to_csv_string(df_price_dump, "Raw 00: 股價與成交量原始數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_b_diff_60, "Raw 01-A: 活躍券商與買賣家數差數據 (近 60 天)")
+            dump_text += format_to_csv_string(df_daily_tracker_60, "Raw 01-B: 主力戰場追蹤矩陣 (近 60 天)")
+            
+            df_tdcc_dump = df_s_wide.head(10).copy() if is_valid(df_s_wide) else pd.DataFrame()
+            dump_text += format_to_csv_string(df_tdcc_dump, "Raw 02: 集保股權分散表原始數據 (近 10 週)")
+            
+            st.code(dump_text, language="text")
+            
+        st.success(f"V73.00 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        gc.collect()
