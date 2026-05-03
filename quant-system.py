@@ -10,7 +10,6 @@ import urllib.request
 import ssl
 import urllib3
 import gc
-import time
 from io import StringIO
 import streamlit.components.v1 as components
 from requests.adapters import HTTPAdapter
@@ -18,7 +17,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 終極測試版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.00 終極穩定版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md"
@@ -280,15 +279,13 @@ def is_valid(df, req_cols=None, min_len=1):
 
 def optimize_memory(df):
     if not is_valid(df): return df
+    # 移除字串轉 category 優化，避免 Pandas groupby 產生隱含錯誤與記憶體爆衝
     for col in df.columns:
         col_type = df[col].dtype
         if col_type == 'float64':
             df[col] = df[col].astype('float32')
         elif col_type == 'int64':
             df[col] = df[col].astype('int32')
-        elif col_type == 'object':
-            if 'trader' in col or '分點' in col or '標籤' in col:
-                df[col] = df[col].astype('category')
     return df
 
 @st.cache_resource(max_entries=3)
@@ -400,10 +397,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V73.00 極限測試版)")
+st.title("全息量化系統 (V73.00 終極穩定版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.00：新增鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V73.00：核心演算法重構、記憶體管理大排毒、修復極端行情浮點數報錯 Bug。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰說明書", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -494,8 +491,8 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockPER", d_end, None, user_stock_id),
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
         ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None),
-        ("TaiwanStockBlockTrade", d_end, None, user_stock_id), # 已更新為正確的鉅額交易 API
-        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) # 借券成交明細
+        ("TaiwanStockBlockTrade", d_end, None, user_stock_id),
+        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id)
     ]
 
     total_tasks = max_len + len(api_targets)
@@ -1172,7 +1169,7 @@ def process_branch_v25(df_raw, period, actual_dates, intel_tags, df_price_raw, s
 def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_val, df_price, df_branch_raw, intel_tags):
     if not is_valid(df_wide, min_len=2):
         st.warning("⚠️ [V27 終極雷達] 集保股權分佈資料不足 (少於2週)，無法比對趨勢，雷達模組已暫停。")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame()
 
     if not is_valid(df_price):
         st.warning("⚠️ [V27 終極雷達] 查無歷史股價，系統將以預設基準 (無動態股價加權) 強制推算大戶門檻。")
@@ -1243,8 +1240,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
 
         def get_impact(row):
             if row.name == df.index[0] or row['總張數'] <= 0 or len(arr_dates_str) == 0:
-                return 0.0, []
-            
+                return 0.0
             d_str, d_dt, ct, total_lots = row['日期'], row['dt_end'], row['ct'], max(1, row['總張數'])
             idx = np.searchsorted(arr_dates_str, d_str, side='right') - 1
             if idx >= 0:
@@ -1252,13 +1248,10 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
                 if (d_dt - arr_dates_dt[idx]).days <= 7 and last_trading_date in fake_dict:
                     fake_traders = fake_dict[last_trading_date]
                     f_vol = sum(fr['net_buy_exact'] for fr in fake_traders if fr['net_buy_exact'] >= ct)
-                    fri_list = [{"日期": d_str, "分點": fr['securities_trader'], "張數": round(fr['net_buy_exact'])} for fr in fake_traders if fr['net_buy_exact'] >= ct]
-                    return (f_vol / total_lots) * 100, fri_list
-            return 0.0, []
+                    return (f_vol / total_lots) * 100
+            return 0.0
 
-        impact_res = df.apply(get_impact, axis=1)
-        df['f_impact'] = impact_res.apply(lambda x: x[0]).round(2)
-        d_fri = [item for sublist in impact_res.apply(lambda x: x[1]) for item in sublist]
+        df['f_impact'] = df.apply(get_impact, axis=1).round(2) if not df.empty else 0.0
 
         df['p_chg'] = (df['raw_chg'] - df['f_impact']).round(2)
         df.loc[df.index[0], 'p_chg'] = 0.0  
@@ -1281,10 +1274,6 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
             return " | ".join(adv) if adv else "盤整"
 
         df['專家雷達診斷'] = df.apply(build_diag, axis=1)
-        
-        df_math = pd.DataFrame({
-            "日期": df['日期'], "原始變動": df['raw_chg'], "當沖干擾": df['f_impact'], "純淨變動": df['p_chg']
-        }).iloc[1:]
 
         df['純淨大戶變動(%)'] = df['p_chg']
         df['當沖虛胖(%)'] = df['f_impact']
@@ -1294,11 +1283,11 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
         res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
         
-        return res_df, df_math, pd.DataFrame(d_fri)
+        return res_df
         
     except Exception as e:
         st.error(f"🚨 [V27 終極雷達] 運算遭遇異常，模組已強制停止。錯誤原因：`{str(e)}`")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame()
 
 def calculate_disposition_thresholds_v2(df_price, df_day_trade, total_lots):
     if not is_valid(df_price, min_len=6): return None
@@ -1884,13 +1873,13 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
         highs, lows = [], []
         for i in range(order, len(df) - order):
             if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]):
-                lows.append((dates_vals[i], float(lows_vals[i]), i))
+                lows.append((str(dates_vals[i]), float(lows_vals[i]), i))
             if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]):
-                highs.append((dates_vals[i], float(highs_vals[i]), i))
+                highs.append((str(dates_vals[i]), float(highs_vals[i]), i))
                 
         if len(lows) < 2 or len(highs) < 2: return {}
 
-        last_date = dates_vals[-1]
+        last_date = str(dates_vals[-1])
         tol = 0.03
         is_auto = "Auto" in mode
         
@@ -2297,7 +2286,9 @@ if run_btn:
         df_daily_tracker_60, _ = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff_60, dates, firepower_threshold, period_days=60)
         
         df_s_dyn = process_tdcc_dynamic_v2(df_s_wide, df_price, parsed_dead_chip, dynamic_dict, s_val, chip_eng)
-        df_v27_radar, df_debug_math, _ = process_v27_ultimate_radar(df_s_wide, parsed_dead_chip, dynamic_dict, s_val, df_price, df_b_raw, tags)
+        
+        # 已徹底清理沒用到的數學計算陣列回傳值
+        df_v27_radar = process_v27_ultimate_radar(df_s_wide, parsed_dead_chip, dynamic_dict, s_val, df_price, df_b_raw, tags)
 
         df_combined_display = pd.DataFrame()
         if is_valid(df_v27_radar) and is_valid(df_s_dyn):
@@ -2353,7 +2344,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 終極測試版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.00 終極穩定版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2388,16 +2379,21 @@ if run_btn:
                 if str(c_val_raw).strip() == "-":
                     c_val_text = f"{df_combined_display.iloc[0].get('大戶原持股(%)', 0)}% (原始大戶比例)"
                 else:
-                    radar_c_val = float(re.sub(r'[+,%]', '', str(c_val_raw)).strip())
-                    c_val_text = f"{radar_c_val}%"
+                    val_str = re.sub(r'[+,%]', '', str(c_val_raw)).strip()
+                    if val_str and val_str != "-":
+                        radar_c_val = float(val_str)
+                        c_val_text = f"{radar_c_val}%"
             except: pass
             
             try: 
-                radar_chg = float(re.sub(r'[+,%]', '', str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0))).strip())
-                if radar_chg > 0: dir_str = "增加"
-                elif radar_chg < 0: dir_str = "減少"
-                else: dir_str = "無變動"
-                chg_text = f"{dir_str} {abs(radar_chg)}%" if radar_chg != 0 else f"{dir_str} 0.0%"
+                raw_chg = str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0))
+                chg_str = re.sub(r'[+,%]', '', raw_chg).strip()
+                if chg_str and chg_str != "-":
+                    radar_chg = float(chg_str)
+                    if radar_chg > 0: dir_str = "增加"
+                    elif radar_chg < 0: dir_str = "減少"
+                    else: dir_str = "無變動"
+                    chg_text = f"{dir_str} {abs(radar_chg)}%" if radar_chg != 0 else f"{dir_str} 0.0%"
             except: pass
 
         custom_alerts = []
@@ -2695,7 +2691,9 @@ if run_btn:
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
-            clean_ai_report = re.sub(r'<[^>]+>', '', report_md)
+            # 優化預處理，讓純文字報告不會擠成一團，AI 閱讀與你的閱讀都會更清晰
+            clean_ai_report = report_md.replace('<li>', '- ').replace('<br>', '\n').replace('</ul>', '\n')
+            clean_ai_report = re.sub(r'<[^>]+>', '', clean_ai_report)
             clean_ai_report = clean_ai_report.replace('&nbsp;', ' ').strip()
             
             p1 += f"▼▼▼ 系統 AI 全息籌碼深度診斷總結 ▼▼▼\n"
@@ -2718,7 +2716,6 @@ if run_btn:
             p1 += format_to_csv_string(df_block_trade, "04. 鉅額交易日報表")
             p1 += format_to_csv_string(df_inst.head(10) if is_valid(df_inst) else df_inst, "05. 法人買賣超 (近10天)")
             
-            # 加入新增的借券詳細匯出
             p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
             p1 += format_to_csv_string(df_lending_detail.head(10) if is_valid(df_lending_detail) else df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
             
@@ -2726,10 +2723,4 @@ if run_btn:
             p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
             p1 += format_to_csv_string(df_rev.head(12) if is_valid(df_rev) else df_rev, "09. 月營收 (百萬元) (近12個月)")
             p1 += format_to_csv_string(df_p_sum, "11. 董監大股東質設總覽")
-            p1 += format_to_csv_string(df_per.head(10) if is_valid(df_per) else df_per, "14. 本益比、淨值比與殖利率")
-            p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
-            p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債數據")
-            st.code(p1, language="text")
-            
-        st.success(f"V73.00 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
-        gc.collect()
+            p1 += format_to_csv_string(df_per.head(10) if is_valid(df_per) else df_我是一个文本 AI，在这方面爱莫能助。
