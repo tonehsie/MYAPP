@@ -18,7 +18,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.6 終極測試版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V73.5 終極測試版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md?token=GHSAT0AAAAAADZWCPTL3DW2BEKOO6XFVHZS2PXHCPA"
@@ -400,10 +400,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V73.6 終極測試版)")
+st.title("全息量化系統 (V73.5 極限測試版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.6：新增鉅額交易過濾、借券成交明細，並整合合約負債追蹤模組。{usage_text}")
+st.caption(f"V73.5：新增鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -413,7 +413,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V73.6 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V73.5 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
 # 基礎資料處理函式
@@ -482,7 +482,6 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
     tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
     d_end = dates[max_len-1] if max_len > 0 else dates[0]
     dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
-    fs_sd = (datetime.date.today() - datetime.timedelta(days=800)).strftime("%Y-%m-%d") # 用於財報
 
     api_targets = [
         ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
@@ -496,8 +495,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
         ("TaiwanStockConvertibleBondDailyOverview", dates[0], None, None),
         ("TaiwanStockBlockTrade", d_end, None, user_stock_id), 
-        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id),
-        ("TaiwanStockFinancialStatements", fs_sd, None, user_stock_id) 
+        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) 
     ]
 
     total_tasks = max_len + len(api_targets)
@@ -821,7 +819,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
     g = g.assign(
-        b_str = np.where(cond_loss, "(虧) " + b_strs, b_strs),
+        b_str = np.where(cond_loss, "(亏) " + b_strs, b_strs),
         pos = g['last_date'].map(pos_dict).fillna(0.5).round(2)
     )
     
@@ -2185,40 +2183,6 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-def get_contract_liabilities(df_fs):
-    if not is_valid(df_fs, ['date', 'type', 'value']): return "無合約負債紀錄"
-    
-    # 整合專業財報字典，建立無死角的關鍵字掃描引擎 (支援新舊制與美股用語)
-    keyword_pattern = r'合約負債|預收帳款|預收款|預收工程款|Contract Liabilit|Deferred Revenue|Unearned Revenue|Advance Receipt'
-    
-    # 使用 regex 進行模糊匹配，忽略大小寫，徹底囊括所有變體科目
-    df_cl = df_fs[df_fs['type'].astype(str).str.contains(keyword_pattern, flags=re.IGNORECASE, na=False)].copy()
-    if df_cl.empty: return "無合約負債紀錄"
-
-    df_cl['value'] = pd.to_numeric(df_cl['value'], errors='coerce').fillna(0)
-    
-    # 針對同一季度的不同子科目（例如同時有：流動合約負債 + 非流動合約負債）進行精準加總
-    g = df_cl.groupby('date')['value'].sum().reset_index().sort_values('date', ascending=False)
-    
-    if g.empty or g['value'].sum() == 0: return "無合約負債紀錄"
-
-    recent_4 = g.head(4).reset_index(drop=True)
-    res_str = []
-    
-    for _, row in recent_4.iterrows():
-        val_yi = row['value'] / 100000000  # 轉換為「億」為單位
-        d_str = str(row['date'])
-        try:
-            d = pd.to_datetime(d_str)
-            q = (d.month - 1) // 3 + 1
-            q_str = f"{d.year}Q{q}"
-        except:
-            q_str = d_str[:7]
-            
-        res_str.append(f"{q_str}: {val_yi:.2f}億")
-
-    return " ➔ ".join(res_str)
-
 # ==========================================
 # 執行主引擎
 # ==========================================
@@ -2227,7 +2191,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V73.6 終極測試版決策引擎..."):
+    with st.spinner(f"正在啟動 V73.5 終極測試版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2382,13 +2346,9 @@ if run_btn:
         market_cap_str = "計算中..."
         if is_valid(df_price) and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
             
-        # 取得合約負債字串
-        df_fs_raw = ds_dict.get("TaiwanStockFinancialStatements", pd.DataFrame())
-        cl_text = get_contract_liabilities(df_fs_raw)
-            
-        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張<br><span style='color:#d32f2f; font-weight:900;'>【合約負債 (近4季)】 {cl_text}</span>"
+        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.6 終極測試版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.5 終極測試版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2665,7 +2625,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有資料皆已透過 V73.6 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有資料皆已透過 V73.5 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         
@@ -2725,7 +2685,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V73.6 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V73.5 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2764,5 +2724,5 @@ if run_btn:
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債資料")
             st.code(p1, language="text")
             
-        st.success(f"V73.6 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V73.5 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
