@@ -403,7 +403,7 @@ ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_valu
 st.title("全息量化系統 (V75.8 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V75.8：新增10大集保分級增減熱力表、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V75.8：集保分級表內建增減紅綠色動態比對、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -2073,57 +2073,79 @@ def render_clean_html_table(df, title=""):
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
-def format_to_csv_string(df, title):
-    header = f"▼▼▼ {title} ▼▼▼\n"
-    if not is_valid(df): return header + "此區塊查無資料或無發行紀錄\n"
-    return header + df.to_csv(index=False) + "\n"
-
-# ==========================================
-# 新增 V75.8：集保分級比例增減熱力表模組
-# ==========================================
-def render_tdcc_heatmap_html(df_s_wide):
-    if not is_valid(df_s_wide, ['日期']):
+def render_tdcc_table_with_color(df, title=""):
+    """專屬集保表渲染器：維持原始數據，依據前一週的增減變換字體紅綠色"""
+    if not is_valid(df):
+        if title: st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+        st.warning("此區塊查無資料。")
         return
-    st.markdown("<div class='section-title'>10-0. 集保分級比例增減熱力圖 (週變動)</div>", unsafe_allow_html=True)
+        
+    df_work = df.copy()
+    # 確保資料為依照日期由新到舊排序 (以利往下一列比對上一期)
+    df_work = df_work.sort_values('日期', ascending=False).reset_index(drop=True)
+    cols = df_work.columns.tolist()
     
-    pct_cols = [c for c in df_s_wide.columns if c.endswith('_比例(%)')]
-    if not pct_cols: return
-    
-    df_work = df_s_wide[['日期'] + pct_cols].copy()
-    # 確保由舊到新排序，才能正確計算每週增減
-    df_work = df_work.sort_values('日期', ascending=True).reset_index(drop=True)
-    diff_df = df_work[pct_cols].diff()
-    df_work[pct_cols] = diff_df
-    
-    # 計算完後，重新由新到舊排序顯示，並剃除第一週(因無前一週可比對產生的NaN)
-    df_work = df_work.sort_values('日期', ascending=False).dropna(subset=pct_cols, how='all')
-    
-    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
-    html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
-    for c in pct_cols:
-        clean_name = c.replace('_比例(%)', '')
-        html_parts.append(f"<th>{clean_name}</th>")
+    html_parts = []
+    if title: 
+        html_parts.append(f"<div class='section-title'>{title}</div>")
+        
+    html_parts.append("<div class='table-container'><table><thead><tr>")
+    for col in cols:
+        align = "left" if col == '日期' else "right"
+        html_parts.append(f"<th style='text-align: {align};'>{col}</th>")
     html_parts.append("</tr></thead><tbody>")
     
-    for _, row in df_work.iterrows():
+    for i in range(len(df_work)):
         html_parts.append("<tr>")
-        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center;'>{row['日期']}</td>")
-        
-        for c in pct_cols:
-            val = row[c]
-            if pd.isna(val) or val == 0:
-                html_parts.append("<td style='text-align: center; color: #999;'>-</td>")
-            elif val > 0:
-                alpha = min(0.8, val / 2.0) if val else 0.1 # 動態紅色漸層
-                html_parts.append(f"<td style='text-align: center; background-color: rgba(229, 57, 53, {max(0.1, alpha):.2f}); color: #c62828; font-weight: bold;'>+{val:.2f}%</td>")
+        for col in cols:
+            val = df_work.at[i, col]
+            
+            if pd.isna(val):
+                html_parts.append("<td class='text-right'>-</td>")
+                continue
+                
+            if col == '日期':
+                html_parts.append(f"<td class='text-left' style='font-weight: bold;'>{val}</td>")
             else:
-                alpha = min(0.8, abs(val) / 2.0) if val else 0.1 # 動態綠色漸層
-                html_parts.append(f"<td style='text-align: center; background-color: rgba(67, 160, 71, {max(0.1, alpha):.2f}); color: #2e7d32; font-weight: bold;'>{val:.2f}%</td>")
+                try:
+                    curr_val = float(val)
+                    # 判斷是否為整數，以決定是否加小數點
+                    display_str = f"{int(curr_val):,}" if curr_val == int(curr_val) else f"{curr_val:,.2f}"
+                    
+                    # 與前一期 (即下一列) 比對
+                    if i < len(df_work) - 1:
+                        prev_val = float(df_work.at[i+1, col])
+                        if curr_val > prev_val:
+                            # 數值增加：紅字 + 淡紅底色增加熱力感
+                            display_html = f"<span style='color: #d32f2f; font-weight: bold;'>{display_str}</span>"
+                            bg_style = "background-color: rgba(229, 57, 53, 0.08);"
+                        elif curr_val < prev_val:
+                            # 數值減少：綠字 + 淡綠底色增加熱力感
+                            display_html = f"<span style='color: #2e7d32; font-weight: bold;'>{display_str}</span>"
+                            bg_style = "background-color: rgba(67, 160, 71, 0.08);"
+                        else:
+                            # 毫無變動
+                            display_html = display_str
+                            bg_style = ""
+                    else:
+                        # 最後一列無法與更早比對
+                        display_html = display_str
+                        bg_style = ""
+                        
+                    html_parts.append(f"<td class='text-right' style='{bg_style}'>{display_html}</td>")
+                except:
+                    # 無法轉換為數字時直接顯示原始字串
+                    html_parts.append(f"<td class='text-right'>{val}</td>")
         html_parts.append("</tr>")
         
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
+
+def format_to_csv_string(df, title):
+    header = f"▼▼▼ {title} ▼▼▼\n"
+    if not is_valid(df): return header + "此區塊查無資料或無發行紀錄\n"
+    return header + df.to_csv(index=False) + "\n"
 
 def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
     if not is_valid(df_raw) or not display_dates or not rank_dates:
@@ -2717,11 +2739,10 @@ if run_btn:
 
         render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
         
-        # 🟢 在此處無縫置入您專屬的 V75.8 熱力表 🟢
-        with st.expander("點此展開集保分級表與增減熱力圖 (近8週)", expanded=False):
-            render_tdcc_heatmap_html(df_s_wide)
-            render_clean_html_table(df_s_unit, "10-1. 集保分級 - 張數表")
-            render_clean_html_table(df_s_ppl, "10-2. 集保分級 - 人數表")
+        # 🟢 V75.8 集保分級表：直接整合增減紅綠色 🟢
+        with st.expander("點此展開集保分級表 (近8週)", expanded=False):
+            render_tdcc_table_with_color(df_s_unit, "10-1. 集保分級 - 張數表 (紅增綠減)")
+            render_tdcc_table_with_color(df_s_ppl, "10-2. 集保分級 - 人數表 (紅增綠減)")
             
         render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
         with st.expander("點此展開董監大股東質設明細", expanded=False):
