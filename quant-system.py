@@ -17,27 +17,27 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V76.0 終極版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V76.1 終極版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md?token=GHSAT0AAAAAADZWCPTL3DW2BEKOO6XFVHZS2PXHCPA"
 
 # ==========================================
-# 前端語法模板集中區
+# 前端語法模板集中區 (CSS/HTML/JS)
 # ==========================================
 CSS = """
 <style>
 .table-container { overflow: auto; max-height: 600px; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding-bottom: 10px; }
 .table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .table-container th, .table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
-.table-container th { border-top: 1px solid #dee2e6; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; position: sticky; top: 0; z-index: 3; }
+.table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
 .table-container th:first-child, .table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .table-container thead th:first-child { z-index: 5; }
 
 .full-table-container { overflow-x: auto; overflow-y: visible; width: 100%; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: block; padding-bottom: 10px; }
 .full-table-container table { width: max-content !important; min-width: 40%; border-collapse: separate !important; border-spacing: 0; font-size: 15px !important; font-family: sans-serif; background-color: #fff; }
 .full-table-container th, .full-table-container td { white-space: nowrap !important; padding: 10px 12px !important; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; vertical-align: middle; }
-.full-table-container th { border-top: 1px solid #dee2e6; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; position: sticky; top: 0; z-index: 3; }
+.full-table-container th { border-top: 1px solid #dee2e6; word-break: keep-all !important; text-align: center !important; background-color: #f1f3f5 !important; color: #333 !important; font-weight: 700 !important; line-height: 1.4; position: sticky; top: 0; z-index: 3; }
 .full-table-container th:first-child, .full-table-container td:first-child { position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center !important; border-left: 1px solid #dee2e6; }
 .full-table-container thead th:first-child { z-index: 5; }
 
@@ -151,6 +151,51 @@ KLINE_CHART_TEMPLATE = """
 """
 
 # ==========================================
+# 資料快取與連線
+# ==========================================
+@st.cache_resource(max_entries=3)
+def get_finmind_session():
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
+    retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+@st.cache_resource(max_entries=3)
+def get_generic_session():
+    session = requests.Session()
+    retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+FM_SESSION = get_finmind_session()
+GENERIC_SESSION = get_generic_session()
+
+@st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
+def fetch_github_manual(url):
+    try:
+        r = GENERIC_SESSION.get(url, timeout=5)
+        if r.status_code == 200:
+            r.encoding = 'utf-8'
+            return r.text
+        return "無法載入指南，請確認 GitHub Raw 網址是否正確。"
+    except Exception as e: return f"指南載入失敗: {e}"
+
+@st.cache_data(ttl=300, max_entries=2, show_spinner=False)
+def get_api_usage(token):
+    try:
+        r = GENERIC_SESSION.get(f"https://api.web.finmindtrade.com/v2/user_info?token={token}", timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("user_count", 0), data.get("api_request_limit", 0)
+    except: pass
+    return None, None
+
+# ==========================================
 # 側邊欄設定
 # ==========================================
 st.sidebar.markdown("### 交易戰略大腦")
@@ -162,7 +207,7 @@ kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 270, 
 lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
 stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-# 🗓️ 自訂區間選擇器：這將直接連動到「終極全息透視區」
+# 🗓️ 自訂區間選擇器
 st.sidebar.divider()
 st.sidebar.markdown("### 🗓️ 終極透視區：區間設定")
 today_date = datetime.date.today()
@@ -210,6 +255,24 @@ ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, 
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
 # ==========================================
+# 主畫面 UI
+# ==========================================
+st.title("全息量化系統 (V76.1 終極版)")
+user_count, api_limit = get_api_usage(FINMIND_TOKEN)
+usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
+st.caption(f"V76.1：無斷點動態抓取邏輯、K線圖與16大模組完整回歸。{usage_text}")
+
+with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
+    st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
+
+col1, col2 = st.columns([1, 1])
+with col1: 
+    user_stock_id = st.text_input("個股代號", value="2330")
+with col2: 
+    dead_chip_input = st.text_input("死籌碼 % (董監事持股＋大股東持股，留空自動抓)")
+run_btn = st.button("啟動 V76.1 決策引擎", use_container_width=True, key="run_engine")
+
+# ==========================================
 # 基礎輔助函式
 # ==========================================
 def is_valid(df, req_cols=None, min_len=1):
@@ -228,27 +291,13 @@ def optimize_memory(df):
                 df[col] = df[col].astype('category')
     return df
 
-@st.cache_resource(max_entries=3)
-def get_finmind_session():
-    session = requests.Session()
-    session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
-    retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-@st.cache_resource(max_entries=3)
-def get_generic_session():
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-FM_SESSION = get_finmind_session()
-GENERIC_SESSION = get_generic_session()
+_num_re = re.compile(r'\d+')
+_LEVEL_MAP = {
+    1: "1-999股", 2: "1-5張", 3: "5-10張", 4: "10-15張", 5: "15-20張",
+    6: "20-30張", 7: "30-40張", 8: "40-50張", 9: "50-100張", 10: "100-200張",
+    11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"
+}
+_LEVEL_CLEAN_CACHE = {}
 
 def safe_to_num(series, fill_val=0):
     if isinstance(series, pd.Series):
@@ -444,6 +493,24 @@ def scrape_director_v50(tid):
                                     if lt == 0.0: lt = val
                             except: pass
                     if dd: return dd, lt, "Goodinfo(含大股東)", []
+    except: pass
+    
+    try:
+        html = safe_get_fubon(f"https://fubon-ebrokerdj.fbs.com.tw/z/zc/zck/zck_{tid}.djhtm")
+        if html:
+            tm = re.search(r'姓名/法人名稱(.*?)</table>', html, re.IGNORECASE | re.DOTALL)
+            if tm:
+                ed = {}
+                for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', tm.group(1), re.IGNORECASE | re.DOTALL):
+                    tds = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.IGNORECASE | re.DOTALL)
+                    if len(tds) >= 4:
+                        title = re.sub(r'<[^>]+>', '', tds[0]).strip()
+                        name = re.sub(r'<[^>]+>', '', tds[1]).strip()
+                        r_str = re.sub(r'<[^>]+>', '', tds[3]).replace('%', '').strip()
+                        if ('董' in title or '監' in title) and '辭' not in title and '職稱' not in title:
+                            try: ed[name.split('-')[0].strip()] = max(ed.get(name.split('-')[0].strip(), 0), float(r_str))
+                            except: pass
+                if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
     return {}, 0.0, "雙引擎皆失敗(請手動)", []
 
@@ -1158,7 +1225,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
 if run_btn:
     if not user_stock_id.strip(): st.warning("請先輸入股票代號！"); st.stop()
 
-    with st.spinner(f"正在啟動 V76.0 終極版決策引擎..."):
+    with st.spinner(f"正在啟動 V76.1 終極版決策引擎..."):
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": st.error(f"查無股票代號 {user_stock_id}。"); st.stop()
             
@@ -1169,7 +1236,7 @@ if run_btn:
         dates = sorted(valid_dates[valid_dates != ""].unique().tolist(), reverse=True)
         if not dates: st.stop()
 
-        # 🧩 V76.0：無斷點動態計算 max_len，確保資料涵蓋自訂區間起點
+        # 🧩 V76.1：無斷點動態計算 max_len，確保資料涵蓋自訂區間起點
         c_start, c_end = custom_range if len(custom_range) == 2 else (default_start, today_date)
         days_to_custom_start = len([d for d in dates if d >= c_start.strftime("%Y-%m-%d")])
         max_len = max(lookback_days, days_to_custom_start + 20) # 額外加20天緩衝給MA等計算
@@ -1259,7 +1326,7 @@ if run_btn:
         
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {current_total_shares/10000:.2f} 億 ｜ 【市值】 {(curr_price*current_total_shares)/100000:,.2f} 億 ｜ 【死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol or 0):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V76.0 終極版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V76.1 終極版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         # 🚨 K 線圖與技術分析模組回歸 🚨
@@ -1337,7 +1404,7 @@ if run_btn:
         render_clean_html_table(df_cbas, "16. CBAS 可轉債資料")
 
         st.divider()
-        with st.expander(f"給 AI 的 V76.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V76.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請分析 {user_stock_id} {name}。\n{company_info_text}\n\n"
             p1 += f"【系統純淨加權防守價】: {pure_vwap:,.2f} 元\n【核心控盤率】: {core_c_value}%\n"
             p1 += f"【3日淨留倉】: {net_3} 張\n【10日淨留倉】: {net_10} 張\n【60日淨留倉】: {net_60} 張\n\n"
@@ -1348,5 +1415,5 @@ if run_btn:
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債")
             st.code(p1, language="text")
             
-        st.success(f"V76.0 終極無斷點版已成功處理 {user_stock_id}。")
+        st.success(f"V76.1 終極無斷點版已成功處理 {user_stock_id}。")
         gc.collect()
