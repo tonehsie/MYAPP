@@ -18,7 +18,7 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V73.5 終極測試版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V75.8 終極版)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 GITHUB_MANUAL_URL = "https://raw.githubusercontent.com/tonehsie/stock/refs/heads/main/README.md?token=GHSAT0AAAAAADZWCPTL3DW2BEKOO6XFVHZS2PXHCPA"
@@ -400,10 +400,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V73.5 極限測試版)")
+st.title("全息量化系統 (V75.8 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V73.5：新增鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V75.8：新增10大集保分級增減熱力表、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -413,7 +413,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V73.5 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V75.8 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
 # 基礎資料處理函式
@@ -819,7 +819,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     cond_loss = (g['avg_b'] > latest_close) & (g['avg_b'] > 0) & (g['net_shares'] > 0)
     b_strs = g['avg_b'].apply(lambda x: f"{x:,.2f}" if x > 0 else "-")
     g = g.assign(
-        b_str = np.where(cond_loss, "(亏) " + b_strs, b_strs),
+        b_str = np.where(cond_loss, "(虧) " + b_strs, b_strs),
         pos = g['last_date'].map(pos_dict).fillna(0.5).round(2)
     )
     
@@ -1183,7 +1183,7 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         
         if not df_price.empty:
             df_p = df_price[['日期', '收盤價(元)']].drop_duplicates(subset=['日期']).sort_values('日期')
-            df_p['dt'] = pd.to_datetime(df_p['日期'])
+            df_p['dt'] = pd.to_datetime(df_p['dt'] if 'dt' in df_p.columns else df_p['日期'])
             df_p['收盤價(元)'] = pd.to_numeric(df_p['收盤價(元)'], errors='coerce')
             df_p['ma20'] = df_p['收盤價(元)'].rolling(20, min_periods=1).mean()
             df = pd.merge_asof(df.sort_values('dt_end'), df_p[['dt', '收盤價(元)', 'ma20']], left_on='dt_end', right_on='dt', direction='backward')
@@ -2078,6 +2078,53 @@ def format_to_csv_string(df, title):
     if not is_valid(df): return header + "此區塊查無資料或無發行紀錄\n"
     return header + df.to_csv(index=False) + "\n"
 
+# ==========================================
+# 新增 V75.8：集保分級比例增減熱力表模組
+# ==========================================
+def render_tdcc_heatmap_html(df_s_wide):
+    if not is_valid(df_s_wide, ['日期']):
+        return
+    st.markdown("<div class='section-title'>10-0. 集保分級比例增減熱力圖 (週變動)</div>", unsafe_allow_html=True)
+    
+    pct_cols = [c for c in df_s_wide.columns if c.endswith('_比例(%)')]
+    if not pct_cols: return
+    
+    df_work = df_s_wide[['日期'] + pct_cols].copy()
+    # 確保由舊到新排序，才能正確計算每週增減
+    df_work = df_work.sort_values('日期', ascending=True).reset_index(drop=True)
+    diff_df = df_work[pct_cols].diff()
+    df_work[pct_cols] = diff_df
+    
+    # 計算完後，重新由新到舊排序顯示，並剃除第一週(因無前一週可比對產生的NaN)
+    df_work = df_work.sort_values('日期', ascending=False).dropna(subset=pct_cols, how='all')
+    
+    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
+    html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
+    for c in pct_cols:
+        clean_name = c.replace('_比例(%)', '')
+        html_parts.append(f"<th>{clean_name}</th>")
+    html_parts.append("</tr></thead><tbody>")
+    
+    for _, row in df_work.iterrows():
+        html_parts.append("<tr>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center;'>{row['日期']}</td>")
+        
+        for c in pct_cols:
+            val = row[c]
+            if pd.isna(val) or val == 0:
+                html_parts.append("<td style='text-align: center; color: #999;'>-</td>")
+            elif val > 0:
+                alpha = min(0.8, val / 2.0) if val else 0.1 # 動態紅色漸層
+                html_parts.append(f"<td style='text-align: center; background-color: rgba(229, 57, 53, {max(0.1, alpha):.2f}); color: #c62828; font-weight: bold;'>+{val:.2f}%</td>")
+            else:
+                alpha = min(0.8, abs(val) / 2.0) if val else 0.1 # 動態綠色漸層
+                html_parts.append(f"<td style='text-align: center; background-color: rgba(67, 160, 71, {max(0.1, alpha):.2f}); color: #2e7d32; font-weight: bold;'>{val:.2f}%</td>")
+        html_parts.append("</tr>")
+        
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+
 def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
     if not is_valid(df_raw) or not display_dates or not rank_dates:
         st.warning("查無足夠資料產生熱力圖。")
@@ -2191,7 +2238,7 @@ if run_btn:
         st.warning("請先在上方輸入股票代號！")
         st.stop()
 
-    with st.spinner(f"正在啟動 V73.5 終極測試版決策引擎..."):
+    with st.spinner(f"正在啟動 V75.8 終極版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2348,7 +2395,7 @@ if run_btn:
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V73.5 終極測試版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V75.8 終極版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2625,7 +2672,7 @@ if run_btn:
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有資料皆已透過 V73.5 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有資料皆已透過 V75.8 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         
@@ -2670,7 +2717,9 @@ if run_btn:
 
         render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
         
-        with st.expander("點此展開集保分級表 (近8週)", expanded=False):
+        # 🟢 在此處無縫置入您專屬的 V75.8 熱力表 🟢
+        with st.expander("點此展開集保分級表與增減熱力圖 (近8週)", expanded=False):
+            render_tdcc_heatmap_html(df_s_wide)
             render_clean_html_table(df_s_unit, "10-1. 集保分級 - 張數表")
             render_clean_html_table(df_s_ppl, "10-2. 集保分級 - 人數表")
             
@@ -2685,7 +2734,7 @@ if run_btn:
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V73.5 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V75.8 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -2724,5 +2773,5 @@ if run_btn:
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債資料")
             st.code(p1, language="text")
             
-        st.success(f"V73.5 終極測試版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        st.success(f"V75.8 終極版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
         gc.collect()
