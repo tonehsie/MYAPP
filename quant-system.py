@@ -360,6 +360,17 @@ display_map = {5: 20, 10: 20, 30: 45, 45: 60, 60: 60, 90: 90, 120: 120}
 footprint_days = st.sidebar.slider("足跡明細追蹤天數 (顯示範圍)", 5, 120, display_map[footprint_stat_days], 1)
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
+# 🟢 新增：自訂區間籌碼分析設定面板
+st.sidebar.divider()
+st.sidebar.markdown("### 🗓️ 自訂區間籌碼分析")
+today_date = datetime.date.today()
+default_custom_start = today_date - datetime.timedelta(days=30)
+custom_date_range = st.sidebar.date_input(
+    "選擇要獨立分析的籌碼區間",
+    value=(default_custom_start, today_date),
+    max_value=today_date
+)
+
 st.sidebar.divider()
 st.sidebar.markdown("### 視覺系主菜：熱力圖設定")
 heatmap_noise_pct = st.sidebar.slider("熱力圖雜訊過濾 (佔20日均量 %)", 0.0, 5.0, 0.5 if is_right_side else 1.0, 0.1)
@@ -403,7 +414,7 @@ ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_valu
 st.title("全息量化系統 (V75.8 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V75.8：集保分級表內建增減紅綠色動態比對、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V75.8：新增側邊欄自訂區間籌碼分析、集保分級表內建增減紅綠色動態比對、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -2704,6 +2715,30 @@ if run_btn:
         actual_foot_days = footprint_days if len(dates) >= footprint_days else len(dates)
         display_dates = dates[:actual_foot_days]
         
+        # 🟢 新增：01-A. 自訂區間籌碼深度分析
+        st.markdown("<div class='category-title'>🌟 01-A. 專屬自訂區間籌碼深度分析</div>", unsafe_allow_html=True)
+        if len(custom_date_range) == 2:
+            c_start, c_end = custom_date_range
+            mask = (df_b_raw['date_dt'].dt.date >= c_start) & (df_b_raw['date_dt'].dt.date <= c_end)
+            df_custom_b = df_b_raw.loc[mask]
+            
+            if not df_custom_b.empty:
+                actual_dates_custom = sorted(df_custom_b['date'].unique().tolist(), reverse=True)
+                custom_days = len(actual_dates_custom)
+                
+                # 利用既有的分點處理函數計算該區間的買賣超排名
+                df_b_custom = optimize_memory(process_branch_v25(df_b_raw, custom_days, actual_dates_custom, tags, df_p_raw, stickiness_threshold, max_len))
+                
+                with st.expander(f"【自訂區間大戶排行】 {c_start} 至 {c_end} (區間內共 {custom_days} 個交易日)", expanded=True):
+                    st.info(f"📊 已成功篩選出您在左側指定的獨立日期範圍，為您呈現該區間最純粹的主力戰況。")
+                    render_clean_html_table(df_b_custom, f"自訂區間分點買賣超排行榜 ({c_start} ~ {c_end})")
+            else:
+                st.warning(f"⚠️ 自訂區間 {c_start} 至 {c_end} 內查無任何分點交易資料，請嘗試放寬日期範圍。")
+        else:
+            st.warning("請在左側面板正確選擇「起始」與「結束」兩個日期。")
+            
+        st.markdown("---")
+        
         st.markdown("<div class='category-title'>01. 終極全息透視區 (依戰略天數動態排檔)</div>", unsafe_allow_html=True)
         
         with st.expander(f"【終極全息熱力圖】 戰略排行 {stat_days} 天 ✕ 戰鬥足跡 {actual_foot_days} 天", expanded=True):
@@ -2739,7 +2774,6 @@ if run_btn:
 
         render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
         
-        # 🟢 V75.8 集保分級表：直接整合增減紅綠色 🟢
         with st.expander("點此展開集保分級表 (近8週)", expanded=False):
             render_tdcc_table_with_color(df_s_unit, "10-1. 集保分級 - 張數表 (紅增綠減)")
             render_tdcc_table_with_color(df_s_ppl, "10-2. 集保分級 - 人數表 (紅增綠減)")
