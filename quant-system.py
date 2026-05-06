@@ -374,7 +374,7 @@ firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.
 
 st.sidebar.divider()
 st.sidebar.markdown("### AI 幾何形態與技術線")
-enable_pattern = st.sidebar.checkbox("啟動 AI 幾何形態掃描", value=True)
+enable_pattern = st.sidebar.checkbox("啟 configuration 幾何形態掃描", value=True)
 
 pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "全自動智慧辨識 (Auto)", 
@@ -2286,6 +2286,55 @@ if run_btn:
 
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
             df_p_sum, df_p_det = f_ple.result()
+
+        # =========================================================
+        # ▼▼▼ 系統資料庫 API 除錯與狀態檢測模組 ▼▼▼
+        # =========================================================
+        debug_data = []
+        def check_df_status(name, df, date_col='date'):
+            if not is_valid(df): 
+                return {"資料項目": name, "連線狀態": "🔴 異常 / 無資料", "最新資料日": "無", "抓取筆數": 0}
+            
+            # 嘗試取得最新日期
+            if date_col in df.columns: latest_date = df[date_col].max()
+            elif '日期' in df.columns: latest_date = df['日期'].max()
+            else: latest_date = "無日期欄位"
+            
+            # 判斷是否延遲 (如果最新日期小於最近第二個交易日，視為延遲)
+            latest_str = str(latest_date)[:10]
+            compare_date = str(dates[1])[:10] if len(dates) > 1 else str(dates[0])[:10]
+            
+            if latest_str == "無日期欄位":
+                status_icon = "🟢 正常"
+            elif latest_str >= compare_date:
+                status_icon = "🟢 正常 (最新)"
+            else:
+                status_icon = "🟡 官方延遲 / 未更新"
+                
+            return {"資料項目": name, "連線狀態": status_icon, "最新資料日": latest_str, "抓取筆數": len(df)}
+
+        debug_data.append(check_df_status("1. 歷史股價 (TaiwanStockPrice)", df_p_raw, 'date'))
+        debug_data.append(check_df_status("2. 分點進出 (TradingDailyReport)", df_b_raw, 'date'))
+        debug_data.append(check_df_status("3. 三大法人 (InstitutionalInvestors)", ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell"), 'date'))
+        debug_data.append(check_df_status("4. 融資融券 (MarginPurchaseShortSale)", ds_dict.get("TaiwanStockMarginPurchaseShortSale"), 'date'))
+        debug_data.append(check_df_status("5. 現股當沖 (DayTrading)", ds_dict.get("TaiwanStockDayTrading"), 'date'))
+        debug_data.append(check_df_status("6. 借券明細 (SecuritiesLending)", ds_dict.get("TaiwanStockSecuritiesLending"), 'date'))
+        debug_data.append(check_df_status("7. 集保戶數 (HoldingSharesPer)", ds_dict.get("TaiwanStockHoldingSharesPer"), 'date'))
+        debug_data.append(check_df_status("8. 月營收表 (MonthRevenue)", ds_dict.get("TaiwanStockMonthRevenue"), 'revenue_month'))
+        debug_data.append(check_df_status("9. 期貨法人 (FuturesInstitutional)", ds_dict.get("TaiwanFuturesInstitutionalInvestors"), 'date'))
+        debug_data.append(check_df_status("10. 鉅額交易 (BlockTrade)", ds_dict.get("TaiwanStockBlockTrade"), 'date'))
+        debug_data.append(check_df_status("11. 可轉債行情 (ConvertibleBond)", ds_dict.get("TaiwanStockConvertibleBondDailyOverview"), 'date'))
+        
+        df_debug_report = pd.DataFrame(debug_data)
+        
+        with st.expander("🛠️ 系統後台：API 資料庫連線與更新狀態 (點此展開除錯)", expanded=True):
+            st.info("💡 **除錯指南**：\n"
+                    "如果顯示 **🔴 異常**，代表該股票本身沒有這項資料（例如無發行可轉債），或 API 連線失敗。\n"
+                    "如果顯示 **🟡 官方延遲**，代表 FinMind 資料庫針對該項目尚未更新到今天，請晚點再按 `C` 清除暫存重試。")
+            render_clean_html_table(df_debug_report)
+        # =========================================================
+        # ▲▲▲ 系統資料庫 API 除錯與狀態檢測模組 ▲▲▲
+        # =========================================================
 
         if not is_valid(df_b_raw):
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
