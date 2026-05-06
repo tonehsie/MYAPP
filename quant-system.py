@@ -374,7 +374,7 @@ firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.
 
 st.sidebar.divider()
 st.sidebar.markdown("### AI 幾何形態與技術線")
-enable_pattern = st.sidebar.checkbox("啟 configuration 幾何形態掃描", value=True)
+enable_pattern = st.sidebar.checkbox("啟動 AI 幾何形態掃描", value=True)
 
 pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "全自動智慧辨識 (Auto)", 
@@ -403,7 +403,7 @@ ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_valu
 st.title("全息量化系統 (V75.8 終極版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V75.8：新增10大集保分級增減熱力表、鉅額交易精準過濾、借券成交明細無縫整合。{usage_text}")
+st.caption(f"V75.8：新增10大集保分級通用熱力表、API除錯面板、鉅額交易與借券成交無縫整合。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL), unsafe_allow_html=True)
@@ -515,7 +515,6 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
             return dataset, []
 
     def fetch_branch(d, tid):
-        # 根據 FinMind 系統公告，更新此 API 端點與參數
         url = "https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report"
         p = {"data_id": tid, "date": d}
         try:
@@ -2080,48 +2079,72 @@ def format_to_csv_string(df, title):
     return header + df.to_csv(index=False) + "\n"
 
 # ==========================================
-# 新增 V75.8：集保分級比例增減熱力表模組
+# 新增 V75.8：集保分級通用熱力表引擎 (支援比例/張數/人數)
 # ==========================================
-def render_tdcc_heatmap_html(df_s_wide):
-    if not is_valid(df_s_wide, ['日期']):
+def render_tdcc_heatmap_generic(df, col_suffix, title):
+    if not is_valid(df, ['日期']):
         return
-    st.markdown("<div class='section-title'>10-0. 集保分級比例增減熱力圖 (週變動)</div>", unsafe_allow_html=True)
-    
-    pct_cols = [c for c in df_s_wide.columns if c.endswith('_比例(%)')]
-    if not pct_cols: return
-    
-    df_work = df_s_wide[['日期'] + pct_cols].copy()
+    st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+
+    target_cols = [c for c in df.columns if c.endswith(col_suffix)]
+    if not target_cols: return
+
     # 確保由舊到新排序，才能正確計算每週增減
-    df_work = df_work.sort_values('日期', ascending=True).reset_index(drop=True)
-    diff_df = df_work[pct_cols].diff()
-    df_work[pct_cols] = diff_df
-    
-    # 計算完後，重新由新到舊排序顯示，並剃除第一週(因無前一週可比對產生的NaN)
-    df_work = df_work.sort_values('日期', ascending=False).dropna(subset=pct_cols, how='all')
-    
+    df_orig = df[['日期'] + target_cols].sort_values('日期', ascending=True).reset_index(drop=True)
+    diff_df = df_orig[target_cols].diff()
+
+    # 計算完後，重新由新到舊排序
+    df_orig = df_orig.sort_values('日期', ascending=False)
+    diff_df = diff_df.loc[df_orig.index]
+
+    # 剃除第一週(因無前一週可比對產生的NaN)
+    valid_idx = diff_df.dropna(subset=target_cols, how='all').index
+    df_orig = df_orig.loc[valid_idx]
+    diff_df = diff_df.loc[valid_idx]
+
+    # 計算顏色的動態基準值 (用 95% 分位數避免極端值導致其他顏色太淺)
+    abs_diffs = diff_df.abs().values.flatten()
+    abs_diffs = abs_diffs[~np.isnan(abs_diffs)]
+    if len(abs_diffs) > 0 and abs_diffs.max() > 0:
+        max_diff = np.percentile(abs_diffs, 95)
+        if max_diff == 0: max_diff = 1
+    else:
+        max_diff = 1
+
     html_parts = ["<div class='full-table-container'><table><thead><tr>"]
     html_parts.append("<th style='position: sticky; left: 0; z-index: 6;'>日期</th>")
-    for c in pct_cols:
-        clean_name = c.replace('_比例(%)', '')
+    for c in target_cols:
+        clean_name = c.replace(col_suffix, '')
         html_parts.append(f"<th>{clean_name}</th>")
     html_parts.append("</tr></thead><tbody>")
-    
-    for _, row in df_work.iterrows():
+
+    for idx, row in df_orig.iterrows():
+        diff_row = diff_df.loc[idx]
         html_parts.append("<tr>")
         html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; text-align: center;'>{row['日期']}</td>")
-        
-        for c in pct_cols:
-            val = row[c]
-            if pd.isna(val) or val == 0:
-                html_parts.append("<td style='text-align: center; color: #999;'>-</td>")
-            elif val > 0:
-                alpha = min(0.8, val / 2.0) if val else 0.1 # 動態紅色漸層
-                html_parts.append(f"<td style='text-align: center; background-color: rgba(229, 57, 53, {max(0.1, alpha):.2f}); color: #c62828; font-weight: bold;'>+{val:.2f}%</td>")
+
+        for c in target_cols:
+            orig_val = row[c]
+            diff_val = diff_row[c]
+
+            # 格式化顯示文字
+            if col_suffix == '_比例(%)':
+                val_str = f"{orig_val:.2f}%"
+                tooltip_diff = f"{diff_val:+.2f}%" if pd.notna(diff_val) else ""
             else:
-                alpha = min(0.8, abs(val) / 2.0) if val else 0.1 # 動態綠色漸層
-                html_parts.append(f"<td style='text-align: center; background-color: rgba(67, 160, 71, {max(0.1, alpha):.2f}); color: #2e7d32; font-weight: bold;'>{val:.2f}%</td>")
+                val_str = f"{int(orig_val):,}"
+                tooltip_diff = f"{int(diff_val):+,}" if pd.notna(diff_val) else ""
+
+            if pd.isna(diff_val) or diff_val == 0:
+                html_parts.append(f"<td style='text-align: center; color: #555;'>{val_str}</td>")
+            elif diff_val > 0:
+                alpha = min(0.8, diff_val / max_diff) if max_diff > 0 else 0.1
+                html_parts.append(f"<td style='text-align: center; background-color: rgba(229, 57, 53, {max(0.1, alpha):.2f}); color: #c62828; font-weight: bold;' title='較上週增加 {tooltip_diff}'>{val_str}</td>")
+            else:
+                alpha = min(0.8, abs(diff_val) / max_diff) if max_diff > 0 else 0.1
+                html_parts.append(f"<td style='text-align: center; background-color: rgba(67, 160, 71, {max(0.1, alpha):.2f}); color: #2e7d32; font-weight: bold;' title='較上週減少 {tooltip_diff}'>{val_str}</td>")
         html_parts.append("</tr>")
-        
+
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
@@ -2769,9 +2792,9 @@ if run_btn:
         
         # 🟢 在此處無縫置入您專屬的 V75.8 熱力表 🟢
         with st.expander("點此展開集保分級表與增減熱力圖 (近8週)", expanded=False):
-            render_tdcc_heatmap_html(df_s_wide)
-            render_clean_html_table(df_s_unit, "10-1. 集保分級 - 張數表")
-            render_clean_html_table(df_s_ppl, "10-2. 集保分級 - 人數表")
+            render_tdcc_heatmap_generic(df_s_wide, "_比例(%)", "10-0. 集保分級比例熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_unit, "_張數", "10-1. 集保分級張數熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_ppl, "_人數", "10-2. 集保分級人數熱力圖 (原值呈現，背景依週增減上色)")
             
         render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
         with st.expander("點此展開董監大股東質設明細", expanded=False):
