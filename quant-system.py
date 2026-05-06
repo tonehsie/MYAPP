@@ -515,8 +515,9 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
             return dataset, []
 
     def fetch_branch(d, tid):
-        url = "https://api.finmindtrade.com/api/v4/data"
-        p = {"dataset": "TaiwanStockTradingDailyReport", "data_id": tid, "start_date": d, "end_date": d}
+        # 根據 FinMind 系統公告，更新此 API 端點與參數
+        url = "https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report"
+        p = {"data_id": tid, "date": d}
         try:
             return cached_finmind_api_call(url, tuple(sorted(p.items())))
         except:
