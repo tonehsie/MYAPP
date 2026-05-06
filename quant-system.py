@@ -639,7 +639,7 @@ def scrape_director_v50(tid):
                             except: pass
                 if 0 < sum(ed.values()) < 100: return {}, round(sum(ed.values()), 2), "富邦精算(備援)", []
     except: pass
-    return {}, 0.0, "雙引擎皆失敗(請手動)", []
+    return {}, 0.0, "雙引擎皆失敗(請手 manual)", []
 
 def get_dead_chip_info(ds, dci, dd, sv, ce):
     if dci and str(dci).strip() != "":
@@ -2793,10 +2793,10 @@ if run_btn:
         # 🟢 在此處無縫置入您專屬的 V75.8 熱力表 🟢
         with st.expander("點此展開集保分級表與增減熱力圖 (近8週)", expanded=False):
             render_tdcc_heatmap_generic(df_s_wide, "_比例(%)", "10-0. 集保分級比例熱力圖 (原值呈現，背景依週增減上色)")
-            render_tdcc_heatmap_generic(df_s_unit, "_張數", "10-1. 集保分級張數熱力圖 (原值呈現，背景依週增減上色)")
-            render_tdcc_heatmap_generic(df_s_ppl, "_人數", "10-2. 集保分級人數熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_wide, "_張數", "10-1. 集保分級張數熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_wide, "_人數", "10-2. 集保分級人數熱力圖 (原值呈現，背景依週增減上色)")
             
-        render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
+        render_clean_html_table(df_p_sum, "11.董監大股東質設總覽")
         with st.expander("點此展開董監大股東質設明細", expanded=False):
             render_clean_html_table(df_p_det, "12. 董監大股東質設明細")
             
