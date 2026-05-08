@@ -2204,7 +2204,8 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
 
     fp_dict = {}
     if not df_fingerprint.empty:
-        fp_dict = df_fingerprint.set_index('分點名稱')[['黏著度(%)', '囤出貨率(%)']].to_dict('index')
+        # 【核心修正】：對應新的「有效大戶黏著度(%)」欄位名稱
+        fp_dict = df_fingerprint.set_index('分點名稱')[['有效大戶黏著度(%)', '囤出貨率(%)']].to_dict('index')
 
     html_parts = [HEATMAP_STYLE_TEMPLATE + "<div class='full-table-container heatmap-wrapper'><table><thead><tr>"]
     
@@ -2228,7 +2229,8 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
             html_parts.append("<tr>")
             tag = intel_tags.get(trader, "路人雜訊")
             
-            st_val = fp_dict.get(trader, {}).get('黏著度(%)', "-")
+            # 【核心修正】：對應新的「有效大戶黏著度(%)」欄位名稱
+            st_val = fp_dict.get(trader, {}).get('有效大戶黏著度(%)', "-")
             hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
             total_val = rank_sum.get(trader, 0)
             
@@ -2278,7 +2280,6 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
-
 # ==========================================
 # 執行主引擎
 # ==========================================
