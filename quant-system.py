@@ -748,6 +748,20 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     t_100 = max(20, int(100 * scale))
     t_200 = max(40, int(200 * scale))
     t_300 = max(60, int(300 * scale))
+    t_500 = max(100, int(500 * scale))
+
+    # 【核心修改點：過濾散戶雜訊天數】
+    # 定義「大戶有效出手門檻」：換算成股數 (t_50 * 1000)
+    # 單日買超或賣超必須大於這個門檻，這一天才配被算進大戶的「活躍天數」中
+    effective_threshold_shares = t_50 * 1000 
+    
+    df_b_raw = df_b_raw.assign(
+        effective_date=np.where(
+            (df_b_raw['buy'] >= effective_threshold_shares) | (df_b_raw['sell'] >= effective_threshold_shares), 
+            df_b_raw['date_dt'], 
+            pd.NaT
+        )
+    )
 
     df_p['actual_spread'] = df_p['close'] - df_p['close'].shift(-1).fillna(df_p['close'])
     range_diff = df_p['max'] - df_p['min']
@@ -763,15 +777,18 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     d5 = dates_list[:5]
     d20 = dates_list[:20] if len(dates_list) >= 20 else dates_list
     d60 = dates_list[:60] if len(dates_list) >= 60 else dates_list
+    d120 = dates_list[:120] if len(dates_list) >= 120 else dates_list
 
     g5_shares = df_b_raw[df_b_raw['date'].isin(d5)].groupby('securities_trader')['net_shares'].sum()
     g20_shares = df_b_raw[df_b_raw['date'].isin(d20)].groupby('securities_trader')['net_shares'].sum()
     g60_shares = df_b_raw[df_b_raw['date'].isin(d60)].groupby('securities_trader')['net_shares'].sum()
+    g120_shares = df_b_raw[df_b_raw['date'].isin(d120)].groupby('securities_trader')['net_shares'].sum()
     
     stats = pd.DataFrame({
         'net_5d': (g5_shares / 1000).round(),
         'net_20d': (g20_shares / 1000).round(),
-        'net_60d': (g60_shares / 1000).round()
+        'net_60d': (g60_shares / 1000).round(),
+        'net_120d': (g120_shares / 1000).round()
     }).fillna(0).astype(int)
 
     g = df_b_raw.groupby('securities_trader').agg(
@@ -782,10 +799,12 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         sell_amt=('valid_sell_amt', 'sum'),
         valid_b_shares=('valid_buy', 'sum'),
         valid_s_shares=('valid_sell', 'sum'),
-        active_days=('date_dt', 'nunique'),
+        # 改為只計算有達標的「有效出手天數」，剔除每天只買 2~10 張的雜訊
+        active_days=('effective_date', 'nunique'),
         last_date=('date_dt', 'max')
     )
     
+    # 黏著度公式現在只反映「真正的火力集中度」
     g['stickiness'] = (g['active_days'] / actual_global_days) * 100
     
     g['hoard_ratio'] = np.where(g['net_shares'] > 0,
@@ -802,18 +821,20 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
-    cond_heavy = g['net_20d'].abs() >= t_300
-    cond_lock = (g['net_60d'] >= t_200) & (g['net_20d'] >= t_100) & (g['net_5d'] >= t_50)
+    cond_loyal = (g['net_120d'] >= t_500) & (g['net_60d'] >= 0) & (g['stickiness'] >= stick_thresh * 0.5)
+    cond_lock = (g['net_60d'] >= t_200) & (g['net_20d'] >= t_100) & (g['net_5d'] >= t_50) & (g['stickiness'] >= 10.0)
+    cond_heavy = (g['net_20d'].abs() >= t_300) & (g['stickiness'] >= 5.0)
+    cond_snap = (g['net_5d'] >= t_200) & (g['stickiness'] < 5.0)
+
     cond_cover = (g['net_60d'] <= -t_100) & (g['net_5d'] >= t_200)
     cond_profit = (g['net_60d'] >= t_300) & (g['net_20d'] >= t_100) & (g['net_5d'] <= -t_100)
     cond_exit = (g['net_60d'] <= -t_200) & (g['net_20d'] <= -t_100) & (g['net_5d'] <= -t_100)
-    cond_snap = (g['net_60d'].between(-t_200, t_200)) & (g['net_20d'].between(-t_200, t_200)) & (g['net_5d'] >= t_300)
     cond_maker = g['stickiness'] >= stick_thresh
     cond_follow = (g['stickiness'] < 10.0) & (g['net_5d'].abs() > t_50)
 
     g['tag'] = np.select(
-        [cond_heavy, cond_lock, cond_cover, cond_profit, cond_exit, cond_snap, cond_maker, cond_follow],
-        ["主力重砲", "波段鎖碼", "認錯回補", "獲利調節", "棄守提款", "隔日突擊", "避險造市", "跟風小戶"],
+        [cond_loyal, cond_lock, cond_heavy, cond_cover, cond_profit, cond_exit, cond_snap, cond_maker, cond_follow],
+        ["忠實大戶", "波段鎖碼", "主力重砲", "認錯回補", "獲利調節", "棄守提款", "隔日突擊", "避險造市", "跟風小戶"],
         default="路人雜訊"
     )
 
@@ -830,10 +851,11 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     res_df = pd.DataFrame({
         "分點名稱": g.index,
         "最終標籤": g['tag'],
+        "近120日淨買(張)": g['net_120d'].astype(int),
         "近60日淨買(張)": g['net_60d'].astype(int),
         "近20日淨買(張)": g['net_20d'].astype(int),
         "近5日淨買(張)": g['net_5d'].astype(int),
-        "黏著度(%)": g['stickiness'].round(1),
+        "有效大戶黏著度(%)": g['stickiness'].round(1),
         "囤出貨率(%)": g['hoard_ratio'],
         "總買(張)": g['tb'],
         "總賣(張)": g['ts'],
@@ -844,7 +866,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     }).sort_values('近60日淨買(張)', ascending=False)
 
     return tags, res_df
-
 def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     if total_lots <= 0 or not is_valid(df_b_raw): return 15, "基本預設 (缺股本資料)"
     if total_lots < 300000: base_n, cap_desc = 10, "微型股本"
