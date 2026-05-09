@@ -2980,6 +2980,13 @@ if run_btn:
                 # 傳入 extended_display_dates 作為視覺渲染，傳入 range_dates 作為排行依據
                 render_ultimate_heatmap(df_b_raw, extended_display_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
 
+        with st.expander(f"【戰略系海鮮】 自訂區間大戶建倉成本分佈 (Volume Profile)", expanded=False):
+            st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
+            if not range_dates:
+                st.warning("選定區間內無交易日資料。")
+            else:
+                render_volume_profile(df_b_raw, range_dates, footprint_rows)
+        
         with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
             render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
