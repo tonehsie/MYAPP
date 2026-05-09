@@ -2841,7 +2841,7 @@ if run_btn:
         eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
         # ▼▼▼ 視覺系主菜：熱力圖雜訊過濾 (完全依照側邊欄設定的 20日均量 N% 換算) ▼▼▼
-        if not range_dates:
+            if not range_dates:
                 st.warning("選定區間內無交易日資料。")
             else:
                 render_ultimate_heatmap(df_b_raw, range_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
