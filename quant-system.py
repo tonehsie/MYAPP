@@ -2177,10 +2177,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
     
-    if intel_tags:
-        valid_traders = [trader for trader, tag in intel_tags.items() if tag not in ["路人雜訊", "跟風小戶"]]
-        df_rank = df_rank[df_rank['securities_trader'].isin(valid_traders)]
-
+    # 移除複雜的標籤過濾，回歸最單純的 Top N 邏輯
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
 
     top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
@@ -2278,7 +2275,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
-
+    
 def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list, dynamic_noise_threshold):
     if not is_valid(df_b_raw) or not is_valid(df_p_raw): return {}, pd.DataFrame()
     
