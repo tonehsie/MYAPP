@@ -884,7 +884,8 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         "收盤位階": g['pos']
     }).sort_values('近60日淨買(張)', ascending=False)
 
-    return tags, res_dfdef calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
+    return tags, res_df
+def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     if total_lots <= 0 or not is_valid(df_b_raw): return 15, "基本預設 (缺股本資料)"
     if total_lots < 300000: base_n, cap_desc = 10, "微型股本"
     elif total_lots < 1000000: base_n, cap_desc = 15, "中小型股"
