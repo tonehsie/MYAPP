@@ -2802,24 +2802,36 @@ if run_btn:
 
         st.markdown("---")
         
-        # 動態計算自訂區間涵蓋的交易日
+# 動態計算自訂區間涵蓋的交易日
         range_dates = [d for d in dates if start_date_str <= d <= end_date_str]
         
         st.markdown("<div class='category-title'>01. 終極全息透視區 (自訂區間動態排檔)</div>", unsafe_allow_html=True)
         
+        # ▼▼▼ 新增：擷取引擎的動態門檻數據以供畫面顯示 ▼▼▼
+        daily_turnover_amt_ui = recent_20_vol * 1000 * curr_price
+        if curr_price > 0:
+            if daily_turnover_amt_ui >= 1_000_000_000:
+                eff_amt_ui = max(100_000_000, daily_turnover_amt_ui * 0.03)
+            elif daily_turnover_amt_ui >= 300_000_000:
+                eff_amt_ui = max(50_000_000, daily_turnover_amt_ui * 0.05)
+            else:
+                eff_amt_ui = max(20_000_000, daily_turnover_amt_ui * 0.08)
+            eff_vol_ui = max(10, int((eff_amt_ui / curr_price) / 1000))
+        else:
+            eff_amt_ui = 10_000_000
+            eff_vol_ui = 50
+
+        eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
+        # ▲▲▲ 新增結束 ▲▲▲
+        
         with st.expander(f"【終極全息熱力圖】 自訂區間 ({start_date_str} ~ {end_date_str}) ✕ 戰略排行重算", expanded=True):
-            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已根據您選擇的區間 ({start_date_str} ~ {end_date_str}) 精準對齊時間軸並重新計算主力排行！\n預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
+            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已根據您選擇的區間 ({start_date_str} ~ {end_date_str}) 精準對齊時間軸並重新計算主力排行！\n\n"
+                    f"🎯 **【系統動態判定】**：本檔大戶單日有效出手門檻為 **{eff_amt_str}** (約 **{eff_vol_ui:,} 張**)，單日未達此金額之零碎交易皆視為雜訊，不計入活躍度。\n\n"
+                    f"👁️ 預設隱藏低於 {dynamic_noise_threshold:,} 張 (月均量 {heatmap_noise_pct*100:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
             if not range_dates:
                 st.warning("選定區間內無交易日資料。")
             else:
                 render_ultimate_heatmap(df_b_raw, range_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
-            
-        with st.expander(f"【戰略系海鮮】 自訂區間大戶建倉成本分佈 (Volume Profile)", expanded=False):
-            st.info("實戰提示：尋找最長的紅色能量條 (POC核心防守區)。這是主力重兵集結的鐵板支撐；若跌破此區，則轉為沉重壓力。")
-            if not range_dates:
-                st.warning("選定區間內無交易日資料。")
-            else:
-                render_volume_profile(df_b_raw, range_dates, footprint_rows)
 
         with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
