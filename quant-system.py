@@ -2174,10 +2174,9 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
         st.warning("查無足夠資料產生熱力圖。")
         return
 
+    # 1. 結算排行：嚴格依照使用者「選定區間」計算淨買賣
     df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
     df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
-    
-    # 移除複雜的標籤過濾，回歸最單純的 Top N 邏輯
     rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
 
     top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
@@ -2187,6 +2186,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
         st.warning("無符合條件的活躍分點。")
         return
 
+    # 2. 顯示足跡：依照「擴展後的時間軸」提取所有交易紀錄
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
     df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
     p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
@@ -2209,9 +2209,20 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     html_parts.append("<th style='min-width: 90px;'>標籤</th>")
     html_parts.append("<th style='min-width: 80px;'>黏著度</th>")
     html_parts.append("<th style='min-width: 90px;'>囤/出貨率</th>")
-    html_parts.append("<th style='min-width: 90px;'>區間累計</th>")
+    html_parts.append("<th style='min-width: 90px; background-color:#ffebee !important; color:#c62828 !important;'>區間累計<br><span style='font-size:10px;'>(排行基準)</span></th>")
+    
     for d in display_dates:
-        html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px;'>{d[5:]}</th>")
+        # 🎯 核心升級：判斷該日期是否在「選定區間」內，是的話給予專屬高亮顏色
+        if d in rank_dates:
+            header_bg = "#ffebee"  # 淺紅色背景標示選定區間
+            header_color = "#c62828"
+            border_btm = "border-bottom: 3px solid #ef5350;"
+        else:
+            header_bg = "#f1f3f5"
+            header_color = "#333"
+            border_btm = ""
+            
+        html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px; background-color: {header_bg} !important; color: {header_color} !important; {border_btm}'>{d[5:]}</th>")
     html_parts.append("</tr></thead><tbody>")
 
     def build_rows(traders, is_sell_side):
@@ -2260,7 +2271,11 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
                     is_noise = True 
 
                 cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
-                cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; "
+                
+                # 如果該欄位位於「選定區間」內，給予左側微弱邊框增強辨識度
+                extra_css = "border-left: 1px dashed rgba(239,83,80,0.3);" if d in rank_dates else ""
+                
+                cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; {extra_css} "
                 if not is_noise:
                     cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
                 else:
@@ -2899,12 +2914,21 @@ if run_btn:
 
         st.markdown("---")
         
-        # 動態計算自訂區間涵蓋的交易日
+        # 動態計算自訂區間涵蓋的交易日 (用作排行榜基準)
         range_dates = [d for d in dates if start_date_str <= d <= end_date_str]
         
+        # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推60天) ▼▼▼
+        start_idx = 0
+        for i, d in enumerate(dates):
+            if d <= start_date_str:
+                start_idx = i
+                break
+        display_end_idx = min(len(dates), start_idx + 61) # 包含起點日，往前多抓60個交易日
+        extended_display_dates = dates[:display_end_idx] # 從 dates[0] 到擴展後的起點
+        # ▲▲▲ 新增結束 ▲▲▲
+
         st.markdown("<div class='category-title'>01. 終極全息透視區 (自訂區間動態排檔)</div>", unsafe_allow_html=True)
         
-        # ▼▼▼ 自由流通市值與孰低法動態門檻 UI 顯示 ▼▼▼
         safe_dead_ratio_ui = max(0.0, min(99.9, latest_director_holding))
         free_float_lots_ui = current_total_shares * (100.0 - safe_dead_ratio_ui) / 100.0
         free_float_amt_ui = free_float_lots_ui * 1000 * curr_price
@@ -2932,17 +2956,18 @@ if run_btn:
 
         eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
-        # 熱力圖雜訊過濾 (完全依照側邊欄設定的 20日均量 N% 換算)
         dynamic_noise_threshold = max(1, int(recent_20_vol * (heatmap_noise_pct / 100.0)))
         
         with st.expander(f"【終極全息熱力圖】 自訂區間 ({start_date_str} ~ {end_date_str}) ✕ 戰略排行重算", expanded=True):
-            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已根據您選擇的區間 ({start_date_str} ~ {end_date_str}) 精準對齊時間軸並重新計算主力排行！\n\n"
+            st.info(f"🟢 視覺化提示：排行榜嚴格鎖定您的區間 ({start_date_str} ~ {end_date_str}) 結算。\n"
+                    f"時間軸自動擴展顯示【**最新交易日** 至 **起迄日往前推 60 天**】，並以**淺紅色高亮**標示您的選定區間，方便追蹤主力前期潛伏足跡。\n\n"
                     f"🎯 **【系統動態判定 (自由流通 ✕ 孰低法)】**：本檔扣除死籌碼後，自由流通市值約 **{free_float_amt_ui/100000000:.2f} 億**。大戶單日有效出手門檻精算為 **{eff_amt_str}** (約 **{eff_vol_ui:,} 張**)，單日未達此金額之零碎交易皆視為雜訊，不計入活躍度。\n\n"
                     f"👁️ 預設隱藏低於 **{dynamic_noise_threshold:,} 張** (月均量 {heatmap_noise_pct:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
             if not range_dates:
                 st.warning("選定區間內無交易日資料。")
             else:
-                render_ultimate_heatmap(df_b_raw, range_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
+                # 傳入 extended_display_dates 作為視覺渲染，傳入 range_dates 作為排行依據
+                render_ultimate_heatmap(df_b_raw, extended_display_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
 
         with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
             st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
