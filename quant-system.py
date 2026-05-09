@@ -743,25 +743,46 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     avg_vol_lots = (pd.to_numeric(df_p[vol_col], errors='coerce').head(20).mean()) / 1000 if vol_col in df_p.columns else 3000
     if pd.isna(avg_vol_lots) or avg_vol_lots <= 0: avg_vol_lots = 3000
 
-    scale = max(0.2, min(20.0, avg_vol_lots / 3000.0))
-    t_50 = max(10, int(50 * scale))
-    t_100 = max(20, int(100 * scale))
-    t_200 = max(40, int(200 * scale))
-    t_300 = max(60, int(300 * scale))
-    t_500 = max(100, int(500 * scale))
+    latest_close = df_p['close'].iloc[0] if not df_p.empty else 0
 
-    # 【核心修改點：過濾散戶雜訊天數】
-    # 定義「大戶有效出手門檻」：換算成股數 (t_50 * 1000)
-    # 單日買超或賣超必須大於這個門檻，這一天才配被算進大戶的「活躍天數」中
-    effective_threshold_shares = t_50 * 1000 
-    
+    # ▼▼▼ 核心升級：以「日成交值」與「市值級距」重新定義大戶絕對門檻 ▼▼▼
+    # 估算日均成交金額 (元)
+    daily_turnover_amt = avg_vol_lots * 1000 * latest_close
+
+    if latest_close > 0:
+        if daily_turnover_amt >= 1_000_000_000:
+            # 10億以上日成交額 (大型股/熱門股)：法人級別標準，至少 1 億，或日均成交額的 3%
+            effective_amt_threshold = max(100_000_000, daily_turnover_amt * 0.03)
+        elif daily_turnover_amt >= 300_000_000:
+            # 3~10億 (中型股)：中實戶標準，至少 5000 萬，或日均成交額的 5%
+            effective_amt_threshold = max(50_000_000, daily_turnover_amt * 0.05)
+        else:
+            # 3億以下 (冷門小型股)：地方大戶標準，至少 2000 萬，或日均成交額的 8%
+            effective_amt_threshold = max(20_000_000, daily_turnover_amt * 0.08)
+            
+        # 將動態金額門檻，反向換算成對應的張數基數 (base_t)
+        base_t = max(10, int((effective_amt_threshold / latest_close) / 1000))
+    else:
+        # 防呆機制 (無股價資料時的退場邏輯)
+        scale = max(0.2, min(20.0, avg_vol_lots / 3000.0))
+        base_t = max(10, int(50 * scale))
+        effective_amt_threshold = 10_000_000
+
+    # 重新映射各級距張數門檻 (基於動態金額換算，徹底解決高價股與低價股的落差)
+    t_50 = base_t
+    t_100 = base_t * 2
+    t_200 = base_t * 4
+    t_300 = base_t * 6
+    t_500 = base_t * 10
+
+    # 定義「有效出手日」：單日買或賣的金額，必須大於系統核定的專屬大戶門檻，才計入活躍天數
+    cond_effective = (df_b_raw['valid_buy_amt'] >= effective_amt_threshold) | \
+                     (df_b_raw['valid_sell_amt'] >= effective_amt_threshold)
+
     df_b_raw = df_b_raw.assign(
-        effective_date=np.where(
-            (df_b_raw['buy'] >= effective_threshold_shares) | (df_b_raw['sell'] >= effective_threshold_shares), 
-            df_b_raw['date_dt'], 
-            pd.NaT
-        )
+        effective_date=np.where(cond_effective, df_b_raw['date_dt'], pd.NaT)
     )
+    # ▲▲▲ 核心升級結束 ▲▲▲
 
     df_p['actual_spread'] = df_p['close'] - df_p['close'].shift(-1).fillna(df_p['close'])
     range_diff = df_p['max'] - df_p['min']
@@ -772,7 +793,6 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     df_p.loc[(~cond_normal) & (df_p['actual_spread'] < 0), 'pos'] = 0.0
     
     pos_dict = df_p.set_index('date')['pos'].to_dict()
-    latest_close = df_p['close'].iloc[0] if not df_p.empty else 0
 
     d5 = dates_list[:5]
     d20 = dates_list[:20] if len(dates_list) >= 20 else dates_list
@@ -799,12 +819,10 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         sell_amt=('valid_sell_amt', 'sum'),
         valid_b_shares=('valid_buy', 'sum'),
         valid_s_shares=('valid_sell', 'sum'),
-        # 改為只計算有達標的「有效出手天數」，剔除每天只買 2~10 張的雜訊
         active_days=('effective_date', 'nunique'),
         last_date=('date_dt', 'max')
     )
     
-    # 黏著度公式現在只反映「真正的火力集中度」
     g['stickiness'] = (g['active_days'] / actual_global_days) * 100
     
     g['hoard_ratio'] = np.where(g['net_shares'] > 0,
@@ -821,6 +839,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
     g['ts'] = (g['ts_shares'] / 1000).round().astype(int)
     g['net_lots'] = (g['net_shares'] / 1000).round().astype(int)
     
+    # 標籤判定邏輯
     cond_loyal = (g['net_120d'] >= t_500) & (g['net_60d'] >= 0) & (g['stickiness'] >= stick_thresh * 0.5)
     cond_lock = (g['net_60d'] >= t_200) & (g['net_20d'] >= t_100) & (g['net_5d'] >= t_50) & (g['stickiness'] >= 10.0)
     cond_heavy = (g['net_20d'].abs() >= t_300) & (g['stickiness'] >= 5.0)
@@ -865,8 +884,7 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
         "收盤位階": g['pos']
     }).sort_values('近60日淨買(張)', ascending=False)
 
-    return tags, res_df
-def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
+    return tags, res_dfdef calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     if total_lots <= 0 or not is_valid(df_b_raw): return 15, "基本預設 (缺股本資料)"
     if total_lots < 300000: base_n, cap_desc = 10, "微型股本"
     elif total_lots < 1000000: base_n, cap_desc = 15, "中小型股"
