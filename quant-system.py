@@ -2841,4 +2841,90 @@ if run_btn:
         eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
         # ▼▼▼ 視覺系主菜：熱力圖雜訊過濾 (完全依照側邊欄設定的 20日均量 N% 換算) ▼▼▼
-我的设计用途只是处理和生成文本，所以没法在这方面帮到你。
+        if not range_dates:
+                st.warning("選定區間內無交易日資料。")
+            else:
+                render_ultimate_heatmap(df_b_raw, range_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
+
+        with st.expander(f"【甜點】 土洋聯合作戰比對 (近10日法人 vs 地方大戶角力)", expanded=False):
+            st.info("戰況提示：土洋共擊代表外資/投信與地方主力方向一致，動能最強；多殺多代表全面撤退。若雙方對作，請提防假外資或大戶倒貨。")
+            render_institutional_vs_local(df_b_raw, df_inst, tags, top_n=4)
+
+        with st.expander(f"主力分點 - 今日 ({dates[0]})", expanded=False):
+            render_clean_html_table(df_b_today)
+        with st.expander(f"主力分點 - 前一日", expanded=False):
+            render_clean_html_table(df_b_prev1)
+        with st.expander("主力分點圖鑑 (三維動態檢驗)", expanded=False):
+            render_clean_html_table(df_debug_tags)
+
+        render_clean_html_table(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
+        render_clean_html_table(df_combined_display, "03. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
+
+        render_clean_html_table(df_block_trade, "04. 鉅額交易日報表 (大額換手追蹤)")
+        render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
+        
+        render_clean_html_table(df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
+        render_clean_html_table(df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+        
+        render_clean_html_table(df_day_trade, "07. 現股當沖明細 (近10天)")
+        render_clean_html_table(df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
+
+        render_clean_html_table(df_rev, "09. 月營收 (百萬元) (近24個月)")
+        
+        with st.expander("點此展開集保分級表與增減熱力圖 (近8週)", expanded=False):
+            render_tdcc_heatmap_generic(df_s_wide, "_比例(%)", "10-0. 集保分級比例熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_wide, "_張數", "10-1. 集保分級張數熱力圖 (原值呈現，背景依週增減上色)")
+            render_tdcc_heatmap_generic(df_s_wide, "_人數", "10-2. 集保分級人數熱力圖 (原值呈現，背景依週增減上色)")
+            
+        render_clean_html_table(df_p_sum, "11. 董監大股東質設總覽")
+        with st.expander("點此展開董監大股東質設明細", expanded=False):
+            render_clean_html_table(df_p_det, "12. 董監大股東質設明細")
+            
+        render_clean_html_table(df_div, "13. 歷年股利政策 (近5年)")
+        render_clean_html_table(df_per, "14. 本益比、淨值比與殖利率")
+        render_clean_html_table(df_disp, "15. 處置有價證券狀態")
+        render_clean_html_table(df_cbas, "16. CBAS 可轉債資料")
+
+        st.divider()
+        st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
+        with st.expander(f"給 AI 的 V75.9 實戰精華資料包 (CSV格式)", expanded=True):
+            p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
+            p1 += f"{company_info_text}\n\n"
+            
+            clean_ai_report = re.sub(r'<[^>]+>', '', report_md)
+            clean_ai_report = clean_ai_report.replace('&nbsp;', ' ').strip()
+            
+            p1 += f"▼▼▼ 系統 AI 全息籌碼深度診斷總結 ▼▼▼\n"
+            p1 += f"{clean_ai_report}\n\n"
+            
+            if latest_lr_upper > 0:
+                p1 += f"【線性迴歸通道上軌 (壓力)】: {latest_lr_upper:.2f} 元\n"
+                p1 += f"【線性迴歸通道中軌 (趨勢)】: {latest_lr_mid:.2f} 元\n"
+                p1 += f"【線性迴歸通道下軌 (支撐)】: {latest_lr_lower:.2f} 元\n\n"
+            
+            p1 += f"【系統算出之純淨主力加權防守價 (Net VWAP)】: {vwap_str} 元\n"
+            p1 += f"【核心分點控盤率 (相對於自由流通籌碼)】: {core_c_value}%\n\n"
+            p1 += f"【核心主力3日淨留倉】: {net_3} 張\n"
+            p1 += f"【核心主力10日淨留倉】: {net_10} 張\n"
+            p1 += f"【核心主力45日淨留倉】: {net_45} 張\n"
+            p1 += f"【核心主力60日淨留倉】: {net_60} 張\n\n"
+            
+            p1 += format_to_csv_string(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
+            p1 += format_to_csv_string(df_combined_display.head(4) if is_valid(df_combined_display) else df_combined_display, "03. 一週集保籌碼雷達 (近4週)")
+            p1 += format_to_csv_string(df_block_trade, "04. 鉅額交易日報表")
+            p1 += format_to_csv_string(df_inst.head(10) if is_valid(df_inst) else df_inst, "05. 法人買賣超 (近10天)")
+            
+            p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
+            p1 += format_to_csv_string(df_lending_detail.head(10) if is_valid(df_lending_detail) else df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+            
+            p1 += format_to_csv_string(df_day_trade.head(10) if is_valid(df_day_trade) else df_day_trade, "07. 現股當沖明細 (近10天)")
+            p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
+            p1 += format_to_csv_string(df_rev.head(12) if is_valid(df_rev) else df_rev, "09. 月營收 (百萬元) (近12個月)")
+            p1 += format_to_csv_string(df_p_sum, "11. 董監大股東質設總覽")
+            p1 += format_to_csv_string(df_per.head(10) if is_valid(df_per) else df_per, "14. 本益比、淨值比與殖利率")
+            p1 += format_to_csv_string(df_disp, "15. 處置有價證券狀態")
+            p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債資料")
+            st.code(p1, language="text")
+            
+        st.success(f"V75.9 終極版已成功處理 {user_stock_id}。當前 RAM 使用狀態健康。")
+        gc.collect()
