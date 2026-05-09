@@ -2229,8 +2229,15 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
         if not traders: return
         
         sec_title = "🟢 賣超主力陣營" if is_sell_side else "🔴 買超主力陣營"
-        sec_color = "#4caf50" if is_sell_side else "#f44336"
-        html_parts.append(f"<tr><td colspan='{5 + len(display_dates)}' style='background-color: #f1f3f5; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 2px;'>{sec_title}</td></tr>")
+        sec_bg = "#e8f5e9" if is_sell_side else "#ffebee"
+        sec_color = "#2e7d32" if is_sell_side else "#c62828"
+        
+        # 🎯 核心升級：將陣營標題「釘」在第一欄 (position: sticky)，讓它橫向滾動時永遠可見
+        html_parts.append("<tr>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: {sec_bg}; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 1px; z-index: 5; border-right: none;'>{sec_title}</td>")
+        html_parts.append(f"<td colspan='4' style='background-color: {sec_bg}; border-left: none;'></td>")
+        html_parts.append(f"<td colspan='{len(display_dates)}' style='background-color: {sec_bg}; border-left: none;'></td>")
+        html_parts.append("</tr>")
 
         for trader in traders:
             html_parts.append("<tr>")
@@ -2253,6 +2260,10 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
                 is_noise = abs(val) < noise_threshold
                 alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
                 
+                # 🎯 核心升級：若該日期位於「選定區間」內，給予極淡的粉色底色貫穿整行
+                in_range = d in rank_dates
+                base_empty_bg = "#fff4f4" if in_range else "transparent"
+                
                 if val > 0:
                     bg = f"rgba(229, 57, 53, {alpha:.2f})"
                     txt = f"+{val}"
@@ -2264,7 +2275,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
                     txt_color = "#fff"
                     zero_class = ""
                 else:
-                    bg = "transparent"
+                    bg = base_empty_bg
                     txt = "0"
                     txt_color = "#aaa"
                     zero_class = "val-zero"
@@ -2272,14 +2283,14 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
 
                 cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
                 
-                # 如果該欄位位於「選定區間」內，給予左側微弱邊框增強辨識度
-                extra_css = "border-left: 1px dashed rgba(239,83,80,0.3);" if d in rank_dates else ""
+                # 選定區間的儲存格額外加上微弱的虛線邊框
+                extra_css = "border-left: 1px dashed rgba(239,83,80,0.15); border-right: 1px dashed rgba(239,83,80,0.15);" if in_range else ""
                 
                 cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; {extra_css} "
                 if not is_noise:
                     cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
                 else:
-                    cell_style += "background-color: transparent;"
+                    cell_style += f"background-color: {bg};"
 
                 tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
                 html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
