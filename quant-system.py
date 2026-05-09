@@ -2841,6 +2841,12 @@ if run_btn:
         eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
         # ▼▼▼ 視覺系主菜：熱力圖雜訊過濾 (完全依照側邊欄設定的 20日均量 N% 換算) ▼▼▼
+        dynamic_noise_threshold = max(1, int(recent_20_vol * (heatmap_noise_pct / 100.0)))
+        
+        with st.expander(f"【終極全息熱力圖】 自訂區間 ({start_date_str} ~ {end_date_str}) ✕ 戰略排行重算", expanded=True):
+            st.info(f"🟢 視覺化提示：紅色買、綠色賣。已根據您選擇的區間 ({start_date_str} ~ {end_date_str}) 精準對齊時間軸並重新計算主力排行！\n\n"
+                    f"🎯 **【系統動態判定 (自由流通 ✕ 孰低法)】**：本檔扣除死籌碼後，自由流通市值約 **{free_float_amt_ui/100000000:.2f} 億**。大戶單日有效出手門檻精算為 **{eff_amt_str}** (約 **{eff_vol_ui:,} 張**)，單日未達此金額之零碎交易皆視為雜訊，不計入活躍度。\n\n"
+                    f"👁️ 預設隱藏低於 **{dynamic_noise_threshold:,} 張** (月均量 {heatmap_noise_pct:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
             if not range_dates:
                 st.warning("選定區間內無交易日資料。")
             else:
