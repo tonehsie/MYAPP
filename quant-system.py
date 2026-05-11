@@ -3026,6 +3026,62 @@ if run_btn:
         render_clean_html_table(df_disp, "15. 處置有價證券狀態")
         render_clean_html_table(df_cbas, "16. CBAS 可轉債資料")
 
+        # ==========================================
+        # 新增：🔎 單一分點深度追蹤 (X光機)
+        # ==========================================
+        st.markdown("<div class='category-title'>🔎 單一分點深度追蹤 (X光機)</div>", unsafe_allow_html=True)
+        st.info("💡 實戰提示：受限於網頁架構，無法直接點擊熱力圖儲存格。請在下方下拉選單選擇您想肉搜的分點，系統會立刻調出它的完整身家調查！")
+        
+        if not df_b_raw.empty:
+            all_traders = sorted(df_b_raw['securities_trader'].unique().tolist())
+            
+            # 預設選中排行第一的大戶 (自動抓取情報雷達的第一名)
+            default_trader = None
+            if is_valid(df_debug_tags) and not df_debug_tags.empty:
+                default_trader = df_debug_tags['分點名稱'].iloc[0]
+            
+            if default_trader not in all_traders and all_traders:
+                default_trader = all_traders[0]
+                
+            selected_trader = st.selectbox("🎯 請選擇要深度檢驗的分點：", all_traders, index=all_traders.index(default_trader) if default_trader else 0)
+            
+            if selected_trader:
+                # 抓取該分點的所有歷史進出紀錄
+                df_trader = df_b_raw[df_b_raw['securities_trader'] == selected_trader].sort_values('date', ascending=False)
+                
+                # 計算專屬統計數據
+                t_buy = (df_trader['buy'].sum() / 1000).round().astype(int)
+                t_sell = (df_trader['sell'].sum() / 1000).round().astype(int)
+                t_net = t_buy - t_sell
+                
+                t_buy_amt = df_trader['valid_buy_amt'].sum()
+                t_valid_buy = df_trader['valid_buy'].sum()
+                t_avg_buy = f"{t_buy_amt / t_valid_buy:,.2f}" if t_valid_buy > 0 else "-"
+                
+                t_tag = tags.get(selected_trader, "路人雜訊")
+                
+                # 顯示專屬高階面版
+                st.markdown(f"""
+                <div style='display:flex; justify-content:space-between; align-items:center; background-color:#f8f9fa; padding:15px 25px; border-radius:8px; margin-bottom:15px; border-left:6px solid #1e3a8a; font-size: 1.1rem;'>
+                    <div><b>🎯 分點：</b> <span style='color:#1e3a8a; font-weight:bold;'>{selected_trader}</span></div>
+                    <div><b>🏷️ 標籤：</b> {t_tag}</div>
+                    <div><b>📊 總淨買賣：</b> <span style='color:{ "#d32f2f" if t_net > 0 else "#2e7d32" }; font-weight:bold;'>{t_net:,} 張</span></div>
+                    <div><b>💰 總建倉均價：</b> {t_avg_buy} 元</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 整理每日明細表並套用原本的表格樣式
+                df_t_detail = df_trader[['date', 'price', 'buy', 'sell']].copy()
+                df_t_detail['buy'] = (df_t_detail['buy'] / 1000).round().astype(int)
+                df_t_detail['sell'] = (df_t_detail['sell'] / 1000).round().astype(int)
+                df_t_detail['net'] = df_t_detail['buy'] - df_t_detail['sell']
+                
+                df_t_detail = df_t_detail.rename(columns={
+                    'date': '日期', 'price': '當日成交均價(元)', 'buy': '買進(張)', 'sell': '賣出(張)', 'net': '淨買賣(張)'
+                })
+                
+                render_clean_html_table(df_t_detail, f"📅 {selected_trader} 每日進出明細")
+
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
         with st.expander(f"給 AI 的 V75.9 實戰精華資料包 (CSV格式)", expanded=True):
