@@ -2437,10 +2437,13 @@ def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_li
 # 執行主引擎
 # ==========================================
 if run_btn:
+    st.session_state['system_running'] = True
+
+if st.session_state.get('system_running', False):
     if not user_stock_id.strip(): 
         st.warning("請先在上方輸入股票代號！")
         st.stop()
-
+        
     with st.spinner(f"正在啟動 V75.9 終極版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
