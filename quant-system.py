@@ -1653,6 +1653,28 @@ def process_tdcc(df):
     df_ppl = pd.merge(df_t[['date', '總人數(人)']], p_p[['date']+lvls], on='date').rename(columns={'date': '日期'}).sort_values('日期', ascending=False)
     return df_w, df_unit, df_ppl
 
+def process_loan_collateral(df):
+    if not is_valid(df): return pd.DataFrame()
+    df_out = df.copy()
+    cols_map = {
+        'date': '日期',
+        'MarginCurrentDayBalance': '傳統融資餘額(張)',
+        'UnrestrictedLoanCurrentDayBalance': '不限用途借貸(張)',
+        'SecuritiesFirmLoanCurrentDayBalance': '證券業務借貸(張)'
+    }
+    valid_cols = {k: v for k, v in cols_map.items() if k in df_out.columns}
+    if 'date' not in valid_cols: return pd.DataFrame()
+    df_out = df_out[list(valid_cols.keys())].rename(columns=valid_cols)
+    for c in df_out.columns:
+        if c != '日期':
+            df_out[c] = safe_to_num(df_out[c]).round().astype(int)
+            
+    if '傳統融資餘額(張)' in df_out.columns and '不限用途借貸(張)' in df_out.columns:
+        df_out['隱形槓桿比例(%)'] = np.where(df_out['傳統融資餘額(張)'] > 0, (df_out['不限用途借貸(張)'] / df_out['傳統融資餘額(張)'] * 100).round(1), 0)
+        df_out['槓桿結構診斷'] = np.where(df_out['不限用途借貸(張)'] > df_out['傳統融資餘額(張)'], "⚠️ 大戶/法人槓桿主導", "散戶融資主導")
+        
+    return df_out.sort_values('日期', ascending=False).head(10)
+
 def process_day_trading(df):
     if not is_valid(df): return pd.DataFrame()
     df_out = df.copy()
@@ -2609,6 +2631,9 @@ if st.session_state.get('system_running', False):
         df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw))
         df_lending_detail = optimize_memory(process_securities_lending_detail(df_lending_raw))
         
+        df_loan_col_raw = fetch_finmind_v50("TaiwanStockLoanCollateralBalance", dates[min(len(dates)-1, 30)], user_stock_id)
+        df_loan_col = optimize_memory(process_loan_collateral(df_loan_col_raw))
+        
         df_block_trade = optimize_memory(process_block_trading(ds_dict.get("TaiwanStockBlockTrade", pd.DataFrame()), dates))
         df_inst = optimize_memory(process_inst(ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell", pd.DataFrame())))
         
@@ -3009,6 +3034,7 @@ if st.session_state.get('system_running', False):
         
         render_clean_html_table(df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
         render_clean_html_table(df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+        render_clean_html_table(df_loan_col, "06-3. 大戶隱形槓桿追蹤 (不限用途借貸餘額)")
         
         render_clean_html_table(df_day_trade, "07. 現股當沖明細 (近10天)")
         render_clean_html_table(df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
@@ -3116,6 +3142,7 @@ if st.session_state.get('system_running', False):
             
             p1 += format_to_csv_string(df_margin_lending.head(10) if is_valid(df_margin_lending) else df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
             p1 += format_to_csv_string(df_lending_detail.head(10) if is_valid(df_lending_detail) else df_lending_detail, "06-2. 借券成交明細與費率 (近10天)")
+            p1 += format_to_csv_string(df_loan_col.head(10) if is_valid(df_loan_col) else df_loan_col, "06-3. 大戶隱形槓桿追蹤 (不限用途借貸餘額)")
             
             p1 += format_to_csv_string(df_day_trade.head(10) if is_valid(df_day_trade) else df_day_trade, "07. 現股當沖明細 (近10天)")
             p1 += format_to_csv_string(df_fut.head(10) if is_valid(df_fut) else df_fut, "08. 台指期貨三大法人未平倉 (大盤)")
