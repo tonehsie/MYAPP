@@ -77,9 +77,11 @@ def run_ssh_command(ip, command):
 
     try:
         # 指定使用剛剛建立的金鑰檔案進行連線
+        # 指定使用剛剛建立的金鑰檔案進行連線，並強制排除 Mac 的干擾
         ssh_cmd = [
             "ssh", 
             "-i", key_path, 
+            "-o", "IdentitiesOnly=yes",  # 👈 這是新加的防干擾魔法
             "-o", "StrictHostKeyChecking=no", 
             "-o", "ConnectTimeout=5", 
             f"comma@{ip}", 
