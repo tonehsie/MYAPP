@@ -377,7 +377,9 @@ heatmap_noise_pct = st.sidebar.slider("熱力圖雜訊過濾 (佔20日均量 %)"
 st.sidebar.divider()
 st.sidebar.markdown("### 防禦系配菜：警報器設定")
 alert_smart_pct = st.sidebar.slider("警報: 聰明錢極端進出 (佔20日均量 %)", 1.0, 20.0, 10.0, 1.0)
-alert_bias_drop = st.sidebar.slider("警報: 跌破主力防守乖離 < (%)", -20.0, 0.0, -3.0, 0.5)st.sidebar.divider()
+alert_bias_drop = st.sidebar.slider("警報: 跌破主力防守乖離 < (%)", -20.0, 0.0, -3.0, 0.5)
+
+st.sidebar.divider()
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 
 st.sidebar.divider()
