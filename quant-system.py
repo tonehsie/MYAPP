@@ -2221,19 +2221,19 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     today_top_b = today_sum[today_sum > 0].nlargest(top_n).index.tolist()
     today_top_s = today_sum[today_sum < 0].nsmallest(top_n).index.tolist()
     
-    # 🤝 混合名單：區間霸主 + 今日突襲大戶 (利用 dict.fromkeys 去除重複)
-    mixed_b = list(dict.fromkeys(interval_top_b + today_top_b))
-    mixed_s = list(dict.fromkeys(interval_top_s + today_top_s))
+    # 🤝 混合大池子：把所有上榜名單 (區間霸主 + 今日突襲) 全部倒進來，徹底去除重複
+    all_candidates = list(dict.fromkeys(interval_top_b + today_top_b + interval_top_s + today_top_s))
     
-    if not mixed_b and not mixed_s:
+    if not all_candidates:
         st.warning("無符合條件的活躍分點。")
         return
 
-    # 🎯 重新排序：無論是哪裡來的大戶，一律以「區間累計淨買賣」嚴格排序
-    # 買方陣營：由大到小排序 (正的歸正)
-    top_b = sorted(mixed_b, key=lambda x: rank_sum.get(x, 0), reverse=True)
-    # 賣方陣營：由小到大排序 (負的歸負，越負越前面)
-    top_s = sorted(mixed_s, key=lambda x: rank_sum.get(x, 0))
+    # 🎯 嚴格分發與排序：只看「區間累計總成績」，正的去買方，負的去賣方，絕不重複
+    # 1. 買方陣營：篩選出累計大於 0 的，並由大到小排序 (正的歸正)
+    top_b = sorted([x for x in all_candidates if rank_sum.get(x, 0) > 0], key=lambda x: rank_sum.get(x, 0), reverse=True)
+    
+    # 2. 賣方陣營：篩選出累計小於 0 的，並由小到大排序 (負的歸負，越負越前面)
+    top_s = sorted([x for x in all_candidates if rank_sum.get(x, 0) < 0], key=lambda x: rank_sum.get(x, 0))
 
     # 2. 顯示足跡：依照「擴展後的時間軸」提取所有交易紀錄
     df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
