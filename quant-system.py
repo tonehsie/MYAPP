@@ -2200,6 +2200,157 @@ def render_tdcc_heatmap_generic(df, col_suffix, title):
 
 
 def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
+    if not is_valid(df_raw) or not display_dates or not rank_dates:
+        st.warning("查無足夠資料產生熱力圖。")
+        return
+
+    # 1. 結算區間排行：依照使用者「選定區間」計算淨買賣霸主
+    df_rank = df_raw[df_raw['date'].isin(rank_dates)].copy()
+    df_rank['net_shares'] = df_rank['buy'] - df_rank['sell']
+    rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+
+    interval_top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
+    interval_top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
+    
+    # 🎯 核心升級：找出「最新一日(今天)」的超級有錢人突襲名單
+    latest_date = display_dates[0]
+    df_today = df_raw[df_raw['date'] == latest_date].copy()
+    df_today['net_shares'] = df_today['buy'] - df_today['sell']
+    today_sum = (df_today.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
+    
+    today_top_b = today_sum[today_sum > 0].nlargest(top_n).index.tolist()
+    today_top_s = today_sum[today_sum < 0].nsmallest(top_n).index.tolist()
+    
+    # 🤝 混合名單：區間霸主 + 今日突襲大戶 (利用 dict.fromkeys 去除重複並保持順序)
+    top_b = list(dict.fromkeys(interval_top_b + today_top_b))
+    top_s = list(dict.fromkeys(interval_top_s + today_top_s))
+    
+    if not top_b and not top_s:
+        st.warning("無符合條件的活躍分點。")
+        return
+
+    # 2. 顯示足跡：依照「擴展後的時間軸」提取所有交易紀錄
+    df_disp = df_raw[df_raw['date'].isin(display_dates)].copy()
+    df_disp['net_shares'] = df_disp['buy'] - df_disp['sell']
+    p_shares = df_disp.groupby(['securities_trader', 'date'])['net_shares'].sum().reset_index()
+    p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
+    p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
+    
+    target_traders = top_b + top_s
+    p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
+
+    max_val = p.abs().max().max()
+    if max_val == 0: max_val = 1
+
+    fp_dict = {}
+    if not df_fingerprint.empty:
+        fp_dict = df_fingerprint.set_index('分點名稱')[['有效大戶黏著度(%)', '囤出貨率(%)']].to_dict('index')
+
+    html_parts = [HEATMAP_STYLE_TEMPLATE + "<div class='full-table-container heatmap-wrapper'><table><thead><tr>"]
+    
+    html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
+    html_parts.append("<th style='min-width: 90px;'>標籤</th>")
+    html_parts.append("<th style='min-width: 80px;'>黏著度</th>")
+    html_parts.append("<th style='min-width: 90px;'>囤/出貨率</th>")
+    html_parts.append("<th style='min-width: 90px; background-color:#ffebee !important; color:#c62828 !important;'>區間累計<br><span style='font-size:10px;'>(含今日突襲)</span></th>")
+    
+    for d in display_dates:
+        # 🎯 標示選定區間
+        if d in rank_dates:
+            header_bg = "#ffebee" 
+            header_color = "#c62828"
+            border_btm = "border-bottom: 3px solid #ef5350;"
+        else:
+            header_bg = "#f1f3f5"
+            header_color = "#333"
+            border_btm = ""
+            
+        # 若為最新交易日，標題給予火花視覺提示
+        day_text = d[5:]
+        if d == latest_date:
+            day_text = f"🔥<br>{day_text}"
+            
+        html_parts.append(f"<th style='text-align: center; font-size: 13px; min-width: 50px; background-color: {header_bg} !important; color: {header_color} !important; {border_btm}'>{day_text}</th>")
+    html_parts.append("</tr></thead><tbody>")
+
+    def build_rows(traders, is_sell_side):
+        if not traders: return
+        
+        sec_title = "🟢 賣超主力陣營 (區間霸主 + 今日突擊)" if is_sell_side else "🔴 買超主力陣營 (區間霸主 + 今日突擊)"
+        sec_bg = "#e8f5e9" if is_sell_side else "#ffebee"
+        sec_color = "#2e7d32" if is_sell_side else "#c62828"
+        
+        html_parts.append("<tr>")
+        html_parts.append(f"<td style='position: sticky; left: 0; background-color: {sec_bg}; color: {sec_color}; font-weight: 900; text-align: center !important; font-size: 1.1rem; letter-spacing: 1px; z-index: 5; border-right: none;'>{sec_title}</td>")
+        html_parts.append(f"<td colspan='4' style='background-color: {sec_bg}; border-left: none;'></td>")
+        html_parts.append(f"<td colspan='{len(display_dates)}' style='background-color: {sec_bg}; border-left: none;'></td>")
+        html_parts.append("</tr>")
+
+        for trader in traders:
+            html_parts.append("<tr>")
+            tag = intel_tags.get(trader, "路人雜訊")
+            
+            st_val = fp_dict.get(trader, {}).get('有效大戶黏著度(%)', "-")
+            hr_val = fp_dict.get(trader, {}).get('囤出貨率(%)', "-")
+            total_val = rank_sum.get(trader, 0)
+            
+            total_str = f"<span style='color:#d32f2f; font-weight:bold;'>+{total_val}</span>" if total_val > 0 else f"<span style='color:#2e7d32; font-weight:bold;'>{total_val}</span>"
+            
+            # 🔥 判斷是否為今天才殺出來的大戶
+            is_today_rush = (trader in today_top_b and trader not in interval_top_b) or (trader in today_top_s and trader not in interval_top_s)
+            trader_disp = f"🔥 {trader}" if is_today_rush else trader
+            name_color = "#c62828" if is_today_rush else "#000"
+            
+            html_parts.append(f"<td style='position: sticky; left: 0; background-color: #f8f9fa; z-index: 4; font-weight: bold; color: {name_color};'>{trader_disp}</td>")
+            html_parts.append(f"<td style='text-align: center;'>{tag}</td>")
+            html_parts.append(f"<td style='text-align: right;'>{st_val}%</td>")
+            html_parts.append(f"<td style='text-align: right;'>{hr_val}%</td>")
+            html_parts.append(f"<td style='text-align: right; background-color: #fffde7;'>{total_str}</td>")
+
+            for d in display_dates:
+                val = p.at[trader, d]
+                is_noise = abs(val) < noise_threshold
+                alpha = min(1.0, 0.2 + 0.8 * (abs(val) / max_val)) if max_val > 0 else 0.2
+                
+                in_range = d in rank_dates
+                base_empty_bg = "#fff4f4" if in_range else "transparent"
+                
+                if val > 0:
+                    bg = f"rgba(229, 57, 53, {alpha:.2f})"
+                    txt = f"+{val}"
+                    txt_color = "#fff"
+                    zero_class = ""
+                elif val < 0:
+                    bg = f"rgba(67, 160, 71, {alpha:.2f})"
+                    txt = str(val)
+                    txt_color = "#fff"
+                    zero_class = ""
+                else:
+                    bg = base_empty_bg
+                    txt = "0"
+                    txt_color = "#aaa"
+                    zero_class = "val-zero"
+                    is_noise = True 
+
+                cell_class = f"noise-cell {zero_class}".strip() if is_noise else ""
+                
+                extra_css = "border-left: 1px dashed rgba(239,83,80,0.15); border-right: 1px dashed rgba(239,83,80,0.15);" if in_range else ""
+                
+                cell_style = f"--bg-color: {bg}; --txt-color: {txt_color}; text-align: center; font-weight: bold; {extra_css} "
+                if not is_noise:
+                    cell_style += f"background-color: {bg}; color: {txt_color} !important; text-shadow: 1px 1px 2px rgba(0,0,0,0.6);"
+                else:
+                    cell_style += f"background-color: {bg};"
+
+                tooltip = f"日期: {d} | 分點: {trader} | 淨額: {val} 張"
+                html_parts.append(f"<td class='{cell_class}' style='{cell_style}' title='{tooltip}'><span>{txt}</span></td>")
+            html_parts.append("</tr>")
+
+    build_rows(top_b, False)
+    build_rows(top_s, True)
+    
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
     
 def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list, dynamic_noise_threshold):
     if not is_valid(df_b_raw) or not is_valid(df_p_raw): return {}, pd.DataFrame()
