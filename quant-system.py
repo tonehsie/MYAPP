@@ -1778,8 +1778,13 @@ def process_inst(df):
     out['三大法人買賣超(張)'] = out['外資買賣超(張)'] + out['投信買賣超(張)'] + out['自營商(自行)買賣超(張)'] + out['自營商(避險)買賣超(張)']
     return out.tail(10).sort_values('日期', ascending=False)
 
-def process_fut_inst(df):
+def process_fut_inst(df, actual_dates):
     if not is_valid(df): return pd.DataFrame()
+    
+    # 🎯 核心修正：強制對齊股票交易日，剔除週末與夜盤產生的重複雜訊日期
+    df = df[df['date'].isin(actual_dates)].copy()
+    if df.empty: return pd.DataFrame()
+    
     df['net'] = safe_to_num(df['long_open_interest_balance_volume']) - safe_to_num(df['short_open_interest_balance_volume'])
     
     group_col = 'name' if 'name' in df.columns else 'institutional_investors'
