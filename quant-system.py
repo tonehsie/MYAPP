@@ -348,26 +348,22 @@ stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0
 st.sidebar.divider()
 st.sidebar.markdown("### 🔥 戰略與熱力圖分析設定")
 
-col1, col2 = st.sidebar.columns(2)
-with col2:
-    selected_range = st.date_input("自行輸入期間", [])
+# 獨立一行：自行輸入期間
+selected_range = st.sidebar.date_input("自行輸入期間", [])
+
+# 獨立一行：分析天數 (自動連動)
+if len(selected_range) == 2:
+    calc_days = (selected_range[1] - selected_range[0]).days
+    lookback_n_days = st.sidebar.number_input("分析天數 (N天)", value=max(1, calc_days), disabled=True)
+    start_date, end_date = selected_range
+else:
+    lookback_n_days = st.sidebar.number_input("分析天數 (N天)", min_value=1, value=20)
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=lookback_n_days)
     
-with col1:
-    if len(selected_range) == 2:
-        calc_days = (selected_range[1] - selected_range[0]).days
-        # 當使用者選了期間，N天自動變成期間的天數，並且鎖定不可更改
-        lookback_n_days = st.number_input("分析天數 (N天)", value=max(1, calc_days), disabled=True)
-        start_date, end_date = selected_range
-    else:
-        # 預設狀態或清空期間時，恢復手動輸入，預設為20天
-        lookback_n_days = st.number_input("分析天數 (N天)", min_value=1, value=20)
-        end_date = datetime.date.today()
-        start_date = end_date - datetime.timedelta(days=lookback_n_days)
-        
 start_date_str = start_date.strftime("%Y-%m-%d")
 end_date_str = end_date.strftime("%Y-%m-%d")
 lookback_days = lookback_n_days  # 自動將 N 天作為長線籌碼回溯與全局黏著度分母
-
 footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
 st.sidebar.divider()
