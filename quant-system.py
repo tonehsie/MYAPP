@@ -2660,7 +2660,7 @@ if st.session_state.get('system_running', False):
         df_b_10 = optimize_memory(process_branch_v25(df_b_raw_60, 10, dates, tags, df_p_raw, stickiness_threshold, max_len))
         df_b_60 = optimize_memory(process_branch_v25(df_b_raw_60, max_len, dates, tags, df_p_raw, stickiness_threshold, max_len))
         
-        df_fut = optimize_memory(process_fut_inst(ds_dict.get("TaiwanFuturesInstitutionalInvestors", pd.DataFrame())))
+        df_fut = optimize_memory(process_fut_inst(ds_dict.get("TaiwanFuturesInstitutionalInvestors", pd.DataFrame()), dates))
         df_div = optimize_memory(process_div(ds_dict.get("TaiwanStockDividend", pd.DataFrame())))
         df_per = optimize_memory(process_per(ds_dict.get("TaiwanStockPER", pd.DataFrame())))
         df_disp = optimize_memory(process_disp(ds_dict.get("TaiwanStockDispositionSecuritiesPeriod", pd.DataFrame())))
