@@ -2199,7 +2199,7 @@ def render_tdcc_heatmap_generic(df, col_suffix, title):
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
-def render_ultimate_heatmap
+def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fingerprint, top_n, noise_threshold):
     
 def get_v50_intelligence(df_b_raw, df_p_raw, stick_thresh, global_days, dates_list, dynamic_noise_threshold):
     if not is_valid(df_b_raw) or not is_valid(df_p_raw): return {}, pd.DataFrame()
