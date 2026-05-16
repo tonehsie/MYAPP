@@ -2236,7 +2236,8 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     p_shares['net'] = (p_shares['net_shares'] / 1000).round().astype(int)
     p = p_shares.pivot(index='securities_trader', columns='date', values='net').fillna(0).astype(int)
     
-    target_traders = top_b + top_s
+    # 確保索引唯一：防止「長線買超、短線賣超」的雙面人分點重複出現導致 Pandas 報錯
+    target_traders = list(dict.fromkeys(top_b + top_s))
     p = p.reindex(index=target_traders, columns=display_dates, fill_value=0)
 
     max_val = p.abs().max().max()
