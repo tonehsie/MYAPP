@@ -341,37 +341,43 @@ def get_api_usage(token):
     except: pass
     return None, None
 
-st.sidebar.markdown("### 交易戰略大腦")
-trade_strategy = st.sidebar.radio("交易戰略偏好", ["右側動能 (短線突破)", "左側潛伏 (中長線價值)"])
-is_right_side = "右側" in trade_strategy
-
 st.sidebar.header("戰術參數控制面板")
-kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 360, 10)
-lookback_days = st.sidebar.selectbox("長線籌碼回溯天數 (全局黏著度分母)", [20, 60, 90, 120], index=1)
-stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
+    kline_days = st.sidebar.slider("K線顯示天數 (圖表景深)", 30, 600, 360, 10)
+    stickiness_threshold = st.sidebar.slider("主力黏著度門檻 (%)", 10.0, 80.0, 50.0, 5.0)
 
-st.sidebar.divider()
-st.sidebar.markdown("### 🔥 熱力圖與排行分析區間")
-default_start = datetime.date.today() - datetime.timedelta(days=30)
-selected_range = st.sidebar.date_input("選擇戰略排行與足跡分析起迄日", [default_start, datetime.date.today()])
-if len(selected_range) == 2:
-    start_date, end_date = selected_range
-else:
-    start_date = end_date = selected_range[0]
-start_date_str = start_date.strftime("%Y-%m-%d")
-end_date_str = end_date.strftime("%Y-%m-%d")
+    st.sidebar.divider()
+    st.sidebar.markdown("### 🔥 戰略與熱力圖分析設定")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col2:
+        selected_range = st.date_input("自行輸入期間", [])
+        
+    with col1:
+        if len(selected_range) == 2:
+            calc_days = (selected_range[1] - selected_range[0]).days
+            # 當使用者選了期間，N天自動變成期間的天數，並且鎖定不可更改
+            lookback_n_days = st.number_input("分析天數 (N天)", value=max(1, calc_days), disabled=True)
+            start_date, end_date = selected_range
+        else:
+            # 預設狀態或清空期間時，恢復手動輸入，預設為20天
+            lookback_n_days = st.number_input("分析天數 (N天)", min_value=1, value=20)
+            end_date = datetime.date.today()
+            start_date = end_date - datetime.timedelta(days=lookback_n_days)
+            
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    end_date_str = end_date.strftime("%Y-%m-%d")
+    lookback_days = lookback_n_days  # 自動將 N 天作為長線籌碼回溯與全局黏著度分母
 
-footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
+    footprint_rows = st.sidebar.slider("足跡矩陣顯示筆數 (多空各 N 名)", 5, 50, 15, 5)
 
-st.sidebar.divider()
-st.sidebar.markdown("### 視覺系主菜：熱力圖設定")
-heatmap_noise_pct = st.sidebar.slider("熱力圖雜訊過濾 (佔20日均量 %)", 0.0, 5.0, 0.5 if is_right_side else 1.0, 0.1)
+    st.sidebar.divider()
+    st.sidebar.markdown("### 視覺系主菜：熱力圖設定")
+    heatmap_noise_pct = st.sidebar.slider("熱力圖雜訊過濾 (佔20日均量 %)", 0.0, 5.0, 0.5, 0.1)
 
-st.sidebar.divider()
-st.sidebar.markdown("### 防禦系配菜：警報器設定")
-alert_smart_pct = st.sidebar.slider("警報: 聰明錢極端進出 (佔20日均量 %)", 1.0, 20.0, 10.0 if is_right_side else 5.0, 1.0)
-alert_bias_drop = st.sidebar.slider("警報: 跌破主力防守乖離 < (%)", -20.0, 0.0, -3.0, 0.5)
-
+    st.sidebar.divider()
+    st.sidebar.markdown("### 防禦系配菜：警報器設定")
+    alert_smart_pct = st.sidebar.slider("警報: 聰明錢極端進出 (佔20日均量 %)", 1.0, 20.0, 10.0, 1.0)
+    alert_bias_drop = st.sidebar.slider("警報: 跌破主力防守乖離 < (%)", -20.0, 0.0, -3.0, 0.5)
 st.sidebar.divider()
 firepower_threshold = st.sidebar.slider("買方火力倍數門檻", 1.0, 5.0, 1.5, 0.1)
 
@@ -2493,7 +2499,8 @@ if st.session_state.get('system_running', False):
             if d <= start_date_str:
                 break
         
-        max_len = max(lookback_days, needed_days)
+        # 保證系統抓資料時，一定會至少涵蓋「起點往前推20天」的資料量
+        max_len = needed_days + 20
         if max_len > len(dates): max_len = len(dates)
         if max_len == 0: max_len = 1
         d_end = dates[max_len-1]
@@ -2967,7 +2974,13 @@ if st.session_state.get('system_running', False):
             if d <= start_date_str:
                 start_idx = i
                 break
-        display_end_idx = min(len(dates), start_idx + 61) # 包含起點日，往前多抓60個交易日
+        # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推20天) ▼▼▼
+        start_idx = 0
+        for i, d in enumerate(dates):
+            if d <= start_date_str:
+                start_idx = i
+                break
+        display_end_idx = min(len(dates), start_idx + 21) # 包含起點日，往前多抓20個交易日
         extended_display_dates = dates[:display_end_idx] # 從 dates[0] 到擴展後的起點
         # ▲▲▲ 新增結束 ▲▲▲
 
@@ -3004,13 +3017,12 @@ if st.session_state.get('system_running', False):
         
         with st.expander(f"【終極全息熱力圖】 自訂區間 ({start_date_str} ~ {end_date_str}) ✕ 戰略排行重算", expanded=True):
             st.info(f"🟢 視覺化提示：排行榜嚴格鎖定您的區間 ({start_date_str} ~ {end_date_str}) 結算。\n"
-                    f"時間軸自動擴展顯示【**最新交易日** 至 **起迄日往前推 60 天**】，並以**淺紅色高亮**標示您的選定區間，方便追蹤主力前期潛伏足跡。\n\n"
-                    f"🎯 **【系統動態判定 (自由流通 ✕ 孰低法)】**：本檔扣除死籌碼後，自由流通市值約 **{free_float_amt_ui/100000000:.2f} 億**。大戶單日有效出手門檻精算為 **{eff_amt_str}** (約 **{eff_vol_ui:,} 張**)，單日未達此金額之零碎交易皆視為雜訊，不計入活躍度。\n\n"
-                    f"👁️ 預設隱藏低於 **{dynamic_noise_threshold:,} 張** (月均量 {heatmap_noise_pct:.1f}%) 的散戶雜訊。您可使用下方按鈕切換顯示。")
+                    f"時間軸自動擴展顯示【**最新交易日** 至 **起迄日往前推 20 天**】，並以**淺紅色高亮**標示您的選定區間，方便追蹤主力前期潛伏足跡。\n\n"
+                    f"🎯 **【系統動態判定】**：目前設定過濾低於 **{dynamic_noise_threshold:,} 張** (月均量 {heatmap_noise_pct:.1f}%) 的散戶雜訊。\n"
+                    f"系統已同步採用此標準：單日買賣未達 **{dynamic_noise_threshold:,} 張** 皆不計入大戶的有效活躍天數（黏著度）。\n您可使用下方按鈕切換顯示。")
             if not range_dates:
                 st.warning("選定區間內無交易日資料。")
             else:
-                # 傳入 extended_display_dates 作為視覺渲染，傳入 range_dates 作為排行依據
                 render_ultimate_heatmap(df_b_raw, extended_display_dates, range_dates, tags, df_debug_tags, footprint_rows, dynamic_noise_threshold)
 
         with st.expander(f"【戰略系海鮮】 自訂區間大戶建倉成本分佈 (Volume Profile)", expanded=False):
