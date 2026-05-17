@@ -3078,26 +3078,35 @@ if st.session_state.get('system_running', False):
             with st.expander("🕵️‍♂️ 鉅額交易藏鏡人自動比對系統 (大象尋跡引擎)", expanded=True):
                 st.info("💡 系統邏輯：全自動比對「鉅額交易張數」與「當日分點進出張數」，並核對「成交均價」，直接抓出接走鉅額籌碼的神秘大戶！")
                 
+                # 🎯 根據 FinMind 官方 Schema 進行精準硬編碼對位，再也不會錯位
                 bt_cols = df_block_trade.columns.tolist()
-                # 🔧 修正 1：強制轉小寫比對，無視 API 欄位的大小寫變化
-                d_col = next((c for c in bt_cols if '日期' in c or 'date' in c.lower()), None)
-                v_col = next((c for c in bt_cols if '量' in c or 'vol' in c.lower()), None)
-                p_col = next((c for c in bt_cols if '價' in c or 'price' in c.lower()), None)
                 
-                if d_col and v_col and p_col:
-                    # 🔧 修正 2：確保日期格式絕對一致，強制轉為字串
+                if 'date' in bt_cols and 'price' in bt_cols and 'volume' in bt_cols:
+                    d_col, p_col, v_col = 'date', 'price', 'volume'
+                else:
+                    # 備用盲測：若欄位被改名，則用標準 Schema 位置 (0:date, 3:price, 4:volume)
+                    d_col = bt_cols[0] if len(bt_cols) > 0 else None
+                    p_col = bt_cols[3] if len(bt_cols) > 3 else None
+                    v_col = bt_cols[4] if len(bt_cols) > 4 else None
+                
+                if d_col and p_col and v_col:
+                    # 強制確保最新日期格式為字串
                     latest_bt_date = str(df_block_trade[d_col].max())
                     df_bt_latest = df_block_trade[df_block_trade[d_col].astype(str) == latest_bt_date]
                     
                     found_suspect = False
                     
                     for idx, row in df_bt_latest.iterrows():
-                        raw_vol = float(row[v_col])
-                        bt_vol = int(raw_vol / 1000) if raw_vol > 10000 else int(raw_vol)
-                        bt_price = float(row[p_col])
+                        try:
+                            # 🔧 核心修正：官方 volume 單位是「股」，直接除以 1000 無條件換算成「張數」
+                            raw_vol = float(row[v_col])
+                            bt_vol = max(1, int(round(raw_vol / 1000))) 
+                            bt_price = float(row[p_col])
+                        except Exception:
+                            continue 
                         
-                        # 將追蹤門檻降至 50 張，避免漏網之魚
-                        if bt_vol >= 50: 
+                        # 只要大於 10 張的鉅額交易就啟動追蹤，不漏掉任何中大型大戶
+                        if bt_vol >= 10: 
                             st.markdown(f"#### 🔎 追蹤目標： {latest_bt_date} | 鉅額成交 **{bt_vol:,} 張** | 均價 **{bt_price:.2f} 元**")
                             
                             df_b_today = df_b_raw[df_b_raw['date'].astype(str) == latest_bt_date].copy()
@@ -3106,8 +3115,8 @@ if st.session_state.get('system_running', False):
                                 df_b_today['buy_vol'] = (df_b_today['buy'] / 1000).round().astype(int)
                                 df_b_today['sell_vol'] = (df_b_today['sell'] / 1000).round().astype(int)
                                 
-                                # 🔧 修正 3：將容錯率放寬至 80%，應付大戶「鉅額接單、盤中洗盤」的複合手法
-                                threshold_vol = int(bt_vol * 0.80)
+                                # 容錯率給予 75%，完美兼容大戶在常規市場拆單或當沖的洗盤行為
+                                threshold_vol = int(bt_vol * 0.75)
                                 suspects = df_b_today[(df_b_today['buy_vol'] >= threshold_vol) | (df_b_today['sell_vol'] >= threshold_vol)].copy()
                                 
                                 if not suspects.empty:
@@ -3120,18 +3129,18 @@ if st.session_state.get('system_running', False):
                                     render_clean_html_table(df_show, f"🚨 系統比對出的高度嫌疑分點名單")
                                     
                                     best = df_show.iloc[0]
-                                    if best['與鉅額均價誤差(%)'] <= 2.0: # 稍微放寬均價判定標準
+                                    if best['與鉅額均價誤差(%)'] <= 3.0: 
                                         st.success(f"🎯 **破案！極度吻合！**\n系統強烈判定 【 **{best['涉嫌分點名稱']}** 】 為此筆鉅額交易的最大嫌疑人 (均價誤差僅 {best['與鉅額均價誤差(%)']}%)。")
                                     else:
-                                        st.warning(f"⚠️ 雖然 【 **{best['涉嫌分點名稱']}** 】 的張數吻合，但均價存在落差。可能為多帳戶拆單承接，或該分點當日還有大量一般交易干擾。")
+                                        st.warning(f"⚠️ 雖然 【 **{best['涉嫌分點名稱']}** 】 的張數吻合，但均價存在落差。可能為多帳戶拆單承接。")
                                     found_suspect = True
                                 else:
-                                    st.info("📉 單一分點進出張數不足。判定為大戶「化整為零」的拆單承接，或是透過未納入一般追蹤的總部帳戶移轉。")
+                                    st.info("📉 單一分點進出張數不足。判定為大戶「化整為零」的拆單承接。")
                     
                     if not found_suspect:
-                        st.write("近期無大型鉅額交易，或交易量未達系統追蹤門檻 (50張)。")
+                        st.write("近期無大型鉅額交易，或交易量未達系統追蹤門檻 (10張)。")
                 else:
-                    st.error("⚠️ 系統欄位辨識失敗：API 回傳的資料缺乏日期、成交量或價格欄位。")
+                    st.error("⚠️ 系統結構錯誤：無法正確定位 API 的日期、價格與成交量欄位。")
                     
         render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
         
