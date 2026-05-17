@@ -3135,7 +3135,6 @@ if st.session_state.get('system_running', False):
                     if not found_suspect:
                         st.write("近期無大型鉅額交易，或交易量未達系統追蹤門檻 (100張)。")
 
-        
         render_clean_html_table(df_inst, "05. 法人買賣超 (近10天)")
         
         render_clean_html_table(df_margin_lending, "06-1. 散戶資券與借券總量 (近10天)")
