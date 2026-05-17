@@ -55,18 +55,39 @@ B/2YNbpoOQxVAAAAFXN0YXJwQERFU0tUT1AtQU1QUkJTNwECAwQF
 
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="Openpilot 簡易管理器", layout="centered", page_icon="🚗")
-st.title("🚗 Openpilot 簡易管理器 (內建金鑰版)")
-st.markdown("已自動載入你的專屬金鑰，只要確認 IP 正確即可連線。")
+st.title("🚗 Openpilot 簡易管理器 (Mac 解鎖版)")
+st.markdown("已自動載入金鑰並解鎖 Mac 連線限制，請選擇或輸入設備 IP 後即可連線。")
 
-# --- 側邊欄：連線設定 ---
+# --- 側邊欄：連線設定 (下拉選單設計) ---
 st.sidebar.header("🔌 連線設定")
-raw_ip_address = st.sidebar.text_input("設備 IP 地址 (請看設備螢幕確認)", "172.20.10.2")
-# 防呆：自動清除冒號與空白
+
+# 預設的常用 IP 清單
+ip_options = [
+    "192.168.1.104 (目前區網)",
+    "172.20.10.2 (iPhone 熱點)",
+    "192.168.43.1 (Android 熱點)",
+    "其他 (手動輸入)"
+]
+
+# 建立下拉式選單
+selected_option = st.sidebar.selectbox("請選擇設備 IP", ip_options)
+
+# 判斷使用者的選擇
+if selected_option == "其他 (手動輸入)":
+    # 如果選「其他」，就跳出輸入框讓他自己打
+    raw_ip_address = st.sidebar.text_input("請手動輸入設備 IP 地址", "")
+else:
+    # 如果選預設清單，就自動把後面的中文說明切掉，只留前面的數字
+    raw_ip_address = selected_option.split(' ')[0]
+
+# 防呆：自動清除冒號與空白，避免輸入錯誤
 clean_ip = raw_ip_address.split(':')[0].strip()
 
 # --- 核心連線功能 ---
 def run_ssh_command(ip, command):
-    # 懶人包魔法：程式自動在背景建立金鑰檔案並設定 Mac 要求的嚴格權限 (600)
+    if not ip:
+        return "❌ 尚未取得有效的 IP 地址，請確認左側設定。"
+        
     key_path = "temp_openpilot_key"
     try:
         with open(key_path, "w") as f:
@@ -76,13 +97,14 @@ def run_ssh_command(ip, command):
         return f"❌ 建立金鑰檔案時發生錯誤: {e}"
 
     try:
-        # 指定使用剛剛建立的金鑰檔案進行連線
-        # 指定使用剛剛建立的金鑰檔案進行連線，並強制排除 Mac 的干擾
+        # 魔法指令：逼迫 Mac 接受舊版 RSA 金鑰，防止 Permission denied
         ssh_cmd = [
             "ssh", 
             "-i", key_path, 
-            "-o", "IdentitiesOnly=yes",  # 👈 這是新加的防干擾魔法
+            "-o", "IdentitiesOnly=yes", 
             "-o", "StrictHostKeyChecking=no", 
+            "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa", 
+            "-o", "HostKeyAlgorithms=+ssh-rsa",       
             "-o", "ConnectTimeout=5", 
             f"comma@{ip}", 
             command
@@ -94,14 +116,13 @@ def run_ssh_command(ip, command):
         else:
             return f"⚠️ 錯誤回報:\n{result.stderr.strip()}"
     except subprocess.TimeoutExpired:
-        return f"❌ 連線逾時！網路沒通，請確認設備已開機，且 IP ({ip}) 輸入正確 (請務必看設備螢幕確認)。"
+        return f"❌ 連線逾時！網路沒通，請確認設備已開機，且 IP ({ip}) 正確。"
     except Exception as e:
         return f"❌ 發生系統錯誤: {e}"
 
 # --- 主畫面：功能分頁 ---
 tab1, tab2, tab3 = st.tabs(["📊 設備狀態", "⚙️ 常用控制", "💻 自訂終端機"])
 
-# 分頁 1：設備狀態
 with tab1:
     st.subheader("取得設備基本資訊")
     if st.button("查詢設備版本 (Version)"):
@@ -114,7 +135,6 @@ with tab1:
             output = run_ssh_command(clean_ip, "cd /data/openpilot && git branch --show-current")
             st.info(f"目前分支: {output}")
 
-# 分頁 2：常用控制
 with tab2:
     st.subheader("電源與系統控制")
     col1, col2 = st.columns(2)
@@ -127,7 +147,6 @@ with tab2:
             run_ssh_command(clean_ip, "sudo poweroff")
             st.success("已送出關機指令！")
 
-# 分頁 3：自訂終端機
 with tab3:
     st.subheader("執行自訂 SSH 指令")
     custom_cmd = st.text_area("輸入指令:", height=100)
