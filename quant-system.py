@@ -3109,6 +3109,9 @@ if st.session_state.get('system_running', False):
                         if bt_vol >= 10: 
                             st.markdown(f"#### 🔎 追蹤目標： {latest_bt_date} | 鉅額成交 **{bt_vol:,} 張** | 均價 **{bt_price:.2f} 元**")
                             
+                            # 🔧 智慧時空同步：如果 df_b_raw 裡面找不到最新鉅額日期，就自動取分點資料庫的最新一天來對比
+                            if latest_bt_date not in df_b_raw['date'].astype(str).unique():
+                                latest_bt_date = str(df_b_raw['date'].max())
                             df_b_today = df_b_raw[df_b_raw['date'].astype(str) == latest_bt_date].copy()
                             
                             if not df_b_today.empty:
