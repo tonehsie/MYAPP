@@ -3079,9 +3079,17 @@ if st.session_state.get('system_running', False):
                 st.info("💡 系統邏輯：全自動比對「鉅額交易張數」與「當日分點進出張數」，並核對「成交均價」，直接抓出接走鉅額籌碼的神秘大戶！")
                 
                 bt_cols = df_block_trade.columns.tolist()
-                d_col = 'date' if 'date' in bt_cols else (bt_cols[0] if len(bt_cols) > 0 else None)
-                p_col = 'price' if 'price' in bt_cols else (bt_cols[3] if len(bt_cols) > 3 else None)
-                v_col = 'volume' if 'volume' in bt_cols else (bt_cols[4] if len(bt_cols) > 4 else None)
+                
+                # 🔧 智慧文字雷達：不管順序怎麼變，直接用標題關鍵字鎖定欄位！
+                d_col = next((c for c in bt_cols if '日期' in str(c) or 'date' in str(c).lower()), bt_cols[0])
+                
+                # 鎖定價格：標題要有「價」或「price」，且不能有「金額」(避開成交金額)
+                p_col = next((c for c in bt_cols if ('價' in str(c) or 'price' in str(c).lower()) and '金額' not in str(c)), None)
+                if not p_col and len(bt_cols) > 2: p_col = bt_cols[2]
+                
+                # 鎖定張數：標題要有「張」或「量」或「vol」
+                v_col = next((c for c in bt_cols if '張' in str(c) or '量' in str(c) or 'vol' in str(c).lower()), None)
+                if not v_col and len(bt_cols) > 3: v_col = bt_cols[3]
                 
                 if d_col and p_col and v_col:
                     # 確保拿到最新的鉅額交易日
@@ -3105,6 +3113,7 @@ if st.session_state.get('system_running', False):
                         for idx, row in df_bt_latest.iterrows():
                             try:
                                 raw_vol = float(row[v_col])
+                                # 若單位已被前置處理為張，就不會除以1000；若是原始股數(大於1萬)則自動轉換
                                 bt_vol = max(1, int(round(raw_vol / 1000))) if raw_vol > 10000 else int(raw_vol)
                                 bt_price = float(row[p_col])
                             except Exception:
@@ -3117,13 +3126,13 @@ if st.session_state.get('system_running', False):
                                 lambda r: min(abs(r['buy_vol'] - bt_vol), abs(r['sell_vol'] - bt_vol), abs(r['abs_net'] - bt_vol)), axis=1
                             )
                             
-                            # 抓出最接近這筆 499 張特徵的前 5 名嫌疑分點
-                            sussects = df_b_today.sort_values('張數差距').head(5).copy()
+                            # 抓出最接近這筆鉅額張數特徵的前 5 名嫌疑分點
+                            suspects = df_b_today.sort_values('張數差距').head(5).copy()
                             
-                            if not sussects.empty:
-                                sussects['均價差距(%)'] = (abs(sussects['price'] - bt_price) / bt_price * 100).round(2)
+                            if not suspects.empty:
+                                suspects['均價差距(%)'] = (abs(suspects['price'] - bt_price) / bt_price * 100).round(2)
                                 
-                                df_show = sussects[['securities_trader', 'buy_vol', 'sell_vol', 'price', '均價差距(%)']].copy()
+                                df_show = suspects[['securities_trader', 'buy_vol', 'sell_vol', 'price', '均價差距(%)']].copy()
                                 df_show.columns = ['涉嫌分點名稱', '當日買進(張)', '當日賣出(張)', '當日分點均價(元)', '與鉅額均價誤差(%)']
                                 
                                 render_clean_html_table(df_show, f"🚨 系統依據張數特徵 ({bt_vol}張) 與價格 ({bt_price}元) 篩選出的高度嫌疑名單")
