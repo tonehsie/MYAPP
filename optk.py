@@ -55,32 +55,24 @@ B/2YNbpoOQxVAAAAFXN0YXJwQERFU0tUT1AtQU1QUkJTNwECAwQF
 
 # --- 頁面基本設定 ---
 st.set_page_config(page_title="Openpilot 簡易管理器", layout="centered", page_icon="🚗")
-st.title("🚗 Openpilot 簡易管理器 (Mac 解鎖版)")
-st.markdown("已自動載入金鑰並解鎖 Mac 連線限制，請選擇或輸入設備 IP 後即可連線。")
+st.title("🚗 Openpilot 簡易管理器 (終極除錯版)")
+st.markdown("已自動載入金鑰並阻斷 Mac 系統干擾，請選擇或輸入設備 IP 後即可連線。")
 
-# --- 側邊欄：連線設定 (下拉選單設計) ---
+# --- 側邊欄：連線設定 ---
 st.sidebar.header("🔌 連線設定")
-
-# 預設的常用 IP 清單
 ip_options = [
     "192.168.1.104 (目前區網)",
     "172.20.10.2 (iPhone 熱點)",
     "192.168.43.1 (Android 熱點)",
     "其他 (手動輸入)"
 ]
-
-# 建立下拉式選單
 selected_option = st.sidebar.selectbox("請選擇設備 IP", ip_options)
 
-# 判斷使用者的選擇
 if selected_option == "其他 (手動輸入)":
-    # 如果選「其他」，就跳出輸入框讓他自己打
     raw_ip_address = st.sidebar.text_input("請手動輸入設備 IP 地址", "")
 else:
-    # 如果選預設清單，就自動把後面的中文說明切掉，只留前面的數字
     raw_ip_address = selected_option.split(' ')[0]
 
-# 防呆：自動清除冒號與空白，避免輸入錯誤
 clean_ip = raw_ip_address.split(':')[0].strip()
 
 # --- 核心連線功能 ---
@@ -88,18 +80,27 @@ def run_ssh_command(ip, command):
     if not ip:
         return "❌ 尚未取得有效的 IP 地址，請確認左側設定。"
         
-    key_path = "temp_openpilot_key"
+    # 修正1：取得絕對路徑，防止 Streamlit 在怪異的路徑下找不到金鑰
+    key_path = os.path.abspath("temp_openpilot_key")
+    
     try:
-        with open(key_path, "w") as f:
-            f.write(SSH_KEY_CONTENT.strip() + "\n")
+        # 修正2：強制把所有換行符號清乾淨並換成純 UNIX 格式 (\n)
+        clean_key = SSH_KEY_CONTENT.replace('\r\n', '\n').strip() + "\n"
+        with open(key_path, "w", newline='\n') as f:
+            f.write(clean_key)
         os.chmod(key_path, 0o600)
     except Exception as e:
         return f"❌ 建立金鑰檔案時發生錯誤: {e}"
 
     try:
-        # 魔法指令：逼迫 Mac 接受舊版 RSA 金鑰，防止 Permission denied
+        # 修正3：徹底移除 Mac 本機 SSH Agent 的雞婆干擾
+        custom_env = os.environ.copy()
+        custom_env["SSH_AUTH_SOCK"] = ""
+
+        # 修正4：加上 -v 參數，如果失敗會吐出完整的底層除錯紀錄
         ssh_cmd = [
             "ssh", 
+            "-v",  # 👈 開啟詳細除錯
             "-i", key_path, 
             "-o", "IdentitiesOnly=yes", 
             "-o", "StrictHostKeyChecking=no", 
@@ -109,12 +110,17 @@ def run_ssh_command(ip, command):
             f"comma@{ip}", 
             command
         ]
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=15)
+        
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=15, env=custom_env)
         
         if result.returncode == 0:
             return result.stdout.strip()
         else:
-            return f"⚠️ 錯誤回報:\n{result.stderr.strip()}"
+            # 擷取最後 20 行的底層連線對話紀錄
+            error_lines = result.stderr.strip().split("\n")
+            important_errors = "\n".join(error_lines[-20:])
+            return f"⚠️ 錯誤回報 (底層除錯紀錄):\n{important_errors}"
+            
     except subprocess.TimeoutExpired:
         return f"❌ 連線逾時！網路沒通，請確認設備已開機，且 IP ({ip}) 正確。"
     except Exception as e:
