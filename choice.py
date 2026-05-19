@@ -5,6 +5,7 @@ import numpy as np
 import datetime
 import concurrent.futures
 import urllib3
+import re
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -95,7 +96,7 @@ st.sidebar.header("🎯 雷達掃描參數")
 
 df_info = fetch_stock_info()
 industry_list = ["全市場暴力掃描 (需較長時間)"] + sorted(df_info['industry_category'].unique().tolist()) if not df_info.empty else ["全市場暴力掃描 (需較長時間)"]
-scan_mode = st.sidebar.selectbox("掃描範圍 (建議先用單一產業測試)", industry_list, index=1 if len(industry_list)>1 else 0)
+scan_mode = st.sidebar.selectbox("掃描範圍", industry_list, index=0)
 
 capital_limit = st.sidebar.number_input("股本上限 (億)", min_value=1, max_value=200, value=50, step=5)
 smart_money_level = st.sidebar.selectbox("大戶定義", ["400張以上", "600張以上", "800張以上", "1000張以上"])
@@ -104,12 +105,12 @@ diff_threshold = st.sidebar.slider("單週大戶增加門檻 (%)", 0.1, 10.0, 0.
 st.sidebar.divider()
 run_btn = st.sidebar.button("🚀 啟動多執行緒雷達掃描", use_container_width=True)
 
-st.title("全息量化系統 (V76.7 終極防斷線版)")
-st.caption("採用多管線併發技術，一檔一檔強制抓取集保數據，徹底解決 API 大範圍掃描漏資料的問題。")
+st.title("全息量化系統 (V76.8 智慧雙模解碼版)")
+st.caption("已修正集保級距解析邏輯，完美支援全市場單日快照之字串型態。")
 
 if run_btn:
     if df_info.empty:
-        st.error("無法取得台股代號清單，請確認 API 連線。")
+        st.error("無法取得台股代號清單。")
         st.stop()
 
     with st.spinner("定位集保結算日..."):
@@ -122,7 +123,6 @@ if run_btn:
         latest_date, prev_date = tdcc_dates[0], tdcc_dates[1]
         st.markdown(f"<div class='info-box'>📅 比對區間：<b>{latest_date}</b> vs <b>{prev_date}</b></div>", unsafe_allow_html=True)
 
-    # 決定要掃描的股票池
     target_stocks = df_info['stock_id'].tolist() if "全市場" in scan_mode else df_info[df_info['industry_category'] == scan_mode]['stock_id'].tolist()
     total_stocks = len(target_stocks)
     
@@ -134,7 +134,6 @@ if run_btn:
     all_results = []
     completed = 0
     
-    # 使用多執行緒同時抓取最新與上週資料
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         future_to_stock = {}
         for sid in target_stocks:
@@ -150,35 +149,58 @@ if run_btn:
             
             completed += 0.5
             prog_bar.progress(min(1.0, completed / total_stocks))
-            status_text.text(f"資料強制下載中... ({int(completed)} / {total_stocks})")
+            status_text.text(f"資料下載中... ({int(completed)} / {total_stocks})")
             
     prog_bar.empty()
     status_text.empty()
 
     if not all_results:
-        st.error("所有請求皆無資料回傳，請確認您的 API 額度是否已耗盡。")
+        st.error("額度耗盡或無資料回傳。")
         st.stop()
 
     df_all = pd.concat(all_results, ignore_index=True)
-    
-    # 防呆檢驗，顯示到底抓回多少真實資料
     stocks_with_data = df_all['stock_id'].nunique()
-    st.success(f"資料庫建置完成！成功抓回 {stocks_with_data} 檔個股的集保數據。")
+    st.success(f"資料庫建置完成！成功對齊 {stocks_with_data} 檔個股數據。")
 
-    with st.spinner("精算籌碼流向..."):
-        if "400" in smart_money_level: lvls = [12, 13, 14, 15]
-        elif "600" in smart_money_level: lvls = [13, 14, 15]
-        elif "800" in smart_money_level: lvls = [14, 15]
-        else: lvls = [15]
-
+    with st.spinner("智慧解碼集保級距並精算流向..."):
         val_col = 'unit' if 'unit' in df_all.columns else 'HoldingShares'
         df_all[val_col] = pd.to_numeric(df_all[val_col], errors='coerce').fillna(0)
-        df_all['level_int'] = pd.to_numeric(df_all['HoldingSharesLevel'], errors='coerce').fillna(0).astype(int)
+        
+        # 💡 【核心升級】建立智慧雙模對應表，解決字串/數字級距大陷阱
+        unique_levels = df_all['HoldingSharesLevel'].unique()
+        level_smart_map = {}
+        
+        # 換算成股數門檻 (1張 = 1000股)
+        shares_threshold = {"400張以上": 400000, "600張以上": 600000, "800張以上": 800000, "1000張以上": 1000000}.get(smart_money_level, 400000)
+        
+        for lvl in unique_levels:
+            s = str(lvl).replace(',', '').strip()
+            is_smart = False
+            if s.isdigit():
+                val = int(s)
+                # 數字小於等於 15 代表它是 1~15 的代碼
+                if val <= 15:
+                    if smart_money_level == "400張以上" and val >= 12: is_smart = True
+                    elif smart_money_level == "600張以上" and val >= 13: is_smart = True
+                    elif smart_money_level == "800張以上" and val >= 14: is_smart = True
+                    elif smart_money_level == "1000張以上" and val >= 15: is_smart = True
+                elif val >= shares_threshold: 
+                    is_smart = True
+            else:
+                # 處理範圍字串，例如 "400001-600000" 或 "1000001以上"
+                nums = [int(n) for n in re.findall(r'\d+', s)]
+                if nums:
+                    if "以上" in s and nums[0] >= shares_threshold: is_smart = True
+                    elif len(nums) >= 2 and nums[1] > shares_threshold: is_smart = True
+                    elif nums[0] >= shares_threshold: is_smart = True
+            level_smart_map[lvl] = is_smart
+            
+        df_all['is_smart_level'] = df_all['HoldingSharesLevel'].map(level_smart_map)
 
         def calc_smart_pct(df_sub):
             g = df_sub.groupby('stock_id')
             total = g[val_col].sum() / 1000
-            smart = df_sub[df_sub['level_int'].isin(lvls)].groupby('stock_id')[val_col].sum() / 1000
+            smart = df_sub[df_sub['is_smart_level'] == True].groupby('stock_id')[val_col].sum() / 1000
             return pd.DataFrame({'Total_Shares': total, 'Smart_Pct': (smart / total * 100).fillna(0)})
 
         df_l = calc_smart_pct(df_all[df_all['period'] == 'latest'])
@@ -190,7 +212,7 @@ if run_btn:
         df_scan = df_scan[df_scan['Diff_Pct'] >= diff_threshold].sort_values('Diff_Pct', ascending=False)
 
         if df_scan.empty:
-            st.warning(f"掃描結束！在過濾股本後，的確沒有個股大戶單週增加超過 {diff_threshold}%。")
+            st.warning(f"掃描結束！在過濾股本後，本次區間的確沒有中小型股大戶增加超過 {diff_threshold}%。")
         else:
             stock_names = df_info.set_index('stock_id')['stock_name'].to_dict()
             out_data = []
