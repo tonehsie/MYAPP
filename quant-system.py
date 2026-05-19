@@ -2284,7 +2284,8 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     def build_rows(traders, is_sell_side):
         if not traders: return
         
-        sec_title = "🟢 賣超主力陣營 (區間霸主 + 今日突擊)" if is_sell_side else "🔴 買超主力陣營 (區間霸主 + 今日突擊)"
+        # 🔧 瘦身版陣營標題，避免文字太長撐爆左側欄位
+        sec_title = "🟢 賣方主力" if is_sell_side else "🔴 買方主力"
         sec_bg = "#e8f5e9" if is_sell_side else "#ffebee"
         sec_color = "#2e7d32" if is_sell_side else "#c62828"
         
