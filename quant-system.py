@@ -2255,11 +2255,12 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
 
     html_parts = [HEATMAP_STYLE_TEMPLATE + "<div class='full-table-container heatmap-wrapper'><table><thead><tr>"]
     
-    html_parts.append("<th style='min-width: 140px; position: sticky; left: 0; z-index: 6;'>分點名稱</th>")
-    html_parts.append("<th style='min-width: 90px;'>標籤</th>")
-    html_parts.append("<th style='min-width: 80px;'>黏著度</th>")
-    html_parts.append("<th style='min-width: 90px;'>囤/出貨率</th>")
-    html_parts.append("<th style='min-width: 90px; background-color:#ffebee !important; color:#c62828 !important;'>區間累計<br><span style='font-size:10px;'>(含今日突襲)</span></th>")
+    # 縮減分點名稱寬度至 95px，若名字太長會自動變成「...」避免撐破版面
+    html_parts.append("<th style='min-width: 95px; max-width: 110px; position: sticky; left: 0; z-index: 6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>分點名稱</th>")
+    html_parts.append("<th style='min-width: 80px;'>標籤</th>")
+    html_parts.append("<th style='min-width: 70px;'>黏著度</th>")
+    html_parts.append("<th style='min-width: 80px;'>囤/出貨率</th>")
+    html_parts.append("<th style='min-width: 80px; background-color:#ffebee !important; color:#c62828 !important;'>區間累計<br><span style='font-size:10px;'>(含今日突襲)</span></th>")
     
     for d in display_dates:
         # 🎯 標示選定區間
