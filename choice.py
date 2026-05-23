@@ -14,7 +14,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # 頁面與基礎設定
 # ==========================================
-st.set_page_config(layout="wide", page_title="全息量化系統 (中小型股雷達)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (動態門檻雷達)", initial_sidebar_state="expanded")
 
 FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiVG9uZTEiLCJlbWFpbCI6InRvbmVoc2llQGdtYWlsLmNvbSIsInRva2VuX3ZlcnNpb24iOjJ9.LQ9tOV7cgcr27W5jIrdriUnvz-6wIFxCOKzuB9F2A-0"
 
@@ -28,6 +28,7 @@ CSS = """
 .info-box { background-color: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; border-left: 6px solid #1e3a8a; font-size: 1.1rem; font-weight: bold; color: #1e3a8a; }
 .highlight-red { color: #d32f2f; font-weight: bold; }
 .highlight-green { color: #2e7d32; font-weight: bold; }
+.threshold-badge { background-color: #e3f2fd; color: #1e3a8a; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 13px;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -84,6 +85,7 @@ def render_clean_html_table(df):
             s = str(val).strip()
             if s.startswith("+"): s = f"<span class='highlight-red'>{s}</span>"
             elif s.startswith("-") and len(s) > 1 and s[1].isdigit(): s = f"<span class='highlight-green'>{s}</span>"
+            elif "張" in s and len(s) <= 6: s = f"<span class='threshold-badge'>{s}</span>"
             html.append(f"<td>{s}</td>")
         html.append("</tr>")
     html.append("</tbody></table></div>")
@@ -99,14 +101,18 @@ industry_list = ["全市場暴力掃描 (需較長時間)"] + sorted(df_info['in
 scan_mode = st.sidebar.selectbox("掃描範圍", industry_list, index=0)
 
 capital_limit = st.sidebar.number_input("股本上限 (億)", min_value=1, max_value=200, value=50, step=5)
-smart_money_level = st.sidebar.selectbox("大戶定義", ["400張以上", "600張以上", "800張以上", "1000張以上"])
+
+st.sidebar.divider()
+st.sidebar.markdown("### 🧠 系統自動計算：大戶精算門檻")
+st.sidebar.caption("系統將自動套用 V75.9 邏輯，依據每檔股票總發行量的 1% (界於100~1000張) 自動捕捉最適合的大戶級距。您不需手動設定。")
+
 diff_threshold = st.sidebar.slider("單週大戶增加門檻 (%)", 0.1, 10.0, 0.3, 0.1)
 
 st.sidebar.divider()
 run_btn = st.sidebar.button("🚀 啟動多執行緒雷達掃描", use_container_width=True)
 
-st.title("全息量化系統 (V76.8 智慧雙模解碼版)")
-st.caption("已修正集保級距解析邏輯，完美支援全市場單日快照之字串型態。")
+st.title("全息量化系統 (V76.9 動態精算門檻雷達)")
+st.caption("已全面掛載 AI 級距辨識與動態股本計算引擎。系統會為每一檔中小型股自動分配最佳的「大戶門檻」，精準度大幅提升。")
 
 if run_btn:
     if df_info.empty:
@@ -162,49 +168,68 @@ if run_btn:
     stocks_with_data = df_all['stock_id'].nunique()
     st.success(f"資料庫建置完成！成功對齊 {stocks_with_data} 檔個股數據。")
 
-    with st.spinner("智慧解碼集保級距並精算流向..."):
+    with st.spinner("AI 引擎運算中：套用個股動態門檻精算籌碼流向..."):
         val_col = 'unit' if 'unit' in df_all.columns else 'HoldingShares'
         df_all[val_col] = pd.to_numeric(df_all[val_col], errors='coerce').fillna(0)
         
-        # 💡 【核心升級】建立智慧雙模對應表，解決字串/數字級距大陷阱
-        unique_levels = df_all['HoldingSharesLevel'].unique()
-        level_smart_map = {}
-        
-        # 換算成股數門檻 (1張 = 1000股)
-        shares_threshold = {"400張以上": 400000, "600張以上": 600000, "800張以上": 800000, "1000張以上": 1000000}.get(smart_money_level, 400000)
-        
-        for lvl in unique_levels:
-            s = str(lvl).replace(',', '').strip()
-            is_smart = False
+        # 💡 將 HoldingSharesLevel 統一轉換為下限張數 (floor_lots)
+        def parse_level_to_floor_lots(s):
+            s = str(s).replace(',', '').strip()
             if s.isdigit():
-                val = int(s)
-                # 數字小於等於 15 代表它是 1~15 的代碼
-                if val <= 15:
-                    if smart_money_level == "400張以上" and val >= 12: is_smart = True
-                    elif smart_money_level == "600張以上" and val >= 13: is_smart = True
-                    elif smart_money_level == "800張以上" and val >= 14: is_smart = True
-                    elif smart_money_level == "1000張以上" and val >= 15: is_smart = True
-                elif val >= shares_threshold: 
-                    is_smart = True
+                v = int(s)
+                if v == 10: return 100
+                elif v == 11: return 200
+                elif v == 12: return 400
+                elif v == 13: return 600
+                elif v == 14: return 800
+                elif v >= 15: return 1000
+                elif v < 10: return 0
+                return v // 1000
             else:
-                # 處理範圍字串，例如 "400001-600000" 或 "1000001以上"
                 nums = [int(n) for n in re.findall(r'\d+', s)]
-                if nums:
-                    if "以上" in s and nums[0] >= shares_threshold: is_smart = True
-                    elif len(nums) >= 2 and nums[1] > shares_threshold: is_smart = True
-                    elif nums[0] >= shares_threshold: is_smart = True
-            level_smart_map[lvl] = is_smart
-            
-        df_all['is_smart_level'] = df_all['HoldingSharesLevel'].map(level_smart_map)
+                if not nums: return 0
+                val = nums[0] // 1000
+                
+            if val >= 1000: return 1000
+            elif val >= 800: return 800
+            elif val >= 600: return 600
+            elif val >= 400: return 400
+            elif val >= 200: return 200
+            elif val >= 100: return 100
+            return 0
 
-        def calc_smart_pct(df_sub):
+        df_all['floor_lots'] = df_all['HoldingSharesLevel'].apply(parse_level_to_floor_lots)
+
+        def calc_dynamic_smart_pct(df_sub):
+            # 1. 取得各股總張數
             g = df_sub.groupby('stock_id')
-            total = g[val_col].sum() / 1000
-            smart = df_sub[df_sub['is_smart_level'] == True].groupby('stock_id')[val_col].sum() / 1000
-            return pd.DataFrame({'Total_Shares': total, 'Smart_Pct': (smart / total * 100).fillna(0)})
+            total_shares = g[val_col].sum() / 1000
+            
+            # 2. 為每檔股票動態計算大戶門檻 (ct) -> 1%股本，區間100~1000
+            levels = np.array([100, 200, 400, 600, 800, 1000])
+            raw_threshold = np.clip(total_shares * 0.01, 100, 1000)
+            
+            diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
+            ct_values = levels[diffs.argmin(axis=1)]
+            ct_series = pd.Series(ct_values, index=total_shares.index)
+            
+            # 3. 映射門檻回 DataFrame
+            df_sub['ct'] = df_sub['stock_id'].map(ct_series)
+            
+            # 4. 只加總超過該股專屬門檻的級距
+            smart_mask = df_sub['floor_lots'] >= df_sub['ct']
+            smart_shares = df_sub[smart_mask].groupby('stock_id')[val_col].sum() / 1000
+            
+            smart_pct = (smart_shares / total_shares * 100).fillna(0)
+            
+            return pd.DataFrame({
+                'Total_Shares': total_shares,
+                'Smart_Pct': smart_pct,
+                'Dynamic_CT': ct_series
+            })
 
-        df_l = calc_smart_pct(df_all[df_all['period'] == 'latest'])
-        df_p = calc_smart_pct(df_all[df_all['period'] == 'prev'])
+        df_l = calc_dynamic_smart_pct(df_all[df_all['period'] == 'latest'].copy())
+        df_p = calc_dynamic_smart_pct(df_all[df_all['period'] == 'prev'].copy())
 
         df_scan = df_l.join(df_p, lsuffix='_latest', rsuffix='_prev').dropna()
         df_scan = df_scan[df_scan['Total_Shares_latest'] <= (capital_limit * 10000)]
@@ -212,14 +237,16 @@ if run_btn:
         df_scan = df_scan[df_scan['Diff_Pct'] >= diff_threshold].sort_values('Diff_Pct', ascending=False)
 
         if df_scan.empty:
-            st.warning(f"掃描結束！在過濾股本後，本次區間的確沒有中小型股大戶增加超過 {diff_threshold}%。")
+            st.warning(f"掃描結束！在過濾股本後，本次區間的確沒有個股大戶增加超過 {diff_threshold}%。")
         else:
             stock_names = df_info.set_index('stock_id')['stock_name'].to_dict()
             out_data = []
             for sid, row in df_scan.iterrows():
                 out_data.append({
-                    "代號": sid, "名稱": stock_names.get(str(sid), ""),
+                    "代號": sid, 
+                    "名稱": stock_names.get(str(sid), ""),
                     "預估股本(億)": f"{row['Total_Shares_latest']/10000:.2f}",
+                    "系統精算大戶門檻": f"{int(row['Dynamic_CT_latest'])} 張",
                     "上週大戶(%)": f"{row['Smart_Pct_prev']:.2f}%",
                     "最新大戶(%)": f"{row['Smart_Pct_latest']:.2f}%",
                     "大戶增減(%)": f"+{row['Diff_Pct']:.2f}%" if row['Diff_Pct']>0 else f"{row['Diff_Pct']:.2f}%"
