@@ -21,20 +21,26 @@ from urllib3.util.retry import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(layout="wide", page_title="全息量化系統 (V76.0 區間動態版)", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="全息量化系統 (V76.1 區間動態版)", initial_sidebar_state="expanded")
 
 LOGGER = logging.getLogger("v76")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 def get_secret(name, default=""):
-    # 先讀 Streamlit secrets，再讀環境變數。
+    """依序讀取頂層 Secrets、[general] 區段及環境變數。"""
     try:
-        value = st.secrets.get(name, None)
-        if value is not None:
-            return str(value)
-    except Exception:
-        pass
-    return str(os.getenv(name, default))
+        if name in st.secrets:
+            return str(st.secrets[name]).strip()
+
+        if "general" in st.secrets:
+            general = st.secrets["general"]
+            if name in general:
+                return str(general[name]).strip()
+    except Exception as exc:
+        LOGGER.warning("讀取 Secret %s 失敗：%s", name, exc)
+
+    return str(os.getenv(name, default)).strip()
+
 
 FINMIND_TOKEN = get_secret("FINMIND_TOKEN")
 GITHUB_MANUAL_URL = get_secret(
@@ -315,7 +321,10 @@ def optimize_memory(df):
 @st.cache_resource(max_entries=3)
 def get_finmind_session():
     session = requests.Session()
-    session.headers.update({"Authorization": f"Bearer {FINMIND_TOKEN}", "User-Agent": "Mozilla/5.0"})
+    session.headers.update({
+        "Authorization": f"Bearer {FINMIND_TOKEN}",
+        "User-Agent": "Mozilla/5.0",
+    })
     retry = Retry(
         total=4,
         connect=4,
@@ -327,14 +336,21 @@ def get_finmind_session():
         respect_retry_after_header=True,
         raise_on_status=False,
     )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    adapter = HTTPAdapter(
+        max_retries=retry,
+        pool_connections=12,
+        pool_maxsize=12,
+        pool_block=True,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     return session
+
 
 @st.cache_resource(max_entries=3)
 def get_generic_session():
     session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0"})
     retry = Retry(
         total=4,
         connect=4,
@@ -346,10 +362,16 @@ def get_generic_session():
         respect_retry_after_header=True,
         raise_on_status=False,
     )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
+    adapter = HTTPAdapter(
+        max_retries=retry,
+        pool_connections=12,
+        pool_maxsize=12,
+        pool_block=True,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     return session
+
 
 FM_SESSION = get_finmind_session()
 GENERIC_SESSION = get_generic_session()
@@ -447,10 +469,10 @@ ma_short = int(st.sidebar.number_input("短均線 (天)", min_value=1, max_value
 ma_mid = int(st.sidebar.number_input("中均線/防守線 (天)", min_value=20, max_value=100, value=60))
 ma_long = int(st.sidebar.number_input("長均線 (天)", min_value=100, max_value=300, value=240))
 
-st.title("全息量化系統 (V76.0 區間動態版)")
+st.title("全息量化系統 (V76.1 區間動態版)")
 user_count, api_limit = get_api_usage(FINMIND_TOKEN)
 usage_text = f" | FinMind 額度: {user_count} / {api_limit}" if user_count is not None else ""
-st.caption(f"V76.0：新增「全息透視區」自訂區間動態連動，並自動擴展背景天數以確保資料不斷層。{usage_text}")
+st.caption(f"V76.1：整合 FinMind SecIdAgg、區間前15大重算、借券張數修正與混合分點資料源。{usage_text}")
 
 with st.expander("點此閱讀【全息量化系統】四大核心模組終極實戰指南", expanded=False):
     st.markdown(fetch_github_manual(GITHUB_MANUAL_URL))
@@ -460,7 +482,7 @@ with col1:
     user_stock_id = st.text_input("個股代號", value="2330")
 with col2: 
     dead_chip_input = st.text_input("死籌碼 % (董監事持股＋大股東持股，留空自動抓)")
-run_btn = st.button("啟動 V76.0 決策引擎", use_container_width=True, key="run_engine")
+run_btn = st.button("啟動 V76.1 決策引擎", use_container_width=True, key="run_engine")
 
 # ==========================================
 # 基礎資料處理函式
@@ -488,12 +510,27 @@ def safe_to_num(series, fill_val=0):
 
 @st.cache_data(ttl=900, max_entries=256, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
-    r = FM_SESSION.get(url, params=dict(params_tuple), timeout=20)
-    r.raise_for_status() 
-    data = r.json().get("data")
+    params = dict(params_tuple)
+    response = FM_SESSION.get(url, params=params, timeout=30)
+    response.raise_for_status()
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError(
+            f"FinMind 回傳非 JSON：{response.text[:200]}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("FinMind 回傳格式不是物件")
+
+    data = payload.get("data")
     if data is None:
-        raise ValueError("FinMind 回傳資料為空")
+        message = payload.get("msg") or payload.get("message") or "未知錯誤"
+        raise ValueError(f"FinMind 無 data 欄位：{message}")
+
     return data
+
 
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def get_basic_info_finmind(tid):
@@ -522,15 +559,250 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
         LOGGER.exception("FinMind 資料集讀取失敗：%s", ds)
         return pd.DataFrame()
 
+BRANCH_AGG_DATASET = "TaiwanStockTradingDailyReportSecIdAgg"
+BRANCH_RAW_DETAIL_DAYS = 30
+
+
+def normalize_branch_dataframe(df, source_name="unknown"):
+    """把原始逐價位分點或 SecIdAgg 聚合分點統一成相同欄位。"""
+    if not is_valid(df):
+        return pd.DataFrame()
+
+    out = df.copy()
+
+    rename_map = {}
+    if "buy_volume" in out.columns and "buy" not in out.columns:
+        rename_map["buy_volume"] = "buy"
+    if "sell_volume" in out.columns and "sell" not in out.columns:
+        rename_map["sell_volume"] = "sell"
+    out = out.rename(columns=rename_map)
+
+    required = {"date", "securities_trader", "buy", "sell"}
+    if not required.issubset(out.columns):
+        LOGGER.warning(
+            "分點資料欄位不足，來源=%s，缺少=%s",
+            source_name,
+            sorted(required - set(out.columns)),
+        )
+        return pd.DataFrame()
+
+    out["date"] = out["date"].astype(str).str[:10]
+    out["securities_trader"] = out["securities_trader"].astype(str).str.strip()
+    out["buy"] = safe_to_num(out["buy"]).clip(lower=0)
+    out["sell"] = safe_to_num(out["sell"]).clip(lower=0)
+
+    if "buy_price" in out.columns:
+        out["buy_price"] = safe_to_num(out["buy_price"], fill_val=0)
+    else:
+        out["buy_price"] = 0.0
+
+    if "sell_price" in out.columns:
+        out["sell_price"] = safe_to_num(out["sell_price"], fill_val=0)
+    else:
+        out["sell_price"] = 0.0
+
+    if "price" in out.columns:
+        out["price"] = safe_to_num(out["price"], fill_val=0)
+    else:
+        total_volume = out["buy"] + out["sell"]
+        total_amount = (
+            out["buy"] * out["buy_price"]
+            + out["sell"] * out["sell_price"]
+        )
+        out["price"] = np.where(
+            total_volume > 0,
+            total_amount / total_volume,
+            0.0,
+        )
+
+    out["buy_price"] = np.where(
+        out["buy_price"] > 0,
+        out["buy_price"],
+        out["price"],
+    )
+    out["sell_price"] = np.where(
+        out["sell_price"] > 0,
+        out["sell_price"],
+        out["price"],
+    )
+
+    if "stock_id" not in out.columns:
+        out["stock_id"] = ""
+    if "securities_trader_id" not in out.columns:
+        out["securities_trader_id"] = ""
+
+    out["branch_source"] = source_name
+    out = out[
+        out["date"].ne("")
+        & out["securities_trader"].ne("")
+        & out["securities_trader"].ne("nan")
+    ].copy()
+
+    return out.reset_index(drop=True)
+
+
+def consolidate_branch_aggregate(df):
+    """再次合併 SecIdAgg，避免 API 回傳重複列造成重複計算。"""
+    if not is_valid(df):
+        return pd.DataFrame()
+
+    out = normalize_branch_dataframe(df, "SecIdAgg")
+    if not is_valid(out):
+        return pd.DataFrame()
+
+    out["_buy_amt"] = out["buy"] * out["buy_price"]
+    out["_sell_amt"] = out["sell"] * out["sell_price"]
+
+    group_cols = [
+        "date",
+        "stock_id",
+        "securities_trader",
+        "securities_trader_id",
+    ]
+    grouped = out.groupby(group_cols, as_index=False, observed=True).agg(
+        buy=("buy", "sum"),
+        sell=("sell", "sum"),
+        _buy_amt=("_buy_amt", "sum"),
+        _sell_amt=("_sell_amt", "sum"),
+    )
+
+    grouped["buy_price"] = np.where(
+        grouped["buy"] > 0,
+        grouped["_buy_amt"] / grouped["buy"],
+        0.0,
+    )
+    grouped["sell_price"] = np.where(
+        grouped["sell"] > 0,
+        grouped["_sell_amt"] / grouped["sell"],
+        0.0,
+    )
+    total_volume = grouped["buy"] + grouped["sell"]
+    grouped["price"] = np.where(
+        total_volume > 0,
+        (grouped["_buy_amt"] + grouped["_sell_amt"]) / total_volume,
+        0.0,
+    )
+    grouped["branch_source"] = "SecIdAgg"
+    return grouped.drop(columns=["_buy_amt", "_sell_amt"])
+
+
+def enrich_branch_dataframe(df):
+    """建立後續籌碼引擎共用欄位，買賣金額使用各自量加權均價。"""
+    out = normalize_branch_dataframe(df, "hybrid")
+    if not is_valid(out):
+        return pd.DataFrame()
+
+    out["price"] = safe_to_num(out["price"], fill_val=0)
+    out["buy"] = safe_to_num(out["buy"], fill_val=0)
+    out["sell"] = safe_to_num(out["sell"], fill_val=0)
+    out["buy_price"] = safe_to_num(out["buy_price"], fill_val=0)
+    out["sell_price"] = safe_to_num(out["sell_price"], fill_val=0)
+
+    out["valid_buy"] = np.where(
+        (out["buy_price"] > 0) & (out["buy"] > 0),
+        out["buy"],
+        0,
+    )
+    out["valid_sell"] = np.where(
+        (out["sell_price"] > 0) & (out["sell"] > 0),
+        out["sell"],
+        0,
+    )
+    out["valid_buy_amt"] = out["valid_buy"] * out["buy_price"]
+    out["valid_sell_amt"] = out["valid_sell"] * out["sell_price"]
+    out["net_shares"] = out["buy"] - out["sell"]
+    out["date_dt"] = pd.to_datetime(out["date"], errors="coerce")
+    return out
+
+
+def aggregate_branch_daily(df):
+    """把逐價位資料彙整成每日、每分點一列，供比對與明細顯示。"""
+    out = enrich_branch_dataframe(df)
+    if not is_valid(out):
+        return pd.DataFrame()
+
+    grouped = out.groupby(
+        ["date", "securities_trader"],
+        as_index=False,
+        observed=True,
+    ).agg(
+        buy=("buy", "sum"),
+        sell=("sell", "sum"),
+        valid_buy=("valid_buy", "sum"),
+        valid_sell=("valid_sell", "sum"),
+        valid_buy_amt=("valid_buy_amt", "sum"),
+        valid_sell_amt=("valid_sell_amt", "sum"),
+    )
+
+    grouped["buy_price"] = np.where(
+        grouped["valid_buy"] > 0,
+        grouped["valid_buy_amt"] / grouped["valid_buy"],
+        0.0,
+    )
+    grouped["sell_price"] = np.where(
+        grouped["valid_sell"] > 0,
+        grouped["valid_sell_amt"] / grouped["valid_sell"],
+        0.0,
+    )
+    total_volume = grouped["buy"] + grouped["sell"]
+    total_amount = grouped["valid_buy_amt"] + grouped["valid_sell_amt"]
+    grouped["price"] = np.where(
+        total_volume > 0,
+        total_amount / total_volume,
+        0.0,
+    )
+    grouped["net_shares"] = grouped["buy"] - grouped["sell"]
+    grouped["date_dt"] = pd.to_datetime(grouped["date"], errors="coerce")
+    return grouped.sort_values("date", ascending=False).reset_index(drop=True)
+
+def fetch_branch_secid_agg(stock_id, start_date, end_date):
+    """一次取得單股區間聚合分點；無 Sponsor 權限時回傳空表並走舊 API。"""
+    url = (
+        "https://api.finmindtrade.com/api/v4/"
+        "taiwan_stock_trading_daily_report_secid_agg"
+    )
+    params = {
+        "data_id": stock_id,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    try:
+        data = cached_finmind_api_call(url, tuple(sorted(params.items())))
+        return consolidate_branch_aggregate(pd.DataFrame(data))
+    except Exception as exc:
+        LOGGER.warning("SecIdAgg 讀取失敗，改用逐日分點 API：%s", exc)
+        return pd.DataFrame()
+
 def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
-    dates = list(dates_tuple) 
-    b_results = []
+    dates = list(dates_tuple)
+    if not dates:
+        return pd.DataFrame(), {}, pd.DataFrame(), "無分點資料"
+
     a_results = {}
     cb_info_list = []
 
-    tdcc_sd = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
-    d_end = dates[max_len-1] if max_len > 0 else dates[0]
-    dt_sd = (datetime.date.today() - datetime.timedelta(days=700)).strftime("%Y-%m-%d")
+    tdcc_sd = (
+        datetime.date.today() - datetime.timedelta(days=180)
+    ).strftime("%Y-%m-%d")
+    d_end = dates[max_len - 1] if max_len > 0 else dates[0]
+    dt_sd = (
+        datetime.date.today() - datetime.timedelta(days=700)
+    ).strftime("%Y-%m-%d")
+
+    # 優先採用 2026 新增的單股區間聚合分點。
+    df_agg = fetch_branch_secid_agg(
+        user_stock_id,
+        d_end,
+        dates[0],
+    )
+    use_agg = is_valid(
+        df_agg,
+        ["date", "securities_trader", "buy", "sell"],
+    )
+
+    # 聚合資料成功時，只抓最近 30 日逐價位明細，供成本分布與價格比對。
+    raw_days = min(max_len, BRANCH_RAW_DETAIL_DAYS) if use_agg else max_len
+    b_results = []
 
     api_targets = [
         ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
@@ -543,74 +815,157 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
         ("TaiwanStockPER", d_end, None, user_stock_id),
         ("TaiwanStockDispositionSecuritiesPeriod", tdcc_sd, None, user_stock_id),
         ("TaiwanStockConvertibleBondDailyOverview", dt_sd, None, None),
-        ("TaiwanStockBlockTrade", d_end, None, user_stock_id), 
-        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id) 
+        ("TaiwanStockBlockTrade", d_end, None, user_stock_id),
+        ("TaiwanStockSecuritiesLending", d_end, None, user_stock_id),
     ]
 
-    total_tasks = max_len + len(api_targets)
-    
+    total_tasks = raw_days + len(api_targets)
     prog_container = st.empty()
     text_container = st.empty()
     prog_bar = prog_container.progress(0.0)
 
     def fetch_api(dataset, sd, ed, tid):
         url = "https://api.finmindtrade.com/api/v4/data"
-        p = {"dataset": dataset, "start_date": sd}
-        if tid: p["data_id"] = tid
-        if ed: p["end_date"] = ed
+        params = {"dataset": dataset, "start_date": sd}
+        if tid:
+            params["data_id"] = tid
+        if ed:
+            params["end_date"] = ed
         try:
-            return dataset, cached_finmind_api_call(url, tuple(sorted(p.items())))
-        except:
+            return dataset, cached_finmind_api_call(
+                url,
+                tuple(sorted(params.items())),
+            )
+        except Exception:
+            LOGGER.exception("背景 API 讀取失敗：%s", dataset)
             return dataset, []
 
-    def fetch_branch(d, tid):
-        url = "https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report"
-        p = {"data_id": tid, "date": d}
+    def fetch_branch(date_value, tid):
+        url = (
+            "https://api.finmindtrade.com/api/v4/"
+            "taiwan_stock_trading_daily_report"
+        )
+        params = {"data_id": tid, "date": date_value}
         try:
-            return cached_finmind_api_call(url, tuple(sorted(p.items())))
-        except:
+            return cached_finmind_api_call(
+                url,
+                tuple(sorted(params.items())),
+            )
+        except Exception:
+            LOGGER.exception("逐日分點讀取失敗：%s", date_value)
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-        future_to_type = {}
-        for d in dates[:max_len]:
-            future_to_type[executor.submit(fetch_branch, d, user_stock_id)] = 'branch'
-        for ds, sd, ed, tid in api_targets:
-            future_to_type[executor.submit(fetch_api, ds, sd, ed, tid)] = 'api'
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_type = {}
 
-        completed = 0
-        for future in concurrent.futures.as_completed(future_to_type):
-            completed += 1
-            prog_val = min(1.0, completed / total_tasks)
-            prog_bar.progress(prog_val)
-            text_container.markdown(f"<div class='progress-text'>⚡ 系統載入中... 正在與 FinMind 同步資料 (進度: {completed} / {total_tasks})</div>", unsafe_allow_html=True)
+            for date_value in dates[:raw_days]:
+                future_to_type[
+                    executor.submit(fetch_branch, date_value, user_stock_id)
+                ] = ("branch", date_value)
 
-            f_type = future_to_type[future]
-            if f_type == 'branch':
-                res = future.result()
-                if res: b_results.extend(res)
-            else:
-                ds, data = future.result()
-                a_results[ds] = pd.DataFrame(data)
+            for dataset, sd, ed, tid in api_targets:
+                future_to_type[
+                    executor.submit(fetch_api, dataset, sd, ed, tid)
+                ] = ("api", dataset)
 
-        df_cbas_raw = a_results.get("TaiwanStockConvertibleBondDailyOverview", pd.DataFrame())
-        if not df_cbas_raw.empty and 'cb_id' in df_cbas_raw.columns:
-            cb_mask = df_cbas_raw['cb_id'].astype(str).str.replace(',', '', regex=False).str.startswith(user_stock_id)
-            target_cbs = df_cbas_raw[cb_mask]['cb_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.replace(',', '', regex=False).str.strip().unique()
-            
-            if len(target_cbs) > 0:
-                text_container.markdown(f"<div class='progress-text'>🔍 正在掃描並擴充可轉債(CBAS)資訊...</div>", unsafe_allow_html=True)
-                cb_futures = [executor.submit(fetch_api, "TaiwanStockConvertibleBondInfo", "2000-01-01", None, cid) for cid in target_cbs]
-                for f in concurrent.futures.as_completed(cb_futures):
-                    _, cb_data = f.result()
-                    if cb_data: cb_info_list.extend(cb_data)
+            completed = 0
+            for future in concurrent.futures.as_completed(future_to_type):
+                completed += 1
+                prog_bar.progress(min(1.0, completed / max(1, total_tasks)))
+                text_container.markdown(
+                    "<div class='progress-text'>"
+                    "⚡ 系統載入中... 正在與 FinMind 同步資料 "
+                    f"(進度: {completed} / {total_tasks})"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
-    prog_container.empty()
-    text_container.empty()
+                item_type, item_name = future_to_type[future]
+                try:
+                    result = future.result()
+                except Exception:
+                    LOGGER.exception("背景工作失敗：%s", item_name)
+                    continue
 
-    df_b = optimize_memory(pd.DataFrame.from_records(b_results)) if b_results else pd.DataFrame()
+                if item_type == "branch":
+                    if result:
+                        b_results.extend(result)
+                else:
+                    dataset, data = result
+                    a_results[dataset] = pd.DataFrame(data)
+
+            df_cbas_raw = a_results.get(
+                "TaiwanStockConvertibleBondDailyOverview",
+                pd.DataFrame(),
+            )
+            if is_valid(df_cbas_raw, ["cb_id"]):
+                cb_ids = (
+                    df_cbas_raw["cb_id"]
+                    .astype(str)
+                    .str.replace(",", "", regex=False)
+                    .str.replace(r"\.0$", "", regex=True)
+                    .str.strip()
+                )
+                target_cbs = cb_ids[
+                    cb_ids.str.startswith(str(user_stock_id))
+                ].unique()
+
+                if len(target_cbs) > 0:
+                    text_container.markdown(
+                        "<div class='progress-text'>"
+                        "🔍 正在掃描並擴充可轉債(CBAS)資訊..."
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cb_futures = [
+                        executor.submit(
+                            fetch_api,
+                            "TaiwanStockConvertibleBondInfo",
+                            "2000-01-01",
+                            None,
+                            cb_id,
+                        )
+                        for cb_id in target_cbs
+                    ]
+                    for future in concurrent.futures.as_completed(cb_futures):
+                        try:
+                            _, cb_data = future.result()
+                            if cb_data:
+                                cb_info_list.extend(cb_data)
+                        except Exception:
+                            LOGGER.exception("可轉債基本資料讀取失敗")
+    finally:
+        prog_container.empty()
+        text_container.empty()
+
+    df_raw = normalize_branch_dataframe(
+        pd.DataFrame.from_records(b_results),
+        "逐價位原始資料",
+    )
+
+    if use_agg:
+        raw_dates = set(df_raw["date"].astype(str)) if is_valid(df_raw) else set()
+        df_agg_old = df_agg[
+            ~df_agg["date"].astype(str).isin(raw_dates)
+        ].copy()
+        frames = [frame for frame in [df_raw, df_agg_old] if is_valid(frame)]
+        df_branch = (
+            pd.concat(frames, ignore_index=True, sort=False)
+            if frames
+            else pd.DataFrame()
+        )
+        branch_source = (
+            f"SecIdAgg 區間聚合＋近 {raw_days} 日逐價位明細"
+        )
+    else:
+        df_branch = df_raw
+        branch_source = "逐日原始分點 API（SecIdAgg 無權限或無資料）"
+
+    df_branch = optimize_memory(df_branch)
     df_cb_info = pd.DataFrame(cb_info_list)
-    return df_b, a_results, df_cb_info
+    return df_branch, a_results, df_cb_info, branch_source
+
 
 def safe_get_fubon(url):
     try:
@@ -1033,93 +1388,157 @@ def render_volume_profile(df_raw, rank_dates, top_n=15):
         st.warning("查無足夠資料產生建倉成本分佈圖。")
         return
 
-    df_rank = df_raw[df_raw['date'].isin(rank_dates)]
-    rank_sum = (df_rank.groupby('securities_trader')['net_shares'].sum() / 1000).round().astype(int)
-    
-    top_b = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
-    top_s = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
-    target_traders = top_b + top_s
-    
+    df_rank = df_raw[df_raw["date"].isin(rank_dates)].copy()
+    if not is_valid(df_rank):
+        st.warning("選定區間沒有分點資料。")
+        return
+
+    rank_sum = (
+        df_rank.groupby("securities_trader", observed=True)["net_shares"]
+        .sum() / 1000
+    ).round().astype(int)
+
+    top_buyers = rank_sum[rank_sum > 0].nlargest(top_n).index.tolist()
+    top_sellers = rank_sum[rank_sum < 0].nsmallest(top_n).index.tolist()
+    target_traders = list(dict.fromkeys(top_buyers + top_sellers))
     if not target_traders:
         st.warning("無符合條件的活躍分點。")
         return
 
-    df_vp = df_rank[(df_rank['securities_trader'].isin(target_traders)) & (df_rank['price'] > 0)].assign(
-        buy_lots = lambda x: x['buy'] / 1000,
-        sell_lots = lambda x: x['sell'] / 1000
+    base = df_rank[df_rank["securities_trader"].isin(target_traders)].copy()
+    buy_price = np.where(
+        safe_to_num(base.get("buy_price", base["price"])) > 0,
+        safe_to_num(base.get("buy_price", base["price"])),
+        safe_to_num(base["price"]),
     )
-    if df_vp.empty:
+    sell_price = np.where(
+        safe_to_num(base.get("sell_price", base["price"])) > 0,
+        safe_to_num(base.get("sell_price", base["price"])),
+        safe_to_num(base["price"]),
+    )
+
+    buy_rows = pd.DataFrame({
+        "profile_price": buy_price,
+        "buy_lots": safe_to_num(base["buy"]) / 1000,
+        "sell_lots": 0.0,
+    })
+    sell_rows = pd.DataFrame({
+        "profile_price": sell_price,
+        "buy_lots": 0.0,
+        "sell_lots": safe_to_num(base["sell"]) / 1000,
+    })
+    profile = pd.concat([buy_rows, sell_rows], ignore_index=True)
+    profile = profile[
+        (profile["profile_price"] > 0)
+        & ((profile["buy_lots"] > 0) | (profile["sell_lots"] > 0))
+    ]
+
+    if profile.empty:
         st.warning("無有效價格資料進行成本區間分析。")
         return
 
-    min_p = df_vp['price'].min()
-    max_p = df_vp['price'].max()
-    
-    if min_p == max_p:
-        labels = [f"{min_p:.2f}"]
-        df_vp = df_vp.assign(price_bin = labels[0])
-    else:
-        bin_edges = np.linspace(min_p, max_p, num=16)
-        labels = [f"{bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}" for i in range(len(bin_edges)-1)]
-        df_vp = df_vp.assign(price_bin = pd.cut(df_vp['price'], bins=bin_edges, labels=labels, include_lowest=True))
+    min_price = float(profile["profile_price"].min())
+    max_price = float(profile["profile_price"].max())
 
-    vp_grouped = df_vp.groupby('price_bin', observed=False)[['buy_lots', 'sell_lots']].sum().fillna(0)
-    vp_grouped = vp_grouped.assign(
-        total_lots = vp_grouped['buy_lots'] + vp_grouped['sell_lots'],
-        net_lots = vp_grouped['buy_lots'] - vp_grouped['sell_lots']
+    if np.isclose(min_price, max_price):
+        profile["price_bin"] = f"{min_price:.2f}"
+    else:
+        bin_edges = np.linspace(min_price, max_price, num=16)
+        labels = [
+            f"{bin_edges[i]:.2f} - {bin_edges[i + 1]:.2f}"
+            for i in range(len(bin_edges) - 1)
+        ]
+        profile["price_bin"] = pd.cut(
+            profile["profile_price"],
+            bins=bin_edges,
+            labels=labels,
+            include_lowest=True,
+        )
+
+    grouped = (
+        profile.groupby("price_bin", observed=False)[["buy_lots", "sell_lots"]]
+        .sum()
+        .fillna(0)
     )
-    
-    if vp_grouped['total_lots'].sum() == 0:
+    grouped["total_lots"] = grouped["buy_lots"] + grouped["sell_lots"]
+    grouped["net_lots"] = grouped["buy_lots"] - grouped["sell_lots"]
+
+    if grouped["total_lots"].sum() <= 0:
         st.warning("該區間大戶無顯著成交量。")
         return
 
-    poc_idx = vp_grouped['total_lots'].idxmax()
-    max_vol_for_scale = vp_grouped[['buy_lots', 'sell_lots']].max().max()
-    if max_vol_for_scale == 0: max_vol_for_scale = 1
+    poc_idx = grouped["total_lots"].idxmax()
+    max_scale = grouped[["buy_lots", "sell_lots"]].max().max()
+    max_scale = max(float(max_scale), 1.0)
+    grouped = grouped.sort_index(ascending=False)
 
-    html_parts = ["<div class='full-table-container'><table><thead><tr>"]
-    html_parts.append("<th style='width: 20%;'>價位區間 (元)</th>")
-    html_parts.append("<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>")
-    html_parts.append("<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>")
-    html_parts.append("<th style='width: 10%; text-align: right;'>淨買賣(張)</th>")
-    html_parts.append("</tr></thead><tbody>")
+    html_parts = [
+        "<div class='full-table-container'><table><thead><tr>",
+        "<th style='width: 20%;'>價位區間 (元)</th>",
+        "<th style='width: 35%; text-align: left;'>買進量 (大戶建倉)</th>",
+        "<th style='width: 35%; text-align: left;'>賣出量 (大戶倒貨)</th>",
+        "<th style='width: 10%; text-align: right;'>淨買賣(張)</th>",
+        "</tr></thead><tbody>",
+    ]
 
-    vp_grouped = vp_grouped.sort_index(ascending=False)
+    for idx, row in grouped.iterrows():
+        if row["total_lots"] <= 0:
+            continue
 
-    for idx, row in vp_grouped.iterrows():
-        if row['total_lots'] == 0: continue
-            
-        b_vol = int(round(row['buy_lots']))
-        s_vol = int(round(row['sell_lots']))
-        n_vol = int(round(row['net_lots']))
-        
-        b_width = min(100, (b_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
-        s_width = min(100, (s_vol / max_vol_for_scale) * 100) if max_vol_for_scale > 0 else 0
+        buy_lots = int(round(row["buy_lots"]))
+        sell_lots = int(round(row["sell_lots"]))
+        net_lots = int(round(row["net_lots"]))
 
-        is_poc = (idx == poc_idx)
-        row_bg = "background-color: rgba(255, 193, 7, 0.15);" if is_poc else ""
-        poc_star = " <br><span style='color:#f57c00; font-size:12px; font-weight:900;'>[POC 核心防守]</span>" if is_poc else ""
+        buy_width = min(100, buy_lots / max_scale * 100)
+        sell_width = min(100, sell_lots / max_scale * 100)
+
+        is_poc = idx == poc_idx
+        row_bg = (
+            "background-color: rgba(255, 193, 7, 0.15);"
+            if is_poc
+            else ""
+        )
+        poc_text = (
+            " <br><span style='color:#f57c00; font-size:12px; "
+            "font-weight:900;'>[POC 核心防守]</span>"
+            if is_poc
+            else ""
+        )
 
         html_parts.append(f"<tr style='{row_bg}'>")
-        html_parts.append(f"<td style='font-weight: bold; font-size:14px;'>{idx}{poc_star}</td>")
-        
-        b_txt = f"{b_vol:,}" if b_vol > 0 else ""
-        s_txt = f"{s_vol:,}" if s_vol > 0 else ""
-        
-        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {b_width}%; background-color: #e53935; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{b_txt}</span></div></td>")
-        html_parts.append(f"<td><div style='display: flex; align-items: center;'><div style='width: {s_width}%; background-color: #43a047; height: 18px; border-radius: 2px; margin-right: 8px;'></div><span style='font-size: 13px; font-weight:bold;'>{s_txt}</span></div></td>")
-        
-        if n_vol != 0:
-            net_color = "#d32f2f" if n_vol > 0 else "#2e7d32"
-            net_txt = f"+{n_vol:,}" if n_vol > 0 else f"{n_vol:,}"
-            html_parts.append(f"<td style='color: {net_color}; font-weight: bold; text-align: right;'>{net_txt}</td>")
+        html_parts.append(
+            f"<td style='font-weight:bold; font-size:14px;'>{idx}{poc_text}</td>"
+        )
+        html_parts.append(
+            "<td><div style='display:flex; align-items:center;'>"
+            f"<div style='width:{buy_width}%; background-color:#e53935; "
+            "height:18px; border-radius:2px; margin-right:8px;'></div>"
+            f"<span style='font-size:13px; font-weight:bold;'>"
+            f"{buy_lots:,}</span></div></td>"
+        )
+        html_parts.append(
+            "<td><div style='display:flex; align-items:center;'>"
+            f"<div style='width:{sell_width}%; background-color:#43a047; "
+            "height:18px; border-radius:2px; margin-right:8px;'></div>"
+            f"<span style='font-size:13px; font-weight:bold;'>"
+            f"{sell_lots:,}</span></div></td>"
+        )
+
+        if net_lots != 0:
+            net_color = "#d32f2f" if net_lots > 0 else "#2e7d32"
+            net_text = f"+{net_lots:,}" if net_lots > 0 else f"{net_lots:,}"
+            html_parts.append(
+                f"<td style='color:{net_color}; font-weight:bold; "
+                f"text-align:right;'>{net_text}</td>"
+            )
         else:
-            html_parts.append(f"<td style='text-align: right;'></td>")
-            
+            html_parts.append("<td style='text-align:right;'></td>")
+
         html_parts.append("</tr>")
-        
+
     html_parts.append("</tbody></table></div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
+
 
 def render_institutional_vs_local(df_branch_raw, df_inst, intel_tags, top_n=4):
     if not is_valid(df_branch_raw) or not is_valid(df_inst):
@@ -1479,54 +1898,165 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     return out_df
 
 def process_branch_diff_v2(df_raw, actual_dates, fire_thresh, period_days=10):
-    if not is_valid(df_raw) or not actual_dates: return pd.DataFrame()
-    out = [] 
-    branch_grouped = dict(tuple(df_raw[['date', 'securities_trader', 'buy', 'sell']].groupby('date')))
-    for d in actual_dates[:period_days]:
-        if d not in branch_grouped: continue
-        df_d = branch_grouped[d]
-        
-        buy_branches, sell_branches = df_d[df_d['buy'] > 0], df_d[df_d['sell'] > 0]
-        
-        buy_count = buy_branches['securities_trader'].nunique()
-        sell_count = sell_branches['securities_trader'].nunique()
+    if not is_valid(df_raw) or not actual_dates:
+        return pd.DataFrame()
+
+    out = []
+    branch_grouped = dict(
+        tuple(
+            df_raw[["date", "securities_trader", "buy", "sell"]]
+            .groupby("date", observed=True)
+        )
+    )
+
+    for date_value in actual_dates[:period_days]:
+        if date_value not in branch_grouped:
+            continue
+
+        df_day = branch_grouped[date_value]
+        grouped = (
+            df_day.groupby("securities_trader", observed=True)[["buy", "sell"]]
+            .sum()
+        )
+        grouped["net"] = grouped["buy"] - grouped["sell"]
+
+        buy_count = int((grouped["buy"] > 0).sum())
+        sell_count = int((grouped["sell"] > 0).sum())
         diff_count = buy_count - sell_count
-        active_count = df_d[(df_d['buy'] > 0) | (df_d['sell'] > 0)]['securities_trader'].nunique()
-        concentration = ((sell_count - buy_count) / active_count * 100) if active_count > 0 else 0
-        
-        total_buy_vol, total_sell_vol = buy_branches['buy'].sum(), sell_branches['sell'].sum()
-        avg_b = total_buy_vol / buy_count if buy_count > 0 else 0
-        avg_s = total_sell_vol / sell_count if sell_count > 0 else 0
-        firepower = (avg_b / avg_s) if avg_s > 0 else (99.9 if avg_b > 0 else 1.0)
-        
-        daily_total_vol = df_d['buy'].sum() 
-        main_power = 0
-        if daily_total_vol > 0:
-            g_net = df_d.groupby('securities_trader').apply(lambda x: x['buy'].sum() - x['sell'].sum())
-            top_15_buy_vol = g_net[g_net > 0].nlargest(15).sum()
-            top_15_sell_vol = abs(g_net[g_net < 0].nsmallest(15).sum())
-            main_power = (top_15_buy_vol - top_15_sell_vol) / daily_total_vol * 100
-        
+        active_count = int(
+            ((grouped["buy"] > 0) | (grouped["sell"] > 0)).sum()
+        )
+
+        # 正值代表「賣方家數多、買方家數少」：少數買方承接較集中。
+        house_concentration = (
+            (sell_count - buy_count) / active_count * 100
+            if active_count > 0
+            else 0.0
+        )
+
+        total_buy_volume = float(grouped["buy"].sum())
+        total_sell_volume = float(grouped["sell"].sum())
+        avg_buy = total_buy_volume / buy_count if buy_count > 0 else 0.0
+        avg_sell = total_sell_volume / sell_count if sell_count > 0 else 0.0
+        firepower = (
+            avg_buy / avg_sell
+            if avg_sell > 0
+            else (99.9 if avg_buy > 0 else 1.0)
+        )
+
+        positive_net = grouped.loc[grouped["net"] > 0, "net"]
+        negative_net = grouped.loc[grouped["net"] < 0, "net"]
+        top_15_buy = float(positive_net.nlargest(15).sum())
+        top_15_sell = abs(float(negative_net.nsmallest(15).sum()))
+        main_net = top_15_buy - top_15_sell
+        chip_concentration = (
+            main_net / total_buy_volume * 100
+            if total_buy_volume > 0
+            else 0.0
+        )
+
         diag = []
-        if firepower >= fire_thresh and concentration > 5: diag.append(f"大戶火力壓制 ({fire_thresh}倍↑)")
-        elif firepower < 0.7 and diff_count > 50: diag.append("散戶進場 (主力倒貨)")
-        elif active_count > 500 and firepower < 1.0: diag.append("籌碼極度發散 (熱門當沖雷區)")
-            
-        if main_power > 15: diag.append(f"主力重兵集結 (買力 {main_power:.1f}%)")
-        elif main_power < -15: diag.append(f"大戶強力倒貨 (賣力 {abs(main_power):.1f}%)")
-        
-        if diff_count > 50 and main_power < 0: diag.append("散戶螞蟻搬象接刀")
-            
+        if firepower >= fire_thresh and house_concentration > 5:
+            diag.append(f"大戶火力壓制 ({fire_thresh}倍↑)")
+        elif firepower < 0.7 and diff_count > 50:
+            diag.append("散戶進場 (主力倒貨)")
+        elif active_count > 500 and firepower < 1.0:
+            diag.append("籌碼極度發散 (熱門當沖雷區)")
+
+        if chip_concentration > 15:
+            diag.append(
+                f"主力重兵集結 (集中度 {chip_concentration:.1f}%)"
+            )
+        elif chip_concentration < -15:
+            diag.append(
+                f"大戶強力倒貨 (集中度 {abs(chip_concentration):.1f}%)"
+            )
+
+        if diff_count > 50 and chip_concentration < 0:
+            diag.append("散戶螞蟻搬象接刀")
+
         out.append({
-            "日期": d, 
-            "活躍家數": active_count, 
-            "買賣家數差": diff_count, 
-            "籌碼集中度(%)": round(concentration, 1), 
-            "買方火力(倍)": round(firepower, 2), 
-            "主力成交力(%)": round(main_power, 2), 
-            "鷹眼診斷": " | ".join(diag) if diag else "中性換手"
+            "日期": date_value,
+            "活躍家數": active_count,
+            "買賣家數差": diff_count,
+            "少數買方集中率(%)": round(house_concentration, 1),
+            "買方火力(倍)": round(firepower, 2),
+            "主力買賣超(張)": int(round(main_net / 1000)),
+            "籌碼集中度(%)": round(chip_concentration, 2),
+            "鷹眼診斷": " | ".join(diag) if diag else "中性換手",
         })
+
     return pd.DataFrame(out)
+
+
+def calculate_interval_chip_metrics(df_branch_raw, actual_dates, df_price):
+    """依 FinMind 定義，在每個區間重新排行買賣超前 15 大分點。"""
+    if not is_valid(df_branch_raw) or not actual_dates:
+        return pd.DataFrame()
+
+    price_volume_map = {}
+    if is_valid(df_price, ["日期", "成交量(張)"]):
+        price_volume_map = (
+            df_price.assign(
+                _volume_shares=safe_to_num(df_price["成交量(張)"]) * 1000
+            )
+            .set_index("日期")["_volume_shares"]
+            .to_dict()
+        )
+
+    results = []
+    for requested_days in [1, 5, 20, 60, 120]:
+        period_dates = actual_dates[:requested_days]
+        if not period_dates:
+            continue
+
+        period_df = df_branch_raw[
+            df_branch_raw["date"].isin(period_dates)
+        ]
+        if not is_valid(period_df):
+            continue
+
+        grouped = (
+            period_df.groupby("securities_trader", observed=True)[["buy", "sell"]]
+            .sum()
+        )
+        grouped["net"] = grouped["buy"] - grouped["sell"]
+
+        positive = grouped.loc[grouped["net"] > 0, "net"]
+        negative = grouped.loc[grouped["net"] < 0, "net"]
+        top_buy = float(positive.nlargest(15).sum())
+        top_sell = abs(float(negative.nsmallest(15).sum()))
+        main_net = top_buy - top_sell
+
+        # 官方定義的分母使用 TaiwanStockPrice 成交股數。
+        interval_volume = float(
+            sum(float(price_volume_map.get(date_value, 0)) for date_value in period_dates)
+        )
+        if interval_volume <= 0:
+            # 缺股價成交量時，才退回分點總買進股數。
+            interval_volume = float(grouped["buy"].sum())
+
+        concentration = (
+            main_net / interval_volume * 100
+            if interval_volume > 0
+            else 0.0
+        )
+
+        buy_count = int((grouped["buy"] > 0).sum())
+        sell_count = int((grouped["sell"] > 0).sum())
+
+        results.append({
+            "設定區間": f"{requested_days}日",
+            "實際交易日": len(set(period_df["date"].astype(str))),
+            "主力買超前15(張)": int(round(top_buy / 1000)),
+            "主力賣超前15(張)": int(round(top_sell / 1000)),
+            "主力買賣超(張)": int(round(main_net / 1000)),
+            "籌碼集中度(%)": round(concentration, 2),
+            "買賣家數差": buy_count - sell_count,
+        })
+
+    return pd.DataFrame(results)
+
 
 def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_diff, actual_dates, fire_thresh, period_days=5):
     if not is_valid(df_branch_raw) or not actual_dates:
@@ -1565,6 +2095,7 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
         firepower = diff_row.get('買方火力(倍)', 1.0)
         active_cnt = diff_row.get('活躍家數', 0)
         concentration = diff_row.get('籌碼集中度(%)', 0)
+        house_concentration = diff_row.get('少數買方集中率(%)', 0)
         eye_diag = diff_row.get('鷹眼診斷', "")
 
         smart_grouped = smart_dict.get(d, pd.DataFrame(columns=['securities_trader', 'tag', 'bs', 'ss', 'buy_amt', 'sell_amt', 'net_vol']))
@@ -1609,7 +2140,9 @@ def process_v30_daily_tracking(df_branch_raw, intel_tags, df_price, df_branch_di
             "日期": d, "收盤價(元)": cp if cp > 0 else "-", "漲跌(元)": sp_raw if cp > 0 else "-", "聰明錢淨流(張)": int(smart_net), 
             "大戶淨加權均價": round(smart_avg_cost, 2) if smart_avg_cost > 0 else ("0 (無本獲利)" if smart_avg_cost == 0 and total_n > 0 else "-"), 
             "均價落差": round(gap, 2) if smart_avg_cost > 0 and cp > 0 else "-", 
-            "活躍家數": active_cnt, "買賣家數差": bsd, "籌碼集中度(%)": concentration,
+            "活躍家數": active_cnt, "買賣家數差": bsd,
+            "少數買方集中率(%)": house_concentration,
+            "籌碼集中度(%)": concentration,
             "買方火力(倍)": firepower, "潛在賣壓(張)": int(short_trap), "綜合診斷": " | ".join(adv)
         })
     return pd.DataFrame(out), pd.DataFrame(audit_smart_money).sort_values('淨買超(張)', ascending=False) if audit_smart_money else pd.DataFrame()
@@ -1772,11 +2305,17 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
 
     df_m = df_margin_raw.copy()
     numeric_cols = [
-        "MarginPurchaseBuy", "MarginPurchaseSell",
-        "MarginPurchaseCashRepayment", "MarginPurchaseTodayBalance",
-        "MarginPurchaseYesterdayBalance", "ShortSaleBuy", "ShortSaleSell",
-        "ShortSaleCashRepayment", "ShortSaleTodayBalance",
-        "OffsetLoanAndShort", "ShortSaleYesterdayBalance",
+        "MarginPurchaseBuy",
+        "MarginPurchaseSell",
+        "MarginPurchaseCashRepayment",
+        "MarginPurchaseTodayBalance",
+        "MarginPurchaseYesterdayBalance",
+        "ShortSaleBuy",
+        "ShortSaleSell",
+        "ShortSaleCashRepayment",
+        "ShortSaleTodayBalance",
+        "OffsetLoanAndShort",
+        "ShortSaleYesterdayBalance",
     ]
     for col in numeric_cols:
         if col in df_m.columns:
@@ -1784,10 +2323,10 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
 
     df_out = df_m.rename(columns={
         "date": "日期",
-        "MarginPurchaseBuy": "融資買進(萬元)",
-        "MarginPurchaseSell": "融資賣出(萬元)",
-        "MarginPurchaseCashRepayment": "融資現償(萬元)",
-        "MarginPurchaseTodayBalance": "融資餘額(萬元)",
+        "MarginPurchaseBuy": "融資買進(張)",
+        "MarginPurchaseSell": "融資賣出(張)",
+        "MarginPurchaseCashRepayment": "融資現償(張)",
+        "MarginPurchaseTodayBalance": "融資餘額(張)",
         "ShortSaleBuy": "融券買進(張)",
         "ShortSaleSell": "融券賣出(張)",
         "ShortSaleTodayBalance": "融券餘額(張)",
@@ -1797,20 +2336,38 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
     if "日期" not in df_out.columns:
         return pd.DataFrame()
 
-    if "融資餘額(萬元)" in df_out.columns and "MarginPurchaseYesterdayBalance" in df_out.columns:
-        previous = safe_to_num(df_out["MarginPurchaseYesterdayBalance"]).round().astype(int)
-        df_out["融資增減(萬元)"] = df_out["融資餘額(萬元)"] - previous
+    if (
+        "融資餘額(張)" in df_out.columns
+        and "MarginPurchaseYesterdayBalance" in df_out.columns
+    ):
+        previous = safe_to_num(
+            df_out["MarginPurchaseYesterdayBalance"]
+        ).round().astype(int)
+        df_out["融資增減(張)"] = (
+            df_out["融資餘額(張)"] - previous
+        )
 
-    if "融券餘額(張)" in df_out.columns and "ShortSaleYesterdayBalance" in df_out.columns:
-        previous = safe_to_num(df_out["ShortSaleYesterdayBalance"]).round().astype(int)
+    if (
+        "融券餘額(張)" in df_out.columns
+        and "ShortSaleYesterdayBalance" in df_out.columns
+    ):
+        previous = safe_to_num(
+            df_out["ShortSaleYesterdayBalance"]
+        ).round().astype(int)
         df_out["融券增減(張)"] = df_out["融券餘額(張)"] - previous
 
     if is_valid(df_lending_raw, ["date", "volume"]):
         lending = df_lending_raw[["date", "volume"]].copy()
-        lending["volume"] = safe_to_num(lending["volume"])
-        lending_daily = lending.groupby("date", as_index=False)["volume"].sum()
-        lending_daily = lending_daily.rename(columns={"date": "日期"})
-        lending_daily["本日借券成交(張)"] = (lending_daily["volume"] / 1000).round().astype(int)
+        # FinMind TaiwanStockSecuritiesLending.volume 的單位已是張。
+        lending["volume"] = safe_to_num(lending["volume"]).clip(lower=0)
+        lending_daily = (
+            lending.groupby("date", as_index=False)["volume"].sum()
+            .rename(columns={"date": "日期"})
+        )
+        lending_daily["本日借券成交(張)"] = (
+            lending_daily["volume"].round().astype(int)
+        )
+
         df_out = pd.merge(
             df_out,
             lending_daily[["日期", "本日借券成交(張)"]],
@@ -1818,43 +2375,98 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
             how="left",
             validate="many_to_one",
         )
-        df_out["本日借券成交(張)"] = df_out["本日借券成交(張)"].fillna(0).astype(int)
+        df_out["本日借券成交(張)"] = (
+            df_out["本日借券成交(張)"].fillna(0).astype(int)
+        )
     else:
         df_out["本日借券成交(張)"] = 0
 
     display_cols = [
-        "日期", "融資買進(萬元)", "融資賣出(萬元)", "融資現償(萬元)",
-        "融資餘額(萬元)", "融資增減(萬元)", "融券買進(張)",
-        "融券賣出(張)", "融券餘額(張)", "融券增減(張)",
-        "資券相抵(張)", "本日借券成交(張)",
+        "日期",
+        "融資買進(張)",
+        "融資賣出(張)",
+        "融資現償(張)",
+        "融資餘額(張)",
+        "融資增減(張)",
+        "融券買進(張)",
+        "融券賣出(張)",
+        "融券餘額(張)",
+        "融券增減(張)",
+        "資券相抵(張)",
+        "本日借券成交(張)",
     ]
-    display_cols = [c for c in display_cols if c in df_out.columns]
-    return df_out[display_cols].sort_values("日期", ascending=False).head(10).reset_index(drop=True)
+    display_cols = [col for col in display_cols if col in df_out.columns]
+    return (
+        df_out[display_cols]
+        .sort_values("日期", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+
 
 
 def process_securities_lending_detail(df):
-    if not is_valid(df, ['date', 'volume']): return pd.DataFrame()
+    if not is_valid(df, ["date", "volume"]):
+        return pd.DataFrame()
+
     df_out = df.copy()
-    df_out['volume'] = (safe_to_num(df_out['volume']) / 1000).round().astype(int)
-    
-    if 'fee_rate' in df_out.columns: df_out['fee_rate'] = safe_to_num(df_out['fee_rate'])
-    else: df_out['fee_rate'] = 0.0
-        
-    if 'transaction_type' not in df_out.columns: df_out['transaction_type'] = '未知'
-        
-    pivot_df = df_out.pivot_table(index='date', columns='transaction_type', values='volume', aggfunc='sum', fill_value=0)
-    daily_stats = df_out.groupby('date').agg(總成交張數=('volume', 'sum'), 平均費率=('fee_rate', 'mean'))
-    
-    res = daily_stats.join(pivot_df).reset_index().rename(columns={'date': '日期', '平均費率': '平均費率(%)'}).fillna(0)
-    res['平均費率(%)'] = res['平均費率(%)'].round(2)
-    
-    col_map = {'定價': '定價交易(張)', '競價': '競價交易(張)', '議借': '議借交易(張)'}
-    res = res.rename(columns=col_map)
-    for c in ['定價交易(張)', '競價交易(張)', '議借交易(張)']:
-        if c not in res.columns: res[c] = 0
-        
-    cols = ['日期', '總成交張數', '平均費率(%)', '定價交易(張)', '競價交易(張)', '議借交易(張)']
-    return res[[c for c in cols if c in res.columns]].tail(10).sort_values('日期', ascending=False)
+    # FinMind 此欄位直接是張數，不可再除以 1,000。
+    df_out["volume"] = (
+        safe_to_num(df_out["volume"]).clip(lower=0).round().astype(int)
+    )
+
+    if "fee_rate" in df_out.columns:
+        df_out["fee_rate"] = safe_to_num(df_out["fee_rate"])
+    else:
+        df_out["fee_rate"] = 0.0
+
+    if "transaction_type" not in df_out.columns:
+        df_out["transaction_type"] = "未知"
+
+    pivot_df = df_out.pivot_table(
+        index="date",
+        columns="transaction_type",
+        values="volume",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    daily_stats = df_out.groupby("date").agg(
+        總成交張數=("volume", "sum"),
+        平均費率=("fee_rate", "mean"),
+    )
+
+    result = (
+        daily_stats.join(pivot_df)
+        .reset_index()
+        .rename(columns={"date": "日期", "平均費率": "平均費率(%)"})
+        .fillna(0)
+    )
+    result["平均費率(%)"] = result["平均費率(%)"].round(2)
+
+    result = result.rename(columns={
+        "定價": "定價交易(張)",
+        "競價": "競價交易(張)",
+        "議借": "議借交易(張)",
+    })
+    for col in ["定價交易(張)", "競價交易(張)", "議借交易(張)"]:
+        if col not in result.columns:
+            result[col] = 0
+
+    columns = [
+        "日期",
+        "總成交張數",
+        "平均費率(%)",
+        "定價交易(張)",
+        "競價交易(張)",
+        "議借交易(張)",
+    ]
+    return (
+        result[[col for col in columns if col in result.columns]]
+        .sort_values("日期", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+
 
 def process_block_trading(df_block_raw, rank_dates):
     if not is_valid(df_block_raw, ["date"]):
@@ -2268,7 +2880,7 @@ def format_to_csv_string(df, title):
     return header + df.to_csv(index=False) + "\n"
 
 # ==========================================
-# 新增 V76.0：集保分級通用熱力表引擎 (支援比例/張數/人數)
+# 新增 V76.1：集保分級通用熱力表引擎 (支援比例/張數/人數)
 # ==========================================
 def render_tdcc_heatmap_generic(df, col_suffix, title):
     if not is_valid(df, ['日期']):
@@ -2501,7 +3113,7 @@ def render_ultimate_heatmap(df_raw, display_dates, rank_dates, intel_tags, df_fi
     st.markdown("".join(html_parts), unsafe_allow_html=True)
     
 
-# V76.0：已移除重複定義的 get_v50_intelligence()，避免後方版本覆蓋前方版本。
+# V76.1：已移除重複定義的 get_v50_intelligence()，避免後方版本覆蓋前方版本。
 
 # ==========================================
 # 執行主引擎
@@ -2514,7 +3126,7 @@ if st.session_state.get('system_running', False):
         st.warning("請先在上方輸入股票代號！")
         st.stop()
         
-    with st.spinner(f"正在啟動 V76.0 終極版決策引擎..."):
+    with st.spinner(f"正在啟動 V76.1 終極版決策引擎..."):
         
         name, industry = get_basic_info_finmind(user_stock_id)
         if name == "未知名稱": 
@@ -2564,11 +3176,11 @@ if st.session_state.get('system_running', False):
         if enable_pattern:
             pat_data = process_geometric_patterns(df_price, kline_days, pattern_order, pattern_mode, curr_price)
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as bg_executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as bg_executor:
             f_dir = bg_executor.submit(scrape_director_v50, user_stock_id)
             f_ple = bg_executor.submit(scrape_fubon_pledge, df_p_raw, user_stock_id)
 
-            df_b_raw, ds_dict, df_cb_info = fetch_heavy_data_sync_with_progress(user_stock_id, tuple(dates), max_len)
+            df_b_raw, ds_dict, df_cb_info, branch_source = fetch_heavy_data_sync_with_progress(user_stock_id, tuple(dates), max_len)
 
             dynamic_dict, s_val, chip_eng, _ = f_dir.result()
             df_p_sum, df_p_det = f_ple.result()
@@ -2591,7 +3203,7 @@ if st.session_state.get('system_running', False):
             return {"資料項目": name, "連線狀態": status_icon, "最新資料日": latest_str, "抓取筆數": len(df)}
 
         debug_data.append(check_df_status("1. 歷史股價 (TaiwanStockPrice)", df_p_raw, 'date'))
-        debug_data.append(check_df_status("2. 分點進出 (TradingDailyReport)", df_b_raw, 'date'))
+        debug_data.append(check_df_status(f"2. 分點進出 ({branch_source})", df_b_raw, 'date'))
         debug_data.append(check_df_status("3. 三大法人 (InstitutionalInvestors)", ds_dict.get("TaiwanStockInstitutionalInvestorsBuySell"), 'date'))
         debug_data.append(check_df_status("4. 融資融券 (MarginPurchaseShortSale)", ds_dict.get("TaiwanStockMarginPurchaseShortSale"), 'date'))
         debug_data.append(check_df_status("5. 現股當沖 (DayTrading)", ds_dict.get("TaiwanStockDayTrading"), 'date'))
@@ -2614,15 +3226,10 @@ if st.session_state.get('system_running', False):
             st.error(f"查無 {user_stock_id} 的分點進出資料，可能為暫停交易或 API 狀態異常，請稍後再試。")
             st.stop()
             
-        df_b_raw['price'] = safe_to_num(df_b_raw['price'])
-        df_b_raw['buy'] = safe_to_num(df_b_raw['buy'])
-        df_b_raw['sell'] = safe_to_num(df_b_raw['sell'])
-        df_b_raw['valid_buy'] = np.where(df_b_raw['price'] > 0, df_b_raw['buy'], 0)
-        df_b_raw['valid_sell'] = np.where(df_b_raw['price'] > 0, df_b_raw['sell'], 0)
-        df_b_raw['valid_buy_amt'] = df_b_raw['valid_buy'] * df_b_raw['price']
-        df_b_raw['valid_sell_amt'] = df_b_raw['valid_sell'] * df_b_raw['price']
-        df_b_raw['net_shares'] = df_b_raw['buy'] - df_b_raw['sell']
-        df_b_raw['date_dt'] = pd.to_datetime(df_b_raw['date'])
+        df_b_raw = enrich_branch_dataframe(df_b_raw)
+        if not is_valid(df_b_raw):
+            st.error("分點資料格式無法正規化，請查看 Streamlit Logs。")
+            st.stop()
 
         parsed_dead_chip = None
         if dead_chip_input and str(dead_chip_input).strip() != "":
@@ -2660,6 +3267,9 @@ if st.session_state.get('system_running', False):
         
         df_b_diff = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=15)
         df_b_diff_60 = process_branch_diff_v2(df_b_raw, dates, firepower_threshold, period_days=60)
+        df_interval_chip = optimize_memory(
+            calculate_interval_chip_metrics(df_b_raw, dates, df_price)
+        )
         
         df_daily_tracker, df_audit_smart = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff, dates, firepower_threshold, period_days=15)
         df_daily_tracker_60, _ = process_v30_daily_tracking(df_b_raw, tags, df_price, df_b_diff_60, dates, firepower_threshold, period_days=60)
@@ -2721,9 +3331,9 @@ if st.session_state.get('system_running', False):
         market_cap_str = "計算中..."
         if is_valid(df_price) and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
             
-        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張"
+        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張 ｜ 【分點來源】 {branch_source}"
         
-        st.subheader(f"{user_stock_id} {name} 全息戰報 (V76.0 區間動態版)")
+        st.subheader(f"{user_stock_id} {name} 全息戰報 (V76.1 區間動態版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
 
         disp_warn = calculate_disposition_thresholds_v2(df_price, df_day_trade, current_total_shares)
@@ -2877,10 +3487,14 @@ if st.session_state.get('system_running', False):
         is_double_counting = (inst_net_today > 0 and today_smart_net > 0 and abs(inst_net_today - today_smart_net) < inst_net_today * 0.2)
         
         today_margin_chg = 0
-        if is_valid(df_margin_lending, ['融資餘額(萬元)'], 2):
-            today_margin_chg = safe_to_num(df_margin_lending.iloc[0]['融資餘額(萬元)']) - safe_to_num(df_margin_lending.iloc[1]['融資餘額(萬元)'])
-        margin_shares_est = (today_margin_chg * 10 / curr_price) if curr_price > 0 else 0
-        is_margin_trap = (today_smart_net > 100 and margin_shares_est > (today_smart_net * 0.6))
+        if is_valid(df_margin_lending, ['融資餘額(張)'], 2):
+            today_margin_chg = safe_to_num(df_margin_lending.iloc[0]['融資餘額(張)']) - safe_to_num(df_margin_lending.iloc[1]['融資餘額(張)'])
+        # FinMind 個股融資餘額本身就是張數，可直接和分點淨買超（張）比較。
+        margin_shares_est = today_margin_chg
+        is_margin_trap = (
+            today_smart_net > 100
+            and margin_shares_est > (today_smart_net * 0.6)
+        )
         
         is_cbas_arb = False
         if is_valid(df_cbas, ["可轉債代號", "日期", "未償還餘額"], 2):
@@ -3003,7 +3617,7 @@ if st.session_state.get('system_running', False):
         report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
-        st.caption(f"備註：所有資料皆已透過 V76.0 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
+        st.caption(f"備註：所有資料皆已透過 V76.1 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
 
         st.markdown("---")
         
@@ -3086,6 +3700,7 @@ if st.session_state.get('system_running', False):
             render_clean_html_table(df_debug_tags)
 
         render_clean_html_table(df_daily_tracker, "02. 平日戰情追蹤矩陣 (近15日)")
+        render_clean_html_table(df_interval_chip, "02-1. FinMind 標準區間主力籌碼（前15大區間重算）")
         render_clean_html_table(df_combined_display, "03. 一週集保籌碼雷達 (大戶存量與流量雙解碼)") 
 
         render_clean_html_table(df_block_trade, "04. 鉅額交易日報表 (大額換手追蹤)")
@@ -3119,10 +3734,12 @@ if st.session_state.get('system_running', False):
                     b_raw_dates = df_b_raw['date'].astype(str).unique()
                     target_b_date = latest_bt_date if latest_bt_date in b_raw_dates else str(df_b_raw['date'].max())
                     
-                    df_b_today = df_b_raw[df_b_raw['date'].astype(str) == target_b_date].copy()
+                    df_b_today = aggregate_branch_daily(
+                        df_b_raw[df_b_raw['date'].astype(str) == target_b_date]
+                    )
                     
                     if not df_b_today.empty:
-                        # 計算分點進出張數
+                        # 先依分點彙整，再比對鉅額張數，避免逐價位列被誤判。
                         df_b_today['buy_vol'] = (df_b_today['buy'] / 1000).round().astype(int)
                         df_b_today['sell_vol'] = (df_b_today['sell'] / 1000).round().astype(int)
                         df_b_today['net_vol'] = df_b_today['buy_vol'] - df_b_today['sell_vol']
@@ -3131,7 +3748,7 @@ if st.session_state.get('system_running', False):
                         for idx, row in df_bt_latest.iterrows():
                             try:
                                 raw_vol = float(row[v_col])
-                                # 若單位已被前置處理為張，就不會除以1000；若是原始股數(大於1萬)則自動轉換
+                                # process_block_trading 已統一將此欄位轉為張數。
                                 bt_vol = max(1, int(round(raw_vol)))
                                 bt_price = float(row[p_col])
                             except Exception:
@@ -3212,16 +3829,19 @@ if st.session_state.get('system_running', False):
             selected_trader = st.selectbox("🎯 請選擇要深度檢驗的分點：", all_traders, index=all_traders.index(default_trader) if default_trader else 0)
             
             if selected_trader:
-                # 抓取該分點的所有歷史進出紀錄
-                df_trader = df_b_raw[df_b_raw['securities_trader'] == selected_trader].sort_values('date', ascending=False)
-                
+                # 抓取該分點的所有歷史進出紀錄，先彙整成每日一列。
+                df_trader_raw = df_b_raw[
+                    df_b_raw['securities_trader'] == selected_trader
+                ].copy()
+                df_trader = aggregate_branch_daily(df_trader_raw)
+
                 # 計算專屬統計數據
-                t_buy = (df_trader['buy'].sum() / 1000).round().astype(int)
-                t_sell = (df_trader['sell'].sum() / 1000).round().astype(int)
+                t_buy = int(round(float(df_trader['buy'].sum()) / 1000))
+                t_sell = int(round(float(df_trader['sell'].sum()) / 1000))
                 t_net = t_buy - t_sell
-                
-                t_buy_amt = df_trader['valid_buy_amt'].sum()
-                t_valid_buy = df_trader['valid_buy'].sum()
+
+                t_buy_amt = float(df_trader['valid_buy_amt'].sum())
+                t_valid_buy = float(df_trader['valid_buy'].sum())
                 t_avg_buy = f"{t_buy_amt / t_valid_buy:,.2f}" if t_valid_buy > 0 else "-"
                 
                 t_tag = tags.get(selected_trader, "路人雜訊")
@@ -3237,20 +3857,28 @@ if st.session_state.get('system_running', False):
                 """, unsafe_allow_html=True)
                 
                 # 整理每日明細表並套用原本的表格樣式
-                df_t_detail = df_trader[['date', 'price', 'buy', 'sell']].copy()
+                df_t_detail = df_trader[
+                    ['date', 'price', 'buy_price', 'sell_price', 'buy', 'sell']
+                ].copy()
                 df_t_detail['buy'] = (df_t_detail['buy'] / 1000).round().astype(int)
                 df_t_detail['sell'] = (df_t_detail['sell'] / 1000).round().astype(int)
                 df_t_detail['net'] = df_t_detail['buy'] - df_t_detail['sell']
-                
+
                 df_t_detail = df_t_detail.rename(columns={
-                    'date': '日期', 'price': '當日成交均價(元)', 'buy': '買進(張)', 'sell': '賣出(張)', 'net': '淨買賣(張)'
+                    'date': '日期',
+                    'price': '當日綜合均價(元)',
+                    'buy_price': '買進均價(元)',
+                    'sell_price': '賣出均價(元)',
+                    'buy': '買進(張)',
+                    'sell': '賣出(張)',
+                    'net': '淨買賣(張)',
                 })
                 
                 render_clean_html_table(df_t_detail, f"📅 {selected_trader} 每日進出明細")
 
         st.divider()
         st.info("請將下方所需資料複製後貼給 AI 進行深度分析或稽核。")
-        with st.expander(f"給 AI 的 V76.0 實戰精華資料包 (CSV格式)", expanded=True):
+        with st.expander(f"給 AI 的 V76.1 實戰精華資料包 (CSV格式)", expanded=True):
             p1 = f"請依下面最新的盤後資料與系統兵推報告幫我深度分析 {user_stock_id} {name} 的量化籌碼，必須以我給的資料優先使用。\n\n"
             p1 += f"{company_info_text}\n\n"
             
@@ -3290,5 +3918,5 @@ if st.session_state.get('system_running', False):
             p1 += format_to_csv_string(df_cbas, "16. CBAS 可轉債資料")
             st.code(p1, language="text")
             
-        st.success(f"V76.0 修正版已完成 {user_stock_id} 的資料處理。")
+        st.success(f"V76.1 修正版已完成 {user_stock_id} 的資料處理。")
         gc.collect()
