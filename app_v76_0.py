@@ -1362,6 +1362,45 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     final_n = max(5, min(final_n, 50))
     return final_n, f"{cap_desc}{turn_desc}"
 
+
+def select_large_holder_level(total_lots, free_float_ratio, price):
+    try:
+        total_lots = float(total_lots)
+        free_float_ratio = float(free_float_ratio)
+        price = float(price)
+    except (TypeError, ValueError):
+        return 100, "資料不足/最細100張"
+
+    if total_lots <= 0:
+        return 100, "資料不足/最細100張"
+
+    raw_target = total_lots * np.clip(free_float_ratio, 0.05, 1.0) * 0.01
+
+    if total_lots < 500000:
+        min_level, max_level, profile = 100, 400, "超小股本控盤型"
+    elif total_lots < 2000000:
+        min_level, max_level, profile = 100, 600, "小股本主力型"
+    elif total_lots < 10000000:
+        min_level, max_level, profile = 200, 1000, "中型籌碼股"
+    else:
+        min_level, max_level, profile = 800, 1000, "大型權值法人股"
+
+    if price > 0 and price < 30:
+        max_level = min(max_level, 400)
+        profile += "/低價"
+    elif price >= 300 and total_lots < 3000000:
+        max_level = min(max_level, 400)
+        profile += "/高價小股本"
+
+    levels = np.array([100, 200, 400, 600, 800, 1000])
+    usable_levels = levels[(levels >= min_level) & (levels <= max_level)]
+    if len(usable_levels) == 0:
+        usable_levels = levels
+    target = np.clip(raw_target, usable_levels.min(), usable_levels.max())
+    selected = int(usable_levels[np.abs(usable_levels - target).argmin()])
+    return selected, profile
+
+
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if not is_valid(df_b_raw): return 0.0, 0, 0, 0.0, []
     
@@ -1376,7 +1415,9 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
         buy_vol=('buy', 'sum'),
         sell_vol=('sell', 'sum'),
         buy_amt=('valid_buy_amt', 'sum'),
-        valid_buy_vol=('valid_buy', 'sum')
+        sell_amt=('valid_sell_amt', 'sum'),
+        valid_buy_vol=('valid_buy', 'sum'),
+        valid_sell_vol=('valid_sell', 'sum')
     )
     
     broker_stats = broker_stats.assign(net_vol = broker_stats['buy_vol'] - broker_stats['sell_vol'])
@@ -1385,12 +1426,25 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     if top_buyers.empty: return 0.0, 0, 0, 0.0, []
     
     core_branch_names = top_buyers.index.tolist()
-    
-    top_buyers = top_buyers.assign(avg_buy_price = (top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0))
-    valid_top_buyers = top_buyers[top_buyers['avg_buy_price'] > 0]
+
+    top_buyers = top_buyers.assign(
+        net_amt=top_buyers['buy_amt'] - top_buyers['sell_amt'],
+        avg_buy_price=(top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0),
+    )
+    top_buyers['net_cost'] = np.where(
+        (top_buyers['net_vol'] > 0) & (top_buyers['net_amt'] > 0),
+        top_buyers['net_amt'] / top_buyers['net_vol'],
+        np.nan,
+    )
+    valid_top_buyers = top_buyers[top_buyers['net_cost'].notna() & (top_buyers['net_cost'] > 0)]
     total_net_vol = valid_top_buyers['net_vol'].sum()
-    
-    vwap = round((valid_top_buyers['avg_buy_price'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
+
+    if total_net_vol > 0:
+        vwap = round((valid_top_buyers['net_cost'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2)
+    else:
+        fallback = top_buyers[top_buyers['avg_buy_price'] > 0]
+        fallback_net = fallback['net_vol'].sum()
+        vwap = round((fallback['avg_buy_price'] * fallback['net_vol']).sum() / fallback_net, 2) if fallback_net > 0 else 0.0
     
     full_net_accum = int(top_buyers['net_vol'].sum() / 1000)
     active_buyers = len(top_buyers)
@@ -1769,13 +1823,16 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
 
         free_float_ratio = np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0)
-        float_1pct_lots = df['總張數'] * free_float_ratio * 0.01
-
-        raw_threshold = np.clip(float_1pct_lots, 100, 1000)
-        levels = np.array([100, 200, 400, 600, 800, 1000])
-        
-        diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
-        df['ct'] = levels[diffs.argmin(axis=1)]
+        threshold_info = df.apply(
+            lambda row: select_large_holder_level(
+                row.get('總張數', 0),
+                free_float_ratio.loc[row.name],
+                row.get('收盤價(元)', 0),
+            ),
+            axis=1,
+        )
+        df['ct'] = threshold_info.apply(lambda x: x[0])
+        df['stock_profile'] = threshold_info.apply(lambda x: x[1])
 
         conds = [df['ct'] <= 100, df['ct'] <= 200, df['ct'] <= 400, df['ct'] <= 600, df['ct'] <= 800]
         choices = [df['pct_100'], df['pct_200'], df['pct_400'], df['pct_600'], df['pct_800']]
@@ -1808,38 +1865,41 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df['f_impact'] = impact_res.apply(lambda x: x[0]).round(2)
         d_fri = [item for sublist in impact_res.apply(lambda x: x[1]) for item in sublist]
 
-        df['p_chg'] = (df['raw_chg'] - df['f_impact']).round(2)
+        # 分點日資料無法嚴格抵扣集保週資料，保留週變動本體，將短線分點視為干擾警示。
+        df['p_chg'] = df['raw_chg'].round(2)
         df.loc[df.index[0], 'p_chg'] = 0.0  
 
         def build_diag(row):
             if row.name == df.index[0]: return "初始化 (基準建立)"
             if row['總張數'] <= 0: return "初始化/總股本為零"
             
-            adv = []
+            adv = [f"股性:{row.get('stock_profile', '未分類')}"]
             p_chg, f_impact = row['p_chg'], row['f_impact']
             lev = 100 / (100 - row['safe_dead_ratio']) if 0 <= row['safe_dead_ratio'] < 100 else 1
             
-            if row['總人數變率(%)'] > 2.0 and p_chg < 0: adv.append(f"散戶增{row['總人數變率(%)']}%，大戶實質倒貨{abs(p_chg)}%")
+            if row['總人數變率(%)'] > 2.0 and p_chg < 0: adv.append(f"散戶增{row['總人數變率(%)']}%，大戶週變動流出{abs(p_chg)}%")
             else:
-                if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
+                if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"站上月線且大戶週變動增持{round(p_chg*lev, 2)}%")
                 elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"跌破月線但主力吃貨{p_chg}%")
-                elif p_chg < -1.0: adv.append(f"大戶實質流出{abs(p_chg)}%")
-                if f_impact > 1.2: adv.append(f"虛胖買盤潛藏{f_impact}%倒貨危機")
+                elif p_chg < -1.0: adv.append(f"大戶週變動流出{abs(p_chg)}%")
+                if f_impact > 1.2: adv.append(f"短線分點干擾警示{f_impact}%，需交叉確認")
                 
             return " | ".join(adv) if adv else "盤整"
 
         df['專家雷達診斷'] = df.apply(build_diag, axis=1)
         
         df_math = pd.DataFrame({
-            "日期": df['日期'], "原始變動": df['raw_chg'], "當沖干擾": df['f_impact'], "純淨變動": df['p_chg']
+            "日期": df['日期'], "集保週變動": df['raw_chg'], "短線分點干擾警示": df['f_impact'], "判讀用變動": df['p_chg']
         }).iloc[1:]
 
         df['純淨大戶變動(%)'] = df['p_chg']
+        df['大戶週變動(%)'] = df['p_chg']
+        df['當沖干擾警示(%)'] = df['f_impact']
         df['當沖虛胖(%)'] = df['f_impact']
         df['原始大戶變動(%)'] = df['raw_chg']
         df['大戶原持股(%)'] = df['current_large_pct'].round(2)
         
-        res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
+        res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖干擾警示(%)', '大戶週變動(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
         res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
         
         return res_df, df_math, pd.DataFrame(d_fri)
@@ -1910,14 +1970,16 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     df_m['cl'] = dead_info.apply(lambda x: x[1])
 
     free_float_ratio = np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0)
-    float_1pct_lots = df_m['總張數'] * free_float_ratio * 0.01
-
-    raw_threshold = np.clip(float_1pct_lots, 100, 1000)
-
-    levels = np.array([100, 200, 400, 600, 800, 1000])
-    
-    diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
-    df_m['ct'] = levels[diffs.argmin(axis=1)]
+    threshold_info = df_m.apply(
+        lambda row: select_large_holder_level(
+            row.get('總張數', 0),
+            free_float_ratio.loc[row.name],
+            row.get('收盤價(元)', 0),
+        ),
+        axis=1,
+    )
+    df_m['ct'] = threshold_info.apply(lambda x: x[0])
+    df_m['stock_profile'] = threshold_info.apply(lambda x: x[1])
 
     conds = [df_m['ct'] <= 100, df_m['ct'] <= 200, df_m['ct'] <= 400, df_m['ct'] <= 600, df_m['ct'] <= 800]
     choices = [df_m['pct_100'], df_m['pct_200'], df_m['pct_400'], df_m['pct_600'], df_m['pct_800']]
@@ -1927,14 +1989,19 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     cv = np.maximum(0, (df_m['lp'] - df_m['safe_dead_ratio']) / (100.0 - df_m['safe_dead_ratio']))
     df_m['cd'] = np.where(mask_valid_dead, np.round(cv * 100, 2), "-")
 
-    st_conds = [df_m['lp'] > 80.0, df_m['lp'] > 70.0, (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0)]
-    st_choices = ["極度集中 (防無量倒貨)", "高度鎖碼", "波段甜區 (易吸量推升)"]
+    st_conds = [
+        (df_m['safe_dead_ratio'] <= 0),
+        df_m['lp'] > 80.0,
+        df_m['lp'] > 70.0,
+        (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0),
+    ]
+    st_choices = ["死籌碼缺資料，C-Value暫不判讀", "極度集中 (防無量倒貨)", "高度鎖碼", "波段甜區 (易吸量推升)"]
     df_m['st_val'] = np.select(st_conds, st_choices, default="籌碼渙散")
 
     out_df = pd.DataFrame({
         "日期": df_m['日期'],
         "收盤價(元)": df_m['收盤價(元)'].round(2),
-        "大戶精算門檻": "系統判定 (" + df_m['ct'].astype(int).astype(str) + "張)",
+        "大戶精算門檻": df_m['stock_profile'] + " (" + df_m['ct'].astype(int).astype(str) + "張)",
         "大戶原持股(%)": df_m['lp'].round(2),
         "董監死籌碼(%)": np.where(df_m['safe_dead_ratio'] > 0, 
                              df_m['safe_dead_ratio'].apply(lambda x: f"{x:.2f}%") + " (" + df_m['cl'] + ")", 
@@ -2348,7 +2415,7 @@ def process_day_trading(df):
     )
 
 
-def process_margin_and_lending(df_margin_raw, df_lending_raw):
+def process_margin_and_lending(df_margin_raw, df_lending_raw, df_price=None):
     if not is_valid(df_margin_raw):
         return pd.DataFrame()
 
@@ -2406,6 +2473,58 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
         ).round().astype(int)
         df_out["融券增減(張)"] = df_out["融券餘額(張)"] - previous
 
+    if "融資餘額(張)" in df_out.columns and "融券餘額(張)" in df_out.columns:
+        df_out["券資比(%)"] = np.where(
+            df_out["融資餘額(張)"] > 0,
+            (df_out["融券餘額(張)"] / df_out["融資餘額(張)"] * 100).round(2),
+            0.0,
+        )
+
+    if df_price is not None and is_valid(df_price, ["日期", "成交量(張)"]):
+        price_vol = df_price[["日期", "成交量(張)"]].drop_duplicates(subset=["日期"]).copy()
+        price_vol["成交量(張)"] = safe_to_num(price_vol["成交量(張)"])
+        vol_map = price_vol.set_index("日期")["成交量(張)"].to_dict()
+        df_out["成交量(張)"] = df_out["日期"].astype(str).map(vol_map).fillna(0)
+    else:
+        df_out["成交量(張)"] = 0
+
+    if "資券相抵(張)" in df_out.columns:
+        df_out["資券相抵佔量(%)"] = np.where(
+            df_out["成交量(張)"] > 0,
+            (df_out["資券相抵(張)"] / df_out["成交量(張)"] * 100).round(1),
+            0.0,
+        )
+
+    if "融資增減(張)" in df_out.columns:
+        df_out["融資增減佔量(%)"] = np.where(
+            df_out["成交量(張)"] > 0,
+            (df_out["融資增減(張)"] / df_out["成交量(張)"] * 100).round(1),
+            0.0,
+        )
+
+    def credit_diag(row):
+        notes = []
+        margin_change_ratio = float(row.get("融資增減佔量(%)", 0) or 0)
+        offset_ratio = float(row.get("資券相抵佔量(%)", 0) or 0)
+        short_margin_ratio = float(row.get("券資比(%)", 0) or 0)
+        margin_chg = float(row.get("融資增減(張)", 0) or 0)
+        short_chg = float(row.get("融券增減(張)", 0) or 0)
+
+        if short_margin_ratio >= 30:
+            notes.append("券資比高，軋空/強制回補風險")
+        if offset_ratio >= 50:
+            notes.append("資券相抵過熱，當沖洗盤味重")
+        if margin_change_ratio >= 15:
+            notes.append("融資追價過熱")
+        elif margin_change_ratio <= -15 and margin_chg < 0:
+            notes.append("融資快速減肥，觀察是否止跌")
+        if margin_chg > 0 and short_chg < 0 and margin_change_ratio > 5:
+            notes.append("多方信用升溫")
+
+        return " | ".join(notes) if notes else "信用結構中性"
+
+    df_out["信用風險診斷"] = df_out.apply(credit_diag, axis=1)
+
     if is_valid(df_lending_raw, ["date", "volume"]):
         lending = df_lending_raw[["date", "volume"]].copy()
         # FinMind TaiwanStockSecuritiesLending.volume 的單位已是張。
@@ -2442,8 +2561,12 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
         "融券賣出(張)",
         "融券餘額(張)",
         "融券增減(張)",
+        "券資比(%)",
         "資券相抵(張)",
+        "資券相抵佔量(%)",
+        "融資增減佔量(%)",
         "本日借券成交(張)",
+        "信用風險診斷",
     ]
     display_cols = [col for col in display_cols if col in df_out.columns]
     return (
@@ -3096,7 +3219,7 @@ def build_ai_diagnosis_report(
     sections.append(tracking + "</li><br>")
 
     tdcc = "<li><b>五、 一週集保籌碼雷達 (大戶存量與流量雙解碼)：</b><br>"
-    tdcc += f"當前純淨活大戶 C_Value 為 <span style='font-weight: bold;'>{c_val_text}</span>，最新單週純淨大戶變動為 <span style='color: {'#d32f2f' if radar_chg > 0 else '#2e7d32'}; font-weight: bold;'>{chg_text}</span>。<br>"
+    tdcc += f"當前活大戶 C_Value 為 <span style='font-weight: bold;'>{c_val_text}</span>，最新集保單週大戶變動為 <span style='color: {'#d32f2f' if radar_chg > 0 else '#2e7d32'}; font-weight: bold;'>{chg_text}</span>。<br>"
     if radar_chg > 0 and radar_c_val > 60:
         tdcc += "深度解析：大戶不僅<span style='color: #d32f2f; font-weight: bold;'>存量高(高度鎖碼)</span>，且本週<span style='color: #d32f2f; font-weight: bold;'>流量持續增持</span>，籌碼極度安定，有利波段上攻。"
     elif radar_chg < 0 and radar_c_val < 40:
@@ -3585,13 +3708,13 @@ if st.session_state.get('system_running', False):
             df_combined_radar = pd.merge(df_s_dyn, df_v27_clean, on=['日期'], how='inner')
             if is_valid(df_combined_radar):
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
-                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
+                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '大戶週變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖干擾警示(%)', '終極籌碼診斷']
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
         df_margin_raw = ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())
         df_lending_raw = ds_dict.get("TaiwanStockSecuritiesLending", pd.DataFrame())
         
-        df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw))
+        df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw, df_price))
         df_lending_detail = optimize_memory(process_securities_lending_detail(df_lending_raw))
         
         df_loan_col_raw = fetch_finmind_v50("TaiwanStockLoanCollateralBalance", dates[min(len(dates)-1, 30)], user_stock_id)
@@ -3675,7 +3798,11 @@ if st.session_state.get('system_running', False):
             except: pass
             
             try: 
-                radar_chg = float(re.sub(r'[+,%]', '', str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0))).strip())
+                radar_chg_raw = df_combined_display.iloc[0].get(
+                    '大戶週變動(%)',
+                    df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)
+                )
+                radar_chg = float(re.sub(r'[+,%]', '', str(radar_chg_raw)).strip())
                 if radar_chg > 0: dir_str = "增加"
                 elif radar_chg < 0: dir_str = "減少"
                 else: dir_str = "無變動"
