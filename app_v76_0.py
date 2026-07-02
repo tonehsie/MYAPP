@@ -383,6 +383,9 @@ _LEVEL_MAP = {
     11: "200-400張", 12: "400-600張", 13: "600-800張", 14: "800-1000張", 15: "1000張以上"
 }
 _LEVEL_CLEAN_CACHE = {}
+SHARES_PER_LOT = 1000
+TWD_PER_WAN = 10000
+LOTS_PER_YI_SHARES = 100000
 
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def fetch_github_manual(url):
@@ -507,6 +510,20 @@ def safe_to_num(series, fill_val=0):
         if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
         try: return float(s_str)
         except: return fill_val
+
+def shares_to_lots(value):
+    """FinMind 多數成交量欄位是股數；畫面統一顯示為張。"""
+    converted = safe_to_num(value) / SHARES_PER_LOT
+    if isinstance(converted, pd.Series):
+        return converted.round().astype(int)
+    return int(round(float(converted)))
+
+def amount_to_wan(value):
+    """台幣金額轉萬元，供鉅額交易等表格顯示。"""
+    converted = safe_to_num(value) / TWD_PER_WAN
+    if isinstance(converted, pd.Series):
+        return converted.round().astype(int)
+    return int(round(float(converted)))
 
 @st.cache_data(ttl=900, max_entries=256, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
@@ -1373,8 +1390,8 @@ def process_price(df):
         if col in df_out.columns: 
             df_out[col] = safe_to_num(df_out[col])
             
-    if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_Volume']) / 1000).round().astype(int)
-    elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_volume']) / 1000).round().astype(int)
+    if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = shares_to_lots(df_out['Trading_Volume'])
+    elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = shares_to_lots(df_out['Trading_volume'])
     else: df_out['成交量(張)'] = 0
     
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
@@ -2212,9 +2229,9 @@ def process_tdcc(df):
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     
     if 'HoldingShares' in df.columns:
-        df['unit'] = (safe_to_num(df['HoldingShares']) / 1000).round().astype(int)
+        df['unit'] = shares_to_lots(df['HoldingShares'])
     elif 'unit' in df.columns:
-        df['unit'] = (safe_to_num(df['unit']) / 1000).round().astype(int)
+        df['unit'] = shares_to_lots(df['unit'])
     else:
         df['unit'] = 0
 
@@ -2250,6 +2267,7 @@ def process_tdcc(df):
 def process_loan_collateral(df):
     if not is_valid(df): return pd.DataFrame()
     df_out = df.copy()
+    # FinMind 文件標示此資料為「仟股」，等同台股常用單位「張」，不可再除以 1,000。
     cols_map = {
         'date': '日期',
         'MarginCurrentDayBalance': '傳統融資餘額(張)',
@@ -2282,7 +2300,7 @@ def process_day_trading(df):
         vol_col = None
 
     if vol_col is not None:
-        df_out["當沖總張數"] = (safe_to_num(df_out[vol_col]) / 1000).round().astype(int)
+        df_out["當沖總張數"] = shares_to_lots(df_out[vol_col])
     else:
         df_out["當沖總張數"] = 0
 
@@ -2304,6 +2322,7 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw):
         return pd.DataFrame()
 
     df_m = df_margin_raw.copy()
+    # 融資融券表的買進、賣出、餘額欄位已是張數，維持原值。
     numeric_cols = [
         "MarginPurchaseBuy",
         "MarginPurchaseSell",
@@ -2484,9 +2503,9 @@ def process_block_trading(df_block_raw, rank_dates):
     if "成交價(元)" in df_b.columns:
         df_b["成交價(元)"] = safe_to_num(df_b["成交價(元)"], fill_val=np.nan)
     if "成交張數" in df_b.columns:
-        df_b["成交張數"] = (safe_to_num(df_b["成交張數"]) / 1000).round().astype(int)
+        df_b["成交張數"] = shares_to_lots(df_b["成交張數"])
     if "成交金額(萬元)" in df_b.columns:
-        df_b["成交金額(萬元)"] = (safe_to_num(df_b["成交金額(萬元)"]) / 10000).round().astype(int)
+        df_b["成交金額(萬元)"] = amount_to_wan(df_b["成交金額(萬元)"])
 
     display_cols = [c for c in ["日期", "交易類別", "成交價(元)", "成交張數", "成交金額(萬元)"] if c in df_b.columns]
     if not display_cols:
@@ -3240,7 +3259,7 @@ if st.session_state.get('system_running', False):
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
         current_total_shares = df_s_wide['總張數'].iloc[0] if is_valid(df_s_wide) else 0
-        capital_str = f"{current_total_shares / 100000:.2f} 億股" if current_total_shares > 0 else "計算中..."
+        capital_str = f"{current_total_shares / LOTS_PER_YI_SHARES:.2f} 億股" if current_total_shares > 0 else "計算中..."
         
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], parsed_dead_chip, dynamic_dict, s_val, chip_eng)
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無資料"
@@ -3329,7 +3348,7 @@ if st.session_state.get('system_running', False):
             df_cbas = pd.DataFrame()
         
         market_cap_str = "計算中..."
-        if is_valid(df_price) and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / 100000:,.2f} 億"
+        if is_valid(df_price) and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / LOTS_PER_YI_SHARES:,.2f} 億"
             
         company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張 ｜ 【分點來源】 {branch_source}"
         
@@ -3407,7 +3426,7 @@ if st.session_state.get('system_running', False):
                 df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
                 vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume'
                 if vol_col in df_dt_chart.columns:
-                    df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart[vol_col]) / 1000).round().astype(int)
+                    df_dt_chart['當沖總張數'] = shares_to_lots(df_dt_chart[vol_col])
                     df_plot = pd.merge(df_plot, df_dt_chart[['日期', '當沖總張數']], on='日期', how='left')
                 else:
                     df_plot['當沖總張數'] = 0
@@ -3624,12 +3643,6 @@ if st.session_state.get('system_running', False):
         # 動態計算自訂區間涵蓋的交易日 (用作排行榜基準)
         range_dates = [d for d in dates if start_date_str <= d <= end_date_str]
         
-        # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推60天) ▼▼▼
-        start_idx = 0
-        for i, d in enumerate(dates):
-            if d <= start_date_str:
-                start_idx = i
-                break
         # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推20天) ▼▼▼
         start_idx = 0
         for i, d in enumerate(dates):
@@ -3667,7 +3680,7 @@ if st.session_state.get('system_running', False):
             eff_amt_ui = 10_000_000
             eff_vol_ui = 50
 
-        eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
+        eff_amt_str = f"{int(eff_amt_ui/TWD_PER_WAN):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
         dynamic_noise_threshold = max(1, int(recent_20_vol * (heatmap_noise_pct / 100.0)))
         
