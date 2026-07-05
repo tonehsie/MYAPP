@@ -141,22 +141,17 @@ KLINE_CHART_TEMPLATE = """
         #chart-main { flex: 3.2; border-bottom: 2px solid #f0f3fa; position: relative; }
         #chart-vol { flex: 0.8; position: relative;}
         .legend { position: absolute; top: 4px; left: 8px; z-index: 10; font-size: 13px; pointer-events: none; background: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; color: #333;}
-        .pattern-label { position: absolute; right: 8px; top: 4px; z-index: 10; max-width: min(520px, 52vw); font-size: 12px; line-height: 1.45; pointer-events: none; background: rgba(255,255,255,0.82); color: #1f2937; padding: 6px 8px; border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; box-shadow: 0 1px 4px rgba(15,23,42,0.08);}
-        .pattern-label b { font-size: 13px; }
-        .pattern-label .muted { color: #6b7280; }
         
         /* 圖表區深色模式自動反轉 */
         @media (prefers-color-scheme: dark) {
             body { background: #1e1e1e; }
             #chart-main { border-bottom: 2px solid #444; }
             .legend { background: rgba(30,30,30,0.7); color: #e0e0e0; }
-            .pattern-label { background: rgba(30,30,30,0.82); color: #e5e7eb; border-color: rgba(255,255,255,0.12); }
-            .pattern-label .muted { color: #a1a1aa; }
         }
     </style>
 </head>
 <body>
-    <div id="chart-main"><div id="legend" class="legend"></div><div id="pattern-label" class="pattern-label" style="display:none;"></div></div>
+    <div id="chart-main"><div id="legend" class="legend"></div></div>
     <div id="chart-vol"></div>
     <script>
         const kData = KLINE_DATA;
@@ -237,37 +232,11 @@ KLINE_CHART_TEMPLATE = """
         const pat = PAT_DATA;
         const neck = NECK_DATA;
         const patColor = PAT_COLOR;
-        const patMarkers = PAT_MARKERS;
-        const patLevels = PAT_LEVELS;
-        const patDesc = PAT_DESC;
         if (pat && pat.length > 0) {
             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(pat);
         }
         if (neck && neck.length > 0) {
             mainChart.addLineSeries({ color: patColor, lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false }).setData(neck);
-        }
-        if (patMarkers && patMarkers.length > 0 && candleSeries.setMarkers) {
-            candleSeries.setMarkers(patMarkers);
-        }
-        if (patLevels && patLevels.length > 0) {
-            patLevels.forEach(level => {
-                if (typeof level.price === 'number') {
-                    candleSeries.createPriceLine({
-                        price: level.price,
-                        color: level.color || patColor,
-                        lineWidth: 1,
-                        lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: true,
-                        title: level.title || ''
-                    });
-                }
-            });
-        }
-        if (patDesc && patDesc.name) {
-            const patternLabel = document.getElementById('pattern-label');
-            const conf = Number.isFinite(Number(patDesc.confidence)) ? `${Math.round(Number(patDesc.confidence))}%` : '-';
-            patternLabel.innerHTML = `<b style="color:${patColor}">${patDesc.name}</b> <span class="muted">信心 ${conf}</span><br>${patDesc.desc || ''}<br><span class="muted">${patDesc.reason || ''}</span>`;
-            patternLabel.style.display = 'block';
         }
 
         const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' } });
@@ -415,8 +384,9 @@ _LEVEL_MAP = {
 }
 _LEVEL_CLEAN_CACHE = {}
 SHARES_PER_LOT = 1000
-TWD_PER_WAN = 10000
-LOTS_PER_YI_SHARES = 100000
+TWD_PER_YI = 100_000_000
+TAIWAN_STOCK_PAR_VALUE = 10
+LOTS_PER_YI_SHARES = TWD_PER_YI // SHARES_PER_LOT
 
 @st.cache_data(ttl=86400, max_entries=5, show_spinner=False)
 def fetch_github_manual(url):
@@ -488,8 +458,7 @@ pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "連續：對稱三角形", 
     "連續：上升三角形", "連續：下降三角形",
     "連續：上升楔形", "連續：下降楔形",
-    "連續：矩形 (箱型整理)",
-    "蔡森：假突破/破底翻"
+    "連續：矩形 (箱型整理)"
 ])
 
 lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 20, 5)
@@ -542,20 +511,6 @@ def safe_to_num(series, fill_val=0):
         if not s_str or s_str.lower() in ['nan', 'none', '-', 'y', 'n', 'x', '<na>', 'na', 'null']: return fill_val
         try: return float(s_str)
         except: return fill_val
-
-def shares_to_lots(value):
-    """FinMind 多數成交量欄位是股數；畫面統一顯示為張。"""
-    converted = safe_to_num(value) / SHARES_PER_LOT
-    if isinstance(converted, pd.Series):
-        return converted.round().astype(int)
-    return int(round(float(converted)))
-
-def amount_to_wan(value):
-    """台幣金額轉萬元，供鉅額交易等表格顯示。"""
-    converted = safe_to_num(value) / TWD_PER_WAN
-    if isinstance(converted, pd.Series):
-        return converted.round().astype(int)
-    return int(round(float(converted)))
 
 @st.cache_data(ttl=900, max_entries=256, show_spinner=False)
 def cached_finmind_api_call(url, params_tuple):
@@ -1363,45 +1318,6 @@ def calculate_dynamic_radar_depth(df_b_raw, dates_list, total_lots, df_price):
     final_n = max(5, min(final_n, 50))
     return final_n, f"{cap_desc}{turn_desc}"
 
-
-def select_large_holder_level(total_lots, free_float_ratio, price):
-    try:
-        total_lots = float(total_lots)
-        free_float_ratio = float(free_float_ratio)
-        price = float(price)
-    except (TypeError, ValueError):
-        return 100, "資料不足/最細100張"
-
-    if total_lots <= 0:
-        return 100, "資料不足/最細100張"
-
-    raw_target = total_lots * np.clip(free_float_ratio, 0.05, 1.0) * 0.01
-
-    if total_lots < 500000:
-        min_level, max_level, profile = 100, 400, "超小股本控盤型"
-    elif total_lots < 2000000:
-        min_level, max_level, profile = 100, 600, "小股本主力型"
-    elif total_lots < 10000000:
-        min_level, max_level, profile = 200, 1000, "中型籌碼股"
-    else:
-        min_level, max_level, profile = 800, 1000, "大型權值法人股"
-
-    if price > 0 and price < 30:
-        max_level = min(max_level, 400)
-        profile += "/低價"
-    elif price >= 300 and total_lots < 3000000:
-        max_level = min(max_level, 400)
-        profile += "/高價小股本"
-
-    levels = np.array([100, 200, 400, 600, 800, 1000])
-    usable_levels = levels[(levels >= min_level) & (levels <= max_level)]
-    if len(usable_levels) == 0:
-        usable_levels = levels
-    target = np.clip(raw_target, usable_levels.min(), usable_levels.max())
-    selected = int(usable_levels[np.abs(usable_levels - target).argmin()])
-    return selected, profile
-
-
 def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, dead_chip_ratio, dynamic_n):
     if not is_valid(df_b_raw): return 0.0, 0, 0, 0.0, []
     
@@ -1416,9 +1332,7 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
         buy_vol=('buy', 'sum'),
         sell_vol=('sell', 'sum'),
         buy_amt=('valid_buy_amt', 'sum'),
-        sell_amt=('valid_sell_amt', 'sum'),
-        valid_buy_vol=('valid_buy', 'sum'),
-        valid_sell_vol=('valid_sell', 'sum')
+        valid_buy_vol=('valid_buy', 'sum')
     )
     
     broker_stats = broker_stats.assign(net_vol = broker_stats['buy_vol'] - broker_stats['sell_vol'])
@@ -1427,25 +1341,12 @@ def calculate_pure_defense_line(df_b_raw, tags, is_filter_active, total_lots, de
     if top_buyers.empty: return 0.0, 0, 0, 0.0, []
     
     core_branch_names = top_buyers.index.tolist()
-
-    top_buyers = top_buyers.assign(
-        net_amt=top_buyers['buy_amt'] - top_buyers['sell_amt'],
-        avg_buy_price=(top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0),
-    )
-    top_buyers['net_cost'] = np.where(
-        (top_buyers['net_vol'] > 0) & (top_buyers['net_amt'] > 0),
-        top_buyers['net_amt'] / top_buyers['net_vol'],
-        np.nan,
-    )
-    valid_top_buyers = top_buyers[top_buyers['net_cost'].notna() & (top_buyers['net_cost'] > 0)]
+    
+    top_buyers = top_buyers.assign(avg_buy_price = (top_buyers['buy_amt'] / top_buyers['valid_buy_vol'].replace(0, np.nan)).fillna(0))
+    valid_top_buyers = top_buyers[top_buyers['avg_buy_price'] > 0]
     total_net_vol = valid_top_buyers['net_vol'].sum()
-
-    if total_net_vol > 0:
-        vwap = round((valid_top_buyers['net_cost'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2)
-    else:
-        fallback = top_buyers[top_buyers['avg_buy_price'] > 0]
-        fallback_net = fallback['net_vol'].sum()
-        vwap = round((fallback['avg_buy_price'] * fallback['net_vol']).sum() / fallback_net, 2) if fallback_net > 0 else 0.0
+    
+    vwap = round((valid_top_buyers['avg_buy_price'] * valid_top_buyers['net_vol']).sum() / total_net_vol, 2) if total_net_vol > 0 else 0.0
     
     full_net_accum = int(top_buyers['net_vol'].sum() / 1000)
     active_buyers = len(top_buyers)
@@ -1476,8 +1377,8 @@ def process_price(df):
         if col in df_out.columns: 
             df_out[col] = safe_to_num(df_out[col])
             
-    if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = shares_to_lots(df_out['Trading_Volume'])
-    elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = shares_to_lots(df_out['Trading_volume'])
+    if 'Trading_Volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_Volume']) / 1000).round().astype(int)
+    elif 'Trading_volume' in df_out.columns: df_out['成交量(張)'] = (safe_to_num(df_out['Trading_volume']) / 1000).round().astype(int)
     else: df_out['成交量(張)'] = 0
     
     df_out = df_out.loc[:, ~df_out.columns.duplicated()]
@@ -1824,16 +1725,13 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df['safe_dead_ratio'] = df['日期'].apply(lambda d: max(0.0, min(99.9, get_dead_chip_info(d, dead_chip_input, dynamic_dict, static_val, "")[0])))
 
         free_float_ratio = np.clip((100 - df['safe_dead_ratio']) / 100, 0.05, 1.0)
-        threshold_info = df.apply(
-            lambda row: select_large_holder_level(
-                row.get('總張數', 0),
-                free_float_ratio.loc[row.name],
-                row.get('收盤價(元)', 0),
-            ),
-            axis=1,
-        )
-        df['ct'] = threshold_info.apply(lambda x: x[0])
-        df['stock_profile'] = threshold_info.apply(lambda x: x[1])
+        float_1pct_lots = df['總張數'] * free_float_ratio * 0.01
+
+        raw_threshold = np.clip(float_1pct_lots, 100, 1000)
+        levels = np.array([100, 200, 400, 600, 800, 1000])
+        
+        diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
+        df['ct'] = levels[diffs.argmin(axis=1)]
 
         conds = [df['ct'] <= 100, df['ct'] <= 200, df['ct'] <= 400, df['ct'] <= 600, df['ct'] <= 800]
         choices = [df['pct_100'], df['pct_200'], df['pct_400'], df['pct_600'], df['pct_800']]
@@ -1866,41 +1764,38 @@ def process_v27_ultimate_radar(df_wide, dead_chip_input, dynamic_dict, static_va
         df['f_impact'] = impact_res.apply(lambda x: x[0]).round(2)
         d_fri = [item for sublist in impact_res.apply(lambda x: x[1]) for item in sublist]
 
-        # 分點日資料無法嚴格抵扣集保週資料，保留週變動本體，將短線分點視為干擾警示。
-        df['p_chg'] = df['raw_chg'].round(2)
+        df['p_chg'] = (df['raw_chg'] - df['f_impact']).round(2)
         df.loc[df.index[0], 'p_chg'] = 0.0  
 
         def build_diag(row):
             if row.name == df.index[0]: return "初始化 (基準建立)"
             if row['總張數'] <= 0: return "初始化/總股本為零"
             
-            adv = [f"股性:{row.get('stock_profile', '未分類')}"]
+            adv = []
             p_chg, f_impact = row['p_chg'], row['f_impact']
             lev = 100 / (100 - row['safe_dead_ratio']) if 0 <= row['safe_dead_ratio'] < 100 else 1
             
-            if row['總人數變率(%)'] > 2.0 and p_chg < 0: adv.append(f"散戶增{row['總人數變率(%)']}%，大戶週變動流出{abs(p_chg)}%")
+            if row['總人數變率(%)'] > 2.0 and p_chg < 0: adv.append(f"散戶增{row['總人數變率(%)']}%，大戶實質倒貨{abs(p_chg)}%")
             else:
-                if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"站上月線且大戶週變動增持{round(p_chg*lev, 2)}%")
+                if p_chg * lev > 2.5 and row['收盤價(元)'] > row['ma20']: adv.append(f"站上月線且大戶純淨買超{round(p_chg*lev, 2)}%")
                 elif p_chg > 0.4 and row['收盤價(元)'] < row['ma20']: adv.append(f"跌破月線但主力吃貨{p_chg}%")
-                elif p_chg < -1.0: adv.append(f"大戶週變動流出{abs(p_chg)}%")
-                if f_impact > 1.2: adv.append(f"短線分點干擾警示{f_impact}%，需交叉確認")
+                elif p_chg < -1.0: adv.append(f"大戶實質流出{abs(p_chg)}%")
+                if f_impact > 1.2: adv.append(f"虛胖買盤潛藏{f_impact}%倒貨危機")
                 
             return " | ".join(adv) if adv else "盤整"
 
         df['專家雷達診斷'] = df.apply(build_diag, axis=1)
         
         df_math = pd.DataFrame({
-            "日期": df['日期'], "集保週變動": df['raw_chg'], "短線分點干擾警示": df['f_impact'], "判讀用變動": df['p_chg']
+            "日期": df['日期'], "原始變動": df['raw_chg'], "當沖干擾": df['f_impact'], "純淨變動": df['p_chg']
         }).iloc[1:]
 
         df['純淨大戶變動(%)'] = df['p_chg']
-        df['大戶週變動(%)'] = df['p_chg']
-        df['當沖干擾警示(%)'] = df['f_impact']
         df['當沖虛胖(%)'] = df['f_impact']
         df['原始大戶變動(%)'] = df['raw_chg']
         df['大戶原持股(%)'] = df['current_large_pct'].round(2)
         
-        res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖干擾警示(%)', '大戶週變動(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
+        res_df = df[['日期', '收盤價(元)', '大戶原持股(%)', '總人數變率(%)', '原始大戶變動(%)', '當沖虛胖(%)', '純淨大戶變動(%)', '專家雷達診斷']].sort_values('日期', ascending=False)
         res_df = res_df[~res_df['專家雷達診斷'].str.contains('初始化', na=False)]
         
         return res_df, df_math, pd.DataFrame(d_fri)
@@ -1971,16 +1866,14 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     df_m['cl'] = dead_info.apply(lambda x: x[1])
 
     free_float_ratio = np.clip((100 - df_m['safe_dead_ratio']) / 100, 0.05, 1.0)
-    threshold_info = df_m.apply(
-        lambda row: select_large_holder_level(
-            row.get('總張數', 0),
-            free_float_ratio.loc[row.name],
-            row.get('收盤價(元)', 0),
-        ),
-        axis=1,
-    )
-    df_m['ct'] = threshold_info.apply(lambda x: x[0])
-    df_m['stock_profile'] = threshold_info.apply(lambda x: x[1])
+    float_1pct_lots = df_m['總張數'] * free_float_ratio * 0.01
+
+    raw_threshold = np.clip(float_1pct_lots, 100, 1000)
+
+    levels = np.array([100, 200, 400, 600, 800, 1000])
+    
+    diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
+    df_m['ct'] = levels[diffs.argmin(axis=1)]
 
     conds = [df_m['ct'] <= 100, df_m['ct'] <= 200, df_m['ct'] <= 400, df_m['ct'] <= 600, df_m['ct'] <= 800]
     choices = [df_m['pct_100'], df_m['pct_200'], df_m['pct_400'], df_m['pct_600'], df_m['pct_800']]
@@ -1990,19 +1883,14 @@ def process_tdcc_dynamic_v2(df_share_wide, df_price, dead_chip_input, dynamic_di
     cv = np.maximum(0, (df_m['lp'] - df_m['safe_dead_ratio']) / (100.0 - df_m['safe_dead_ratio']))
     df_m['cd'] = np.where(mask_valid_dead, np.round(cv * 100, 2), "-")
 
-    st_conds = [
-        (df_m['safe_dead_ratio'] <= 0),
-        df_m['lp'] > 80.0,
-        df_m['lp'] > 70.0,
-        (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0),
-    ]
-    st_choices = ["死籌碼缺資料，C-Value暫不判讀", "極度集中 (防無量倒貨)", "高度鎖碼", "波段甜區 (易吸量推升)"]
+    st_conds = [df_m['lp'] > 80.0, df_m['lp'] > 70.0, (df_m['lp'] >= 40.0) & (df_m['lp'] <= 70.0)]
+    st_choices = ["極度集中 (防無量倒貨)", "高度鎖碼", "波段甜區 (易吸量推升)"]
     df_m['st_val'] = np.select(st_conds, st_choices, default="籌碼渙散")
 
     out_df = pd.DataFrame({
         "日期": df_m['日期'],
         "收盤價(元)": df_m['收盤價(元)'].round(2),
-        "大戶精算門檻": df_m['stock_profile'] + " (" + df_m['ct'].astype(int).astype(str) + "張)",
+        "大戶精算門檻": "系統判定 (" + df_m['ct'].astype(int).astype(str) + "張)",
         "大戶原持股(%)": df_m['lp'].round(2),
         "董監死籌碼(%)": np.where(df_m['safe_dead_ratio'] > 0, 
                              df_m['safe_dead_ratio'].apply(lambda x: f"{x:.2f}%") + " (" + df_m['cl'] + ")", 
@@ -2328,9 +2216,9 @@ def process_tdcc(df):
     df['LevelClean'] = df['HoldingSharesLevel'].apply(clean_level_by_math)
     
     if 'HoldingShares' in df.columns:
-        df['unit'] = shares_to_lots(df['HoldingShares'])
+        df['unit'] = (safe_to_num(df['HoldingShares']) / 1000).round().astype(int)
     elif 'unit' in df.columns:
-        df['unit'] = shares_to_lots(df['unit'])
+        df['unit'] = (safe_to_num(df['unit']) / 1000).round().astype(int)
     else:
         df['unit'] = 0
 
@@ -2366,7 +2254,6 @@ def process_tdcc(df):
 def process_loan_collateral(df):
     if not is_valid(df): return pd.DataFrame()
     df_out = df.copy()
-    # FinMind 文件標示此資料為「仟股」，等同台股常用單位「張」，不可再除以 1,000。
     cols_map = {
         'date': '日期',
         'MarginCurrentDayBalance': '傳統融資餘額(張)',
@@ -2399,7 +2286,7 @@ def process_day_trading(df):
         vol_col = None
 
     if vol_col is not None:
-        df_out["當沖總張數"] = shares_to_lots(df_out[vol_col])
+        df_out["當沖總張數"] = (safe_to_num(df_out[vol_col]) / 1000).round().astype(int)
     else:
         df_out["當沖總張數"] = 0
 
@@ -2416,12 +2303,11 @@ def process_day_trading(df):
     )
 
 
-def process_margin_and_lending(df_margin_raw, df_lending_raw, df_price=None):
+def process_margin_and_lending(df_margin_raw, df_lending_raw):
     if not is_valid(df_margin_raw):
         return pd.DataFrame()
 
     df_m = df_margin_raw.copy()
-    # 融資融券表的買進、賣出、餘額欄位已是張數，維持原值。
     numeric_cols = [
         "MarginPurchaseBuy",
         "MarginPurchaseSell",
@@ -2474,58 +2360,6 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw, df_price=None):
         ).round().astype(int)
         df_out["融券增減(張)"] = df_out["融券餘額(張)"] - previous
 
-    if "融資餘額(張)" in df_out.columns and "融券餘額(張)" in df_out.columns:
-        df_out["券資比(%)"] = np.where(
-            df_out["融資餘額(張)"] > 0,
-            (df_out["融券餘額(張)"] / df_out["融資餘額(張)"] * 100).round(2),
-            0.0,
-        )
-
-    if df_price is not None and is_valid(df_price, ["日期", "成交量(張)"]):
-        price_vol = df_price[["日期", "成交量(張)"]].drop_duplicates(subset=["日期"]).copy()
-        price_vol["成交量(張)"] = safe_to_num(price_vol["成交量(張)"])
-        vol_map = price_vol.set_index("日期")["成交量(張)"].to_dict()
-        df_out["成交量(張)"] = df_out["日期"].astype(str).map(vol_map).fillna(0)
-    else:
-        df_out["成交量(張)"] = 0
-
-    if "資券相抵(張)" in df_out.columns:
-        df_out["資券相抵佔量(%)"] = np.where(
-            df_out["成交量(張)"] > 0,
-            (df_out["資券相抵(張)"] / df_out["成交量(張)"] * 100).round(1),
-            0.0,
-        )
-
-    if "融資增減(張)" in df_out.columns:
-        df_out["融資增減佔量(%)"] = np.where(
-            df_out["成交量(張)"] > 0,
-            (df_out["融資增減(張)"] / df_out["成交量(張)"] * 100).round(1),
-            0.0,
-        )
-
-    def credit_diag(row):
-        notes = []
-        margin_change_ratio = float(row.get("融資增減佔量(%)", 0) or 0)
-        offset_ratio = float(row.get("資券相抵佔量(%)", 0) or 0)
-        short_margin_ratio = float(row.get("券資比(%)", 0) or 0)
-        margin_chg = float(row.get("融資增減(張)", 0) or 0)
-        short_chg = float(row.get("融券增減(張)", 0) or 0)
-
-        if short_margin_ratio >= 30:
-            notes.append("券資比高，軋空/強制回補風險")
-        if offset_ratio >= 50:
-            notes.append("資券相抵過熱，當沖洗盤味重")
-        if margin_change_ratio >= 15:
-            notes.append("融資追價過熱")
-        elif margin_change_ratio <= -15 and margin_chg < 0:
-            notes.append("融資快速減肥，觀察是否止跌")
-        if margin_chg > 0 and short_chg < 0 and margin_change_ratio > 5:
-            notes.append("多方信用升溫")
-
-        return " | ".join(notes) if notes else "信用結構中性"
-
-    df_out["信用風險診斷"] = df_out.apply(credit_diag, axis=1)
-
     if is_valid(df_lending_raw, ["date", "volume"]):
         lending = df_lending_raw[["date", "volume"]].copy()
         # FinMind TaiwanStockSecuritiesLending.volume 的單位已是張。
@@ -2562,12 +2396,8 @@ def process_margin_and_lending(df_margin_raw, df_lending_raw, df_price=None):
         "融券賣出(張)",
         "融券餘額(張)",
         "融券增減(張)",
-        "券資比(%)",
         "資券相抵(張)",
-        "資券相抵佔量(%)",
-        "融資增減佔量(%)",
         "本日借券成交(張)",
-        "信用風險診斷",
     ]
     display_cols = [col for col in display_cols if col in df_out.columns]
     return (
@@ -2658,9 +2488,9 @@ def process_block_trading(df_block_raw, rank_dates):
     if "成交價(元)" in df_b.columns:
         df_b["成交價(元)"] = safe_to_num(df_b["成交價(元)"], fill_val=np.nan)
     if "成交張數" in df_b.columns:
-        df_b["成交張數"] = shares_to_lots(df_b["成交張數"])
+        df_b["成交張數"] = (safe_to_num(df_b["成交張數"]) / 1000).round().astype(int)
     if "成交金額(萬元)" in df_b.columns:
-        df_b["成交金額(萬元)"] = amount_to_wan(df_b["成交金額(萬元)"])
+        df_b["成交金額(萬元)"] = (safe_to_num(df_b["成交金額(萬元)"]) / 10000).round().astype(int)
 
     display_cols = [c for c in ["日期", "交易類別", "成交價(元)", "成交張數", "成交金額(萬元)"] if c in df_b.columns]
     if not display_cols:
@@ -2841,670 +2671,166 @@ def process_linear_regression(df_price, lr_days):
 
 def process_geometric_patterns(df_price, kline_days, order, mode, current_price):
     try:
-        if not is_valid(df_price, ['日期', '最高價(元)', '最低價(元)', '收盤價(元)'], max(12, order * 3)):
-            return {}
+        if not is_valid(df_price, min_len=order * 2): return {}
+        df_source = df_price.head(kline_days).copy()
+        if '日期' in df_source.columns:
+            date_series = pd.to_datetime(df_source['日期'], errors='coerce')
+            latest_date = date_series.max()
+            if pd.notna(latest_date):
+                cutoff_date = latest_date - pd.DateOffset(months=6)
+                df_source = df_source[date_series >= cutoff_date]
 
-        df = df_price.head(kline_days).sort_values('日期', ascending=True).reset_index(drop=True)
-        for col in ['最高價(元)', '最低價(元)', '收盤價(元)']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.dropna(subset=['日期', '最高價(元)', '最低價(元)', '收盤價(元)']).reset_index(drop=True)
-        if len(df) < max(12, order * 3):
+        df = df_source.sort_values('日期', ascending=True).reset_index(drop=True)
+        if len(df) < order * 2:
             return {}
+        
+        lows_vals = df['最低價(元)'].values
+        highs_vals = df['最高價(元)'].values
+        dates_vals = df['日期'].values
+        
+        highs, lows = [], []
+        for i in range(order, len(df) - order):
+            if lows_vals[i] == np.min(lows_vals[i-order:i+order+1]):
+                lows.append((dates_vals[i], float(lows_vals[i]), i))
+            if highs_vals[i] == np.max(highs_vals[i-order:i+order+1]):
+                highs.append((dates_vals[i], float(highs_vals[i]), i))
+                
+        if len(lows) < 2 or len(highs) < 2: return {}
 
-        order = max(2, min(int(order), max(2, len(df) // 8)))
-        dates_vals = df['日期'].astype(str).values
-        highs_vals = df['最高價(元)'].to_numpy(dtype=float)
-        lows_vals = df['最低價(元)'].to_numpy(dtype=float)
-        closes_vals = df['收盤價(元)'].to_numpy(dtype=float)
         last_date = dates_vals[-1]
-        latest_close = float(current_price) if current_price and current_price > 0 else float(closes_vals[-1])
-        avg_close = max(float(np.nanmean(closes_vals[-20:])), 1.0)
-        tol = max(0.025, min(0.07, float(np.nanstd(closes_vals[-60:]) / avg_close) if len(df) >= 20 else 0.035))
-        min_pattern_height = max(0.04, tol * 1.2)
+        tol = 0.03
         is_auto = "Auto" in mode
-        candidates = []
+        
+        if "三重底" in mode or is_auto:
+            if len(lows) >= 3:
+                l1, l2, l3 = lows[-3], lows[-2], lows[-1]
+                if l1[1] > 0 and l2[1] > 0 and abs(l1[1]-l2[1])/l1[1] < tol and abs(l2[1]-l3[1])/l2[1] < tol:
+                    b_h = [h for h in highs if l1[2] < h[2] < l3[2]]
+                    if b_h:
+                        h_max = max(b_h, key=lambda x: x[1])
+                        status = "已突破頸線" if current_price > h_max[1] else "成型中"
+                        return {
+                            'name': '三重底', 'shape_x': [l1[0], b_h[0][0], l2[0], b_h[-1][0], l3[0]], 'shape_y': [l1[1], b_h[0][1], l2[1], b_h[-1][1], l3[1]],
+                            'neck_x': [l1[0], last_date], 'neck_y': [h_max[1], h_max[1]], 'color': '#9c27b0', 'desc': f"三重底 ({status})", 'signal': 'bullish'
+                        }
+        
+        if "三重頂" in mode or is_auto:
+            if len(highs) >= 3:
+                h1, h2, h3 = highs[-3], highs[-2], highs[-1]
+                if h1[1] > 0 and h2[1] > 0 and abs(h1[1]-h2[1])/h1[1] < tol and abs(h2[1]-h3[1])/h2[1] < tol:
+                    b_l = [l for l in lows if h1[2] < l[2] < h3[2]]
+                    if b_l:
+                        l_min = min(b_l, key=lambda x: x[1])
+                        status = "已跌破頸線" if current_price < l_min[1] else "成型中"
+                        return {
+                            'name': '三重頂', 'shape_x': [h1[0], b_l[0][0], h2[0], b_l[-1][0], h3[0]], 'shape_y': [h1[1], b_l[0][1], h2[1], b_l[-1][1], h3[1]],
+                            'neck_x': [h1[0], last_date], 'neck_y': [l_min[1], l_min[1]], 'color': '#d32f2f', 'desc': f"三重頂 ({status})", 'signal': 'bearish'
+                        }
 
-        def pivot_points(values, kind):
-            raw = []
-            for i in range(order, len(values) - order):
-                window = values[i - order:i + order + 1]
-                if kind == "H" and values[i] == np.nanmax(window):
-                    raw.append((dates_vals[i], float(values[i]), i, "H"))
-                if kind == "L" and values[i] == np.nanmin(window):
-                    raw.append((dates_vals[i], float(values[i]), i, "L"))
-            filtered = []
-            min_gap = max(2, order // 2)
-            for pt in raw:
-                if filtered and pt[2] - filtered[-1][2] < min_gap:
-                    if (kind == "H" and pt[1] > filtered[-1][1]) or (kind == "L" and pt[1] < filtered[-1][1]):
-                        filtered[-1] = pt
-                else:
-                    filtered.append(pt)
-            return filtered
+        if "頭肩底" in mode or is_auto:
+            if len(lows) >= 3:
+                l1, l2, l3 = lows[-3], lows[-2], lows[-1]
+                if l1[1] > 0 and l2[1] < l1[1] and l2[1] < l3[1] and abs(l1[1]-l3[1])/l1[1] < 0.05: 
+                    b_h1 = [h for h in highs if l1[2] < h[2] < l2[2]]
+                    b_h2 = [h for h in highs if l2[2] < h[2] < l3[2]]
+                    if b_h1 and b_h2:
+                        h1, h2 = max(b_h1, key=lambda x: x[1]), max(b_h2, key=lambda x: x[1])
+                        status = "已突破頸線" if current_price > max(h1[1], h2[1]) else "打右肩中"
+                        return {
+                            'name': '頭肩底', 'shape_x': [l1[0], h1[0], l2[0], h2[0], l3[0]], 'shape_y': [l1[1], h1[1], l2[1], h2[1], l3[1]],
+                            'neck_x': [h1[0], last_date], 'neck_y': [h1[1], h2[1]], 'color': '#e91e63', 'desc': f"頭肩底 ({status})", 'signal': 'bullish'
+                        }
+                        
+        if "頭肩頂" in mode or is_auto:
+            if len(highs) >= 3:
+                h1, h2, h3 = highs[-3], highs[-2], highs[-1]
+                if h1[1] > 0 and h2[1] > h1[1] and h2[1] > h3[1] and abs(h1[1]-h3[1])/h1[1] < 0.05: 
+                    b_l1 = [l for l in lows if h1[2] < l[2] < h2[2]]
+                    b_l2 = [l for l in lows if h2[2] < l[2] < h3[2]]
+                    if b_l1 and b_l2:
+                        l1, l2 = min(b_l1, key=lambda x: x[1]), min(b_l2, key=lambda x: x[1])
+                        status = "已跌破頸線" if current_price < min(l1[1], l2[1]) else "做右肩中"
+                        return {
+                            'name': '頭肩頂', 'shape_x': [h1[0], l1[0], h2[0], l2[0], h3[0]], 'shape_y': [h1[1], l1[1], h2[1], l2[1], h3[1]],
+                            'neck_x': [l1[0], last_date], 'neck_y': [l1[1], l2[1]], 'color': '#d32f2f', 'desc': f"頭肩頂 ({status})", 'signal': 'bearish'
+                        }
 
-        highs = pivot_points(highs_vals, "H")
-        lows = pivot_points(lows_vals, "L")
+        if "W底" in mode or is_auto:
+            if len(lows) >= 2:
+                l1, l2 = lows[-2], lows[-1]
+                between_highs = [h for h in highs if l1[2] < h[2] < l2[2]]
+                if between_highs and l1[1] > 0:
+                    h1 = max(between_highs, key=lambda x: x[1])
+                    diff = abs(l1[1] - l2[1]) / l1[1]
+                    if diff <= tol or "W底" in mode:
+                        status = "已突破頸線" if current_price > h1[1] else "成型中"
+                        desc = f"標準 W底 ({status})" if diff <= tol else f"強制標示 W底 ({status})"
+                        return {
+                            'name': 'W底', 'shape_x': [l1[0], h1[0], l2[0]], 'shape_y': [l1[1], h1[1], l2[1]],
+                            'neck_x': [l1[0], last_date], 'neck_y': [h1[1], h1[1]], 'color': '#9c27b0', 'desc': desc, 'signal': 'bullish'
+                        }
 
-        def pct_diff(a, b):
-            base = max(abs(a), abs(b), 1e-9)
-            return abs(a - b) / base
+        if "M頭" in mode or is_auto:
+            if len(highs) >= 2:
+                h1, h2 = highs[-2], highs[-1]
+                between_lows = [l for l in lows if h1[2] < l[2] < h2[2]]
+                if between_lows and h1[1] > 0:
+                    l1 = min(between_lows, key=lambda x: x[1])
+                    diff = abs(h1[1] - h2[1]) / h1[1]
+                    if diff <= tol or "M頭" in mode:
+                        status = "已跌破頸線" if current_price < l1[1] else "成型中"
+                        desc = f"標準 M頭 ({status})" if diff <= tol else f"強制標示 M頭 ({status})"
+                        return {
+                            'name': 'M頭', 'shape_x': [h1[0], l1[0], h2[0]], 'shape_y': [h1[1], l1[1], h2[1]],
+                            'neck_x': [h1[0], last_date], 'neck_y': [l1[1], l1[1]], 'color': '#d32f2f', 'desc': desc, 'signal': 'bearish'
+                        }
 
-        def status_break(signal, level):
-            if signal == "bullish":
-                return "已突破頸線" if latest_close > level else "成型中，等突破"
-            if signal == "bearish":
-                return "已跌破頸線" if latest_close < level else "成型中，等跌破"
-            return "整理中"
-
-        def marker(pt, text, color, position):
-            return {
-                "time": str(pt[0]),
-                "position": position,
-                "color": color,
-                "shape": "arrowUp" if position == "belowBar" else "arrowDown",
-                "text": text,
-            }
-
-        def tsai_target(signal, neckline, extreme):
-            amplitude = abs(float(neckline) - float(extreme))
-            if amplitude <= 0:
-                return None, 0.0
-            target = float(neckline) + amplitude if signal == "bullish" else float(neckline) - amplitude
-            return round(target, 2), round(amplitude, 2)
-
-        def tsai_levels(title, signal, neckline, extreme, color):
-            target, amplitude = tsai_target(signal, neckline, extreme)
-            levels = [{"title": f"{title}頸線", "price": round(float(neckline), 2), "color": color}]
-            if target is not None:
-                levels.append({"title": f"{title}滿足價", "price": target, "color": color})
-            return levels, target, amplitude
-
-        def tsai_text(signal, neckline, extreme):
-            target, amplitude = tsai_target(signal, neckline, extreme)
-            if target is None:
-                return ""
-            direction = "漲幅" if signal == "bullish" else "跌幅"
-            return f"蔡森量幅：頸線 {float(neckline):.2f}，起算點 {float(extreme):.2f}，{direction} {amplitude:.2f}，滿足價 {target:.2f}。"
-
-        def add_candidate(name, shape, neck, color, signal, desc, score, reason, levels=None, markers=None):
-            if not shape or not neck:
-                return
-            candidates.append({
-                "name": name,
-                "shape_x": [p[0] for p in shape],
-                "shape_y": [round(float(p[1]), 2) for p in shape],
-                "neck_x": [p[0] for p in neck],
-                "neck_y": [round(float(p[1]), 2) for p in neck],
-                "color": color,
-                "desc": desc,
-                "signal": signal,
-                "confidence": int(max(1, min(99, score))),
-                "reason": reason,
-                "levels": levels or [],
-                "markers": markers or [],
-            })
-
-        want = lambda key: is_auto or key in mode
-
-        if want("W底") and len(lows) >= 2:
-            for l1, l2 in zip(lows[:-1], lows[1:]):
-                highs_between = [h for h in highs if l1[2] < h[2] < l2[2]]
-                if not highs_between or l1[1] <= 0:
-                    continue
-                neckline = max(highs_between, key=lambda x: x[1])
-                bottom_diff = pct_diff(l1[1], l2[1])
-                pattern_height = (neckline[1] - max(l1[1], l2[1])) / max(max(l1[1], l2[1]), 1e-9)
-                if bottom_diff <= tol and pattern_height >= min_pattern_height:
-                    is_break = latest_close > neckline[1]
-                    score = 58 + (22 if is_break else 0) + min(10, pattern_height * 80) + max(0, 15 - (len(df) - l2[2]) * 0.8) - bottom_diff * 120
-                    desc = f"W底 ({status_break('bullish', neckline[1])})"
-                    extreme = min(l1[1], l2[1])
-                    levels, target, amplitude = tsai_levels("W底", "bullish", neckline[1], extreme, "#9c27b0")
-                    reason = f"雙底誤差 {bottom_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neckline[1], extreme)}"
-                    add_candidate(
-                        "W底",
-                        [l1, neckline, l2],
-                        [(l1[0], neckline[1], l1[2], "N"), (last_date, neckline[1], len(df)-1, "N")],
-                        "#9c27b0",
-                        "bullish",
-                        desc,
-                        score,
-                        reason,
-                        levels,
-                        [marker(l1, "底1", "#9c27b0", "belowBar"), marker(l2, "底2", "#9c27b0", "belowBar")],
-                    )
-
-        if want("M頭") and len(highs) >= 2:
-            for h1, h2 in zip(highs[:-1], highs[1:]):
-                lows_between = [l for l in lows if h1[2] < l[2] < h2[2]]
-                if not lows_between or h1[1] <= 0:
-                    continue
-                neckline = min(lows_between, key=lambda x: x[1])
-                top_diff = pct_diff(h1[1], h2[1])
-                pattern_height = (min(h1[1], h2[1]) - neckline[1]) / max(neckline[1], 1e-9)
-                if top_diff <= tol and pattern_height >= min_pattern_height:
-                    is_break = latest_close < neckline[1]
-                    score = 58 + (22 if is_break else 0) + min(10, pattern_height * 80) + max(0, 15 - (len(df) - h2[2]) * 0.8) - top_diff * 120
-                    desc = f"M頭 ({status_break('bearish', neckline[1])})"
-                    extreme = max(h1[1], h2[1])
-                    levels, target, amplitude = tsai_levels("M頭", "bearish", neckline[1], extreme, "#d32f2f")
-                    reason = f"雙頭誤差 {top_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neckline[1], extreme)}"
-                    add_candidate(
-                        "M頭",
-                        [h1, neckline, h2],
-                        [(h1[0], neckline[1], h1[2], "N"), (last_date, neckline[1], len(df)-1, "N")],
-                        "#d32f2f",
-                        "bearish",
-                        desc,
-                        score,
-                        reason,
-                        levels,
-                        [marker(h1, "頭1", "#d32f2f", "aboveBar"), marker(h2, "頭2", "#d32f2f", "aboveBar")],
-                    )
-
-        if want("三重底") and len(lows) >= 3:
-            for l1, l2, l3 in zip(lows[:-2], lows[1:-1], lows[2:]):
-                highs_between = [h for h in highs if l1[2] < h[2] < l3[2]]
-                if highs_between and max(pct_diff(l1[1], l2[1]), pct_diff(l2[1], l3[1])) <= tol:
-                    neckline = max(highs_between, key=lambda x: x[1])
-                    pattern_height = (neckline[1] - max(l1[1], l2[1], l3[1])) / max(max(l1[1], l2[1], l3[1]), 1e-9)
-                    if pattern_height < min_pattern_height:
-                        continue
-                    is_break = latest_close > neckline[1]
-                    score = 62 + (20 if is_break else 0) + min(10, pattern_height * 80) + max(0, 12 - (len(df) - l3[2]) * 0.6)
-                    extreme = min(l1[1], l2[1], l3[1])
-                    levels, target, amplitude = tsai_levels("三重底", "bullish", neckline[1], extreme, "#6a1b9a")
-                    add_candidate(
-                        "三重底",
-                        [l1, highs_between[0], l2, highs_between[-1], l3],
-                        [(l1[0], neckline[1], l1[2], "N"), (last_date, neckline[1], len(df)-1, "N")],
-                        "#6a1b9a",
-                        "bullish",
-                        f"三重底 ({status_break('bullish', neckline[1])})",
-                        score,
-                        f"三個低點接近，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neckline[1], extreme)}",
-                        levels,
-                        [marker(l1, "底1", "#6a1b9a", "belowBar"), marker(l2, "底2", "#6a1b9a", "belowBar"), marker(l3, "底3", "#6a1b9a", "belowBar")],
-                    )
-
-        if want("三重頂") and len(highs) >= 3:
-            for h1, h2, h3 in zip(highs[:-2], highs[1:-1], highs[2:]):
-                lows_between = [l for l in lows if h1[2] < l[2] < h3[2]]
-                if lows_between and max(pct_diff(h1[1], h2[1]), pct_diff(h2[1], h3[1])) <= tol:
-                    neckline = min(lows_between, key=lambda x: x[1])
-                    pattern_height = (min(h1[1], h2[1], h3[1]) - neckline[1]) / max(neckline[1], 1e-9)
-                    if pattern_height < min_pattern_height:
-                        continue
-                    is_break = latest_close < neckline[1]
-                    score = 62 + (20 if is_break else 0) + min(10, pattern_height * 80) + max(0, 12 - (len(df) - h3[2]) * 0.6)
-                    extreme = max(h1[1], h2[1], h3[1])
-                    levels, target, amplitude = tsai_levels("三重頂", "bearish", neckline[1], extreme, "#b71c1c")
-                    add_candidate(
-                        "三重頂",
-                        [h1, lows_between[0], h2, lows_between[-1], h3],
-                        [(h1[0], neckline[1], h1[2], "N"), (last_date, neckline[1], len(df)-1, "N")],
-                        "#b71c1c",
-                        "bearish",
-                        f"三重頂 ({status_break('bearish', neckline[1])})",
-                        score,
-                        f"三個高點接近，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neckline[1], extreme)}",
-                        levels,
-                        [marker(h1, "頂1", "#b71c1c", "aboveBar"), marker(h2, "頂2", "#b71c1c", "aboveBar"), marker(h3, "頂3", "#b71c1c", "aboveBar")],
-                    )
-
-        if want("頭肩底") and len(lows) >= 3:
-            for l1, l2, l3 in zip(lows[:-2], lows[1:-1], lows[2:]):
-                if l2[1] < min(l1[1], l3[1]) and pct_diff(l1[1], l3[1]) <= tol * 1.8:
-                    h_left = [h for h in highs if l1[2] < h[2] < l2[2]]
-                    h_right = [h for h in highs if l2[2] < h[2] < l3[2]]
-                    if h_left and h_right:
-                        n1, n2 = max(h_left, key=lambda x: x[1]), max(h_right, key=lambda x: x[1])
-                        neck_now = n2[1]
-                        neck_level = max(n1[1], n2[1])
-                        pattern_height = (neck_level - l2[1]) / max(l2[1], 1e-9)
-                        if pattern_height < min_pattern_height:
-                            continue
-                        score = 66 + (18 if latest_close > neck_level else 0) + min(10, pattern_height * 70)
-                        levels, target, amplitude = tsai_levels("頭肩底", "bullish", neck_level, l2[1], "#e91e63")
-                        add_candidate(
-                            "頭肩底",
-                            [l1, n1, l2, n2, l3],
-                            [n1, (last_date, neck_now, len(df)-1, "N")],
-                            "#e91e63",
-                            "bullish",
-                            f"頭肩底 ({status_break('bullish', neck_level)})",
-                            score,
-                            f"頭部低於左右肩，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neck_level, l2[1])}",
-                            levels,
-                            [marker(l1, "左肩", "#e91e63", "belowBar"), marker(l2, "頭", "#e91e63", "belowBar"), marker(l3, "右肩", "#e91e63", "belowBar")],
-                        )
-
-        if want("頭肩頂") and len(highs) >= 3:
-            for h1, h2, h3 in zip(highs[:-2], highs[1:-1], highs[2:]):
-                if h2[1] > max(h1[1], h3[1]) and pct_diff(h1[1], h3[1]) <= tol * 1.8:
-                    l_left = [l for l in lows if h1[2] < l[2] < h2[2]]
-                    l_right = [l for l in lows if h2[2] < l[2] < h3[2]]
-                    if l_left and l_right:
-                        n1, n2 = min(l_left, key=lambda x: x[1]), min(l_right, key=lambda x: x[1])
-                        neck_now = n2[1]
-                        neck_level = min(n1[1], n2[1])
-                        pattern_height = (h2[1] - neck_level) / max(neck_level, 1e-9)
-                        if pattern_height < min_pattern_height:
-                            continue
-                        score = 66 + (18 if latest_close < neck_level else 0) + min(10, pattern_height * 70)
-                        levels, target, amplitude = tsai_levels("頭肩頂", "bearish", neck_level, h2[1], "#c62828")
-                        add_candidate(
-                            "頭肩頂",
-                            [h1, n1, h2, n2, h3],
-                            [n1, (last_date, neck_now, len(df)-1, "N")],
-                            "#c62828",
-                            "bearish",
-                            f"頭肩頂 ({status_break('bearish', neck_level)})",
-                            score,
-                            f"頭部高於左右肩，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neck_level, h2[1])}",
-                            levels,
-                            [marker(h1, "左肩", "#c62828", "aboveBar"), marker(h2, "頭", "#c62828", "aboveBar"), marker(h3, "右肩", "#c62828", "aboveBar")],
-                        )
-
-        if (any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto) and len(highs) >= 2 and len(lows) >= 2:
-            h1, h2 = highs[-2], highs[-1]
-            l1, l2 = lows[-2], lows[-1]
-            h_diff = (h2[1] - h1[1]) / max(h1[1], 1e-9)
-            l_diff = (l2[1] - l1[1]) / max(l1[1], 1e-9)
-            p_name, p_color, p_desc, p_sig, score = "", "#ff9800", "", "neutral", 45
-            if abs(h_diff) < tol and abs(l_diff) < tol and want("矩形"):
-                p_name, p_color, p_desc, score = "箱型矩形", "#1976d2", "矩形整理：上下緣水平，等待突破。", 52
-            elif abs(h_diff) < tol and l_diff > tol and want("上升三角形"):
-                p_name, p_color, p_desc, p_sig, score = "上升三角形", "#43a047", "上升三角形：低點墊高、上緣壓力固定。", "bullish", 55
-            elif h_diff < -tol and abs(l_diff) < tol and want("下降三角形"):
-                p_name, p_color, p_desc, p_sig, score = "下降三角形", "#e53935", "下降三角形：高點降低、下緣支撐固定。", "bearish", 55
-            elif h_diff < -tol and l_diff > tol and (want("對稱") or want("三角形")):
-                p_name, p_color, p_desc, score = "對稱三角形", "#fb8c00", "對稱三角形：高低點同步收斂，等待表態。", 53
-            elif h_diff > tol and l_diff > tol and l_diff > h_diff and want("上升楔形"):
-                p_name, p_color, p_desc, p_sig, score = "上升楔形", "#ef6c00", "上升楔形：上漲斜率收斂，偏空警訊。", "bearish", 54
-            elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and want("下降楔形"):
-                p_name, p_color, p_desc, p_sig, score = "下降楔形", "#7cb342", "下降楔形：下跌斜率收斂，偏多觀察。", "bullish", 54
-            if p_name:
-                upper_level = max(h1[1], h2[1])
-                lower_level = min(l1[1], l2[1])
-                triangle_height = upper_level - lower_level
-                tri_levels = [
-                    {"title": "上緣壓力", "price": round(upper_level, 2), "color": p_color},
-                    {"title": "下緣支撐", "price": round(lower_level, 2), "color": p_color},
-                ]
-                tri_reason = f"高點斜率 {h_diff*100:.1f}%，低點斜率 {l_diff*100:.1f}%。"
-                if p_sig == "bullish" and latest_close > upper_level and triangle_height > 0:
-                    target = round(upper_level + triangle_height, 2)
-                    tri_levels.append({"title": f"{p_name}滿足價", "price": target, "color": p_color})
-                    tri_reason += f" 蔡森量幅：突破上緣 {upper_level:.2f}，整理高度 {triangle_height:.2f}，漲幅滿足價 {target:.2f}。"
-                    score += 16
-                elif p_sig == "bearish" and latest_close < lower_level and triangle_height > 0:
-                    target = round(lower_level - triangle_height, 2)
-                    tri_levels.append({"title": f"{p_name}滿足價", "price": target, "color": p_color})
-                    tri_reason += f" 蔡森量幅：跌破下緣 {lower_level:.2f}，整理高度 {triangle_height:.2f}，跌幅滿足價 {target:.2f}。"
-                    score += 16
-                else:
-                    tri_reason += " 蔡森量幅需等待有效突破後再計算滿足價。"
-                add_candidate(
-                    p_name,
-                    [h1, h2],
-                    [l1, l2],
-                    p_color,
-                    p_sig,
-                    p_desc,
-                    score,
-                    tri_reason,
-                    tri_levels,
-                    [marker(h1, "壓1", p_color, "aboveBar"), marker(h2, "壓2", p_color, "aboveBar"), marker(l1, "撐1", p_color, "belowBar"), marker(l2, "撐2", p_color, "belowBar")],
-                )
-
-        if want("假突破") and len(highs) >= 3 and len(lows) >= 3:
-            recent_highs = highs[-6:]
-            recent_lows = lows[-6:]
-            spike = max(recent_highs, key=lambda x: x[1])
-            other_highs = [h for h in recent_highs if h != spike]
-            if len(other_highs) >= 2:
-                upper = float(np.median([h[1] for h in other_highs]))
-                support_lows = [l for l in recent_lows if l[2] > min(h[2] for h in other_highs)]
-                support = float(np.median([l[1] for l in support_lows])) if support_lows else float(np.median([l[1] for l in recent_lows]))
-                if spike[1] > upper * (1 + tol) and latest_close < upper:
-                    confirmed = latest_close < support
-                    amplitude = spike[1] - upper
-                    target = float(round(support - amplitude, 2)) if confirmed else None
-                    levels = [
-                        {"title": "假突破上緣", "price": round(upper, 2), "color": "#8e24aa"},
-                        {"title": "確認支撐", "price": round(support, 2), "color": "#8e24aa"},
-                    ]
-                    if target is not None:
-                        levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
-                    desc = "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回上緣)"
-                    reason = f"先突破上緣 {upper:.2f} 至 {spike[1]:.2f}，但收回上緣下方；跌破支撐 {support:.2f} 後空方訊號更明確。"
-                    if target is not None:
-                        reason += f" 蔡森量幅：假突破幅度 {amplitude:.2f}，跌幅滿足價 {target:.2f}。"
-                    add_candidate(
-                        "蔡森假突破",
-                        [other_highs[0], spike, (last_date, latest_close, len(df)-1, "C")],
-                        [(other_highs[0][0], upper, other_highs[0][2], "N"), (last_date, upper, len(df)-1, "N")],
-                        "#8e24aa",
-                        "bearish",
-                        desc,
-                        62 + (20 if confirmed else 0),
-                        reason,
-                        levels,
-                        [marker(spike, "假破", "#8e24aa", "aboveBar")],
-                    )
-
-            plunge = min(recent_lows, key=lambda x: x[1])
-            other_lows = [l for l in recent_lows if l != plunge]
-            if len(other_lows) >= 2:
-                lower = float(np.median([l[1] for l in other_lows]))
-                resistance_highs = [h for h in recent_highs if h[2] > min(l[2] for l in other_lows)]
-                resistance = float(np.median([h[1] for h in resistance_highs])) if resistance_highs else float(np.median([h[1] for h in recent_highs]))
-                if plunge[1] < lower * (1 - tol) and latest_close > lower:
-                    confirmed = latest_close > resistance
-                    amplitude = lower - plunge[1]
-                    target = float(round(resistance + amplitude, 2)) if confirmed else None
-                    levels = [
-                        {"title": "破底翻底線", "price": round(lower, 2), "color": "#00897b"},
-                        {"title": "確認壓力", "price": round(resistance, 2), "color": "#00897b"},
-                    ]
-                    if target is not None:
-                        levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
-                    desc = "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回底線)"
-                    reason = f"先跌破底線 {lower:.2f} 至 {plunge[1]:.2f}，再站回底線上方；突破壓力 {resistance:.2f} 後買點較明確。"
-                    if target is not None:
-                        reason += f" 蔡森量幅：破底幅度 {amplitude:.2f}，漲幅滿足價 {target:.2f}。"
-                    add_candidate(
-                        "蔡森破底翻",
-                        [other_lows[0], plunge, (last_date, latest_close, len(df)-1, "C")],
-                        [(other_lows[0][0], lower, other_lows[0][2], "N"), (last_date, lower, len(df)-1, "N")],
-                        "#00897b",
-                        "bullish",
-                        desc,
-                        62 + (20 if confirmed else 0),
-                        reason,
-                        levels,
-                        [marker(plunge, "破底", "#00897b", "belowBar")],
-                    )
-
-            recent_start = max(0, len(df) - 80)
-            if len(df) - recent_start >= 12:
-                recent_high_arr = highs_vals[recent_start:max(recent_start + 1, len(df) - 2)]
-                recent_low_arr = lows_vals[recent_start:max(recent_start + 1, len(df) - 2)]
-                if len(recent_high_arr) >= 8 and len(recent_low_arr) >= 8:
-                    spike_i = recent_start + int(np.nanargmax(recent_high_arr))
-                    pre_start = max(recent_start, spike_i - 24)
-                    pre_highs = highs_vals[pre_start:spike_i]
-                    pre_lows = lows_vals[pre_start:spike_i]
-                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
-                        upper = float(np.nanpercentile(pre_highs, 75))
-                        support = float(np.nanpercentile(pre_lows, 25))
-                        if upper > support and highs_vals[spike_i] > upper * (1 + tol) and latest_close < upper:
-                            confirmed = latest_close < support
-                            amplitude = highs_vals[spike_i] - upper
-                            target = float(round(support - amplitude, 2)) if confirmed else None
-                            levels = [
-                                {"title": "假突破平台", "price": round(upper, 2), "color": "#8e24aa"},
-                                {"title": "跌破確認線", "price": round(support, 2), "color": "#8e24aa"},
-                            ]
-                            if target is not None:
-                                levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
-                            reason = f"近期平台上緣約 {upper:.2f}，曾刺高到 {highs_vals[spike_i]:.2f} 後收回平台下方。"
-                            if target is not None:
-                                reason += f" 跌破確認線 {support:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
-                            add_candidate(
-                                "蔡森假突破",
-                                [(dates_vals[pre_start], upper, pre_start, "N"), (dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), (last_date, latest_close, len(df)-1, "C")],
-                                [(dates_vals[pre_start], upper, pre_start, "N"), (last_date, upper, len(df)-1, "N")],
-                                "#8e24aa",
-                                "bearish",
-                                "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回平台)",
-                                60 + (20 if confirmed else 0),
-                                reason,
-                                levels,
-                                [marker((dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), "假破", "#8e24aa", "aboveBar")],
-                            )
-
-                    plunge_i = recent_start + int(np.nanargmin(recent_low_arr))
-                    pre_start = max(recent_start, plunge_i - 24)
-                    pre_highs = highs_vals[pre_start:plunge_i]
-                    pre_lows = lows_vals[pre_start:plunge_i]
-                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
-                        lower = float(np.nanpercentile(pre_lows, 25))
-                        resistance = float(np.nanpercentile(pre_highs, 75))
-                        if resistance > lower and lows_vals[plunge_i] < lower * (1 - tol) and latest_close > lower:
-                            confirmed = latest_close > resistance
-                            amplitude = lower - lows_vals[plunge_i]
-                            target = float(round(resistance + amplitude, 2)) if confirmed else None
-                            levels = [
-                                {"title": "破底平台", "price": round(lower, 2), "color": "#00897b"},
-                                {"title": "突破確認線", "price": round(resistance, 2), "color": "#00897b"},
-                            ]
-                            if target is not None:
-                                levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
-                            reason = f"近期底線約 {lower:.2f}，曾破低到 {lows_vals[plunge_i]:.2f} 後站回底線上方。"
-                            if target is not None:
-                                reason += f" 站上確認線 {resistance:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
-                            add_candidate(
-                                "蔡森破底翻",
-                                [(dates_vals[pre_start], lower, pre_start, "N"), (dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), (last_date, latest_close, len(df)-1, "C")],
-                                [(dates_vals[pre_start], lower, pre_start, "N"), (last_date, lower, len(df)-1, "N")],
-                                "#00897b",
-                                "bullish",
-                                "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回平台)",
-                                60 + (20 if confirmed else 0),
-                                reason,
-                                levels,
-                                [marker((dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), "破底", "#00897b", "belowBar")],
-                            )
-
-        if want("假突破"):
-            recent_start = max(0, len(df) - 80)
-            if len(df) - recent_start >= 12:
-                recent_high_arr = highs_vals[recent_start:max(recent_start + 1, len(df) - 2)]
-                recent_low_arr = lows_vals[recent_start:max(recent_start + 1, len(df) - 2)]
-                if len(recent_high_arr) >= 8 and len(recent_low_arr) >= 8:
-                    spike_i = recent_start + int(np.nanargmax(recent_high_arr))
-                    pre_start = max(recent_start, spike_i - 24)
-                    pre_highs = highs_vals[pre_start:spike_i]
-                    pre_lows = lows_vals[pre_start:spike_i]
-                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
-                        upper = float(np.nanpercentile(pre_highs, 75))
-                        support = float(np.nanpercentile(pre_lows, 25))
-                        if upper > support and highs_vals[spike_i] > upper * (1 + tol) and latest_close < upper:
-                            confirmed = latest_close < support
-                            amplitude = highs_vals[spike_i] - upper
-                            target = float(round(support - amplitude, 2)) if confirmed else None
-                            levels = [
-                                {"title": "假突破平台", "price": round(upper, 2), "color": "#8e24aa"},
-                                {"title": "跌破確認線", "price": round(support, 2), "color": "#8e24aa"},
-                            ]
-                            if target is not None:
-                                levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
-                            reason = f"近期平台上緣約 {upper:.2f}，曾刺高到 {highs_vals[spike_i]:.2f} 後收回平台下方。"
-                            if target is not None:
-                                reason += f" 跌破確認線 {support:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
-                            add_candidate(
-                                "蔡森假突破",
-                                [(dates_vals[pre_start], upper, pre_start, "N"), (dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), (last_date, latest_close, len(df)-1, "C")],
-                                [(dates_vals[pre_start], upper, pre_start, "N"), (last_date, upper, len(df)-1, "N")],
-                                "#8e24aa",
-                                "bearish",
-                                "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回平台)",
-                                60 + (20 if confirmed else 0),
-                                reason,
-                                levels,
-                                [marker((dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), "假破", "#8e24aa", "aboveBar")],
-                            )
-
-                    plunge_i = recent_start + int(np.nanargmin(recent_low_arr))
-                    pre_start = max(recent_start, plunge_i - 24)
-                    pre_highs = highs_vals[pre_start:plunge_i]
-                    pre_lows = lows_vals[pre_start:plunge_i]
-                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
-                        lower = float(np.nanpercentile(pre_lows, 25))
-                        resistance = float(np.nanpercentile(pre_highs, 75))
-                        if resistance > lower and lows_vals[plunge_i] < lower * (1 - tol) and latest_close > lower:
-                            confirmed = latest_close > resistance
-                            amplitude = lower - lows_vals[plunge_i]
-                            target = float(round(resistance + amplitude, 2)) if confirmed else None
-                            levels = [
-                                {"title": "破底平台", "price": round(lower, 2), "color": "#00897b"},
-                                {"title": "突破確認線", "price": round(resistance, 2), "color": "#00897b"},
-                            ]
-                            if target is not None:
-                                levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
-                            reason = f"近期底線約 {lower:.2f}，曾破低到 {lows_vals[plunge_i]:.2f} 後站回底線上方。"
-                            if target is not None:
-                                reason += f" 站上確認線 {resistance:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
-                            add_candidate(
-                                "蔡森破底翻",
-                                [(dates_vals[pre_start], lower, pre_start, "N"), (dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), (last_date, latest_close, len(df)-1, "C")],
-                                [(dates_vals[pre_start], lower, pre_start, "N"), (last_date, lower, len(df)-1, "N")],
-                                "#00897b",
-                                "bullish",
-                                "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回平台)",
-                                60 + (20 if confirmed else 0),
-                                reason,
-                                levels,
-                                [marker((dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), "破底", "#00897b", "belowBar")],
-                            )
-
-        if want("V型反轉") and lows:
-            l1 = lows[-1]
-            h_before = [h for h in highs if h[2] < l1[2]]
-            h_after = [h for h in highs if h[2] > l1[2]]
-            rebound = (latest_close - l1[1]) / max(l1[1], 1e-9)
-            if h_before and rebound > max(0.08, tol * 2):
-                hb = h_before[-1]
-                ha = h_after[0] if h_after else (last_date, latest_close, len(df)-1, "H")
-                score = 45 + min(35, rebound * 180)
-                add_candidate(
-                    "V型反轉",
-                    [hb, l1, ha],
-                    [hb, ha],
-                    "#00acc1",
-                    "bullish",
-                    "V型反轉 (急殺後快速拉回)",
-                    score,
-                    f"低點後反彈 {rebound*100:.1f}%。",
-                    [{"title": "V轉折低點", "price": round(l1[1], 2), "color": "#00acc1"}],
-                    [marker(l1, "V底", "#00acc1", "belowBar")],
-                )
-
-        if not candidates:
-            return {}
-
-        if is_auto:
-            return max(candidates, key=lambda c: (c.get("confidence", 0), c["shape_x"][-1]))
-
-        mode_key = mode.split("：")[-1].split("(")[0].strip()
-        mode_keys = [k.strip() for k in re.split(r"[/、\s]+", mode_key) if k.strip()]
-        forced = [
-            c for c in candidates
-            if mode_key in c["name"] or c["name"] in mode or any(k in c["name"] for k in mode_keys)
-        ]
-        return max(forced, key=lambda c: c.get("confidence", 0)) if forced else {}
+        if any(k in mode for k in ["連續", "三角形", "楔形", "矩形"]) or is_auto:
+            if len(highs) >= 2 and len(lows) >= 2:
+                h1, h2 = highs[-2], highs[-1]
+                l1, l2 = lows[-2], lows[-1]
+                h_diff = (h2[1] - h1[1]) / h1[1] if h1[1] > 0 else 0
+                l_diff = (l2[1] - l1[1]) / l1[1] if l1[1] > 0 else 0
+                p_name, p_color, p_desc, p_sig = "", "", "", "neutral"
+                if abs(h_diff) < tol and abs(l_diff) < tol and ("矩形" in mode or is_auto):
+                    p_name, p_color, p_desc = "箱型矩形", "#2196f3", "矩形整理 (等待突破)"
+                elif abs(h_diff) < tol and l_diff > tol and ("上升三角形" in mode or is_auto):
+                    p_name, p_color, p_desc, p_sig = "上升三角形", "#4caf50", "上升三角形 (偏多醞釀)", "bullish"
+                elif h_diff < -tol and abs(l_diff) < tol and ("下降三角形" in mode or is_auto):
+                    p_name, p_color, p_desc, p_sig = "下降三角形", "#f44336", "下降三角形 (偏空醞釀)", "bearish"
+                elif h_diff < -tol and l_diff > tol and ("對稱" in mode or "收斂" in mode or is_auto):
+                    p_name, p_color, p_desc = "對稱三角形", "#ff9800", "對稱三角形 (收斂表態前)"
+                elif h_diff > tol and l_diff > tol and l_diff > h_diff and ("上升楔形" in mode or is_auto):
+                    p_name, p_color, p_desc, p_sig = "上升楔形", "#ff5722", "上升楔形 (上漲力道衰退，偏空)", "bearish"
+                elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and ("下降楔形" in mode or is_auto):
+                    p_name, p_color, p_desc, p_sig = "下降楔形", "#8bc34a", "下降楔形 (殺跌力道衰退，偏多)", "bullish"
+                if p_name or not is_auto:
+                    if not p_name: p_name, p_color, p_desc = mode.split('：')[-1].strip(), "#999", f"強制標示 {mode.split('：')[-1]}"
+                    return {'name': p_name, 'shape_x': [h1[0], h2[0]], 'shape_y': [h1[1], h2[1]], 'neck_x': [l1[0], l2[0]], 'neck_y': [l1[1], l2[1]], 'color': p_color, 'desc': p_desc, 'signal': p_sig}
+                    
+        if "V型反轉" in mode or is_auto:
+            if len(lows) >= 1 and len(highs) >= 2:
+                l1 = lows[-1]
+                h_before = [h for h in highs if h[2] < l1[2]] 
+                h_after = [h for h in highs if h[2] > l1[2]]
+                if h_before and h_after and l1[1] > 0:
+                    hb, ha = h_before[-1], h_after[0]
+                    if (hb[1]-l1[1])/l1[1] > 0.1 and (ha[1]-l1[1])/l1[1] > 0.1: 
+                        status = "已突破下降趨勢" if current_price > ha[1] else "反轉進行中"
+                        return {
+                            'name': 'V型反轉', 
+                            'shape_x': [hb[0], l1[0], ha[0]], 
+                            'shape_y': [hb[1], l1[1], ha[1]], 
+                            'neck_x': [hb[0], ha[0]], 
+                            'neck_y': [hb[1], ha[1]], 
+                            'color': '#00bcd4', 
+                            'desc': f"深V反轉 ({status})", 
+                            'signal': 'bullish'
+                        }
+        return {}
     except Exception:
         LOGGER.exception("幾何形態辨識失敗")
         return {}
-
-def build_ai_diagnosis_report(
-    *,
-    today_short_trap,
-    is_double_counting,
-    is_margin_trap,
-    today_smart_net,
-    today_diff_cnt,
-    vwap_str,
-    bias,
-    curr_price,
-    is_cbas_arb,
-    disp_warn,
-    net_10,
-    today_fp,
-    c_val_text,
-    radar_chg,
-    chg_text,
-    radar_c_val,
-    conclusion,
-    action,
-):
-    """依 README 固定輸出五大診斷邏輯與最終操作定調。"""
-    sections = []
-
-    short_term = "<li><b>一、 短線戰鬥多空定調 (今日籌碼真偽)：</b><br>"
-    if today_short_trap > 0:
-        short_term += (
-            f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】："
-            f"系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
-        )
-
-    if is_double_counting:
-        short_term += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的資料相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
-    elif is_margin_trap:
-        short_term += "<span style='color:#d32f2f;'>主力雖大買，但融資同步異常暴增。</span><br>深度解析：這通常是高槓桿的「假主力」或當沖客利用融資鎖碼。這類資金極端不穩定，只要明日開盤不如預期，立刻會引發融資斷頭的多殺多連鎖反應，強烈建議避開。"
-    elif today_smart_net > 100 and today_diff_cnt <= -10:
-        short_term += "<span style='color:#2e7d32;'>聰明錢真實流入，且買賣家數差為負(籌碼高度集中)。</span><br>深度解析：代表今日有少數的特定大戶，正在兇猛地吃掉多數散戶的賣單。這種不計代價的掃貨行為，是標準的波段起漲或強勢延續特徵。"
-    elif today_smart_net < -100 and today_diff_cnt >= 10:
-        short_term += "<span style='color:#d32f2f;'>聰明錢真實撤退，且買賣家數差為正(散戶瘋狂湧入)。</span><br>深度解析：這是最經典的「主力出貨給散戶」劇本。大戶趁著利多或拉高時倒貨，而散戶正在滿心歡喜地接刀。技術面無論多漂亮，此時都必須提高警覺或停損。"
-    else:
-        short_term += "短線籌碼呈現多空交戰，無明顯極端異常。<br>深度解析：目前沒有單一勢力能完全掌控盤面，屬於換手或盤整階段。此時進場如同擲硬幣，建議保留現金，靜待籌碼高度集中時再出手。"
-    sections.append(short_term + "</li><br>")
-
-    defense = "<li><b>二、 核心防守價位與安全邊際確認：</b><br>"
-    defense += f"系統已為您剔除避險造市與當沖雜訊，精算出的「純淨主力防守價」為 <b>{vwap_str} 元</b>。<br>"
-    if bias > 5:
-        defense += f"深度解析：目前股價({curr_price:.2f}元)距離主力成本線有 {bias:.1f}% 的豐厚緩衝。這代表主力目前處於輕鬆獲利的狀態，洗盤時有足夠的空間下殺而不會傷到自己，您只需沿著均線續抱即可。"
-    elif 0 <= bias <= 5:
-        defense += f"深度解析：目前股價({curr_price:.2f}元)完美貼合主力的真實成本區(乖離僅 {bias:.1f}%)。這是左側潛伏最愛的「黃金建倉點」。只要不實質跌破此防線，主力都有極大動機主動護盤。"
-    else:
-        defense += f"深度解析：<span style='color:#d32f2f;'>目前股價({curr_price:.2f}元)已跌破主力的鐵板防守線(乖離 {bias:.1f}%)。</span>這代表連砸重金的大戶自己都處於帳面虧損。一旦大戶決定停損，將引發海嘯般的賣壓，此時切勿抱持凹單心態。"
-    sections.append(defense + "</li><br>")
-
-    blind_spots = "<li><b>三、 潛在市場盲點與套利干擾排除：</b><br>"
-    if is_cbas_arb:
-        blind_spots += "偵測到可轉債(CBAS)餘額下降，與主力賣超同步發生。<br>深度解析：這高機率是法人在進行「賣老股、換新股(轉債)」的無風險套利行為。這會在外觀上製造出「大戶瘋狂賣超」的假象，但其實並非主力不看好後市而棄守，需冷靜辨別。"
-    elif disp_warn and disp_warn["max_vol_6d"] and disp_warn["max_vol_6d"] <= 0:
-        blind_spots += "<span style='color:#d32f2f;'>警告：近 5 日週轉率已達法規極限！</span><br>深度解析：明日只要稍微有一點成交量，就會踩到交易所的處置紅線(關緊閉)。通常懂規矩的主力明天會刻意「縮手壓盤」來降溫，因此明日若見量縮下跌，屬人為技術性調整，無須過度恐慌。"
-    else:
-        blind_spots += "目前未偵測到可轉債套利干擾或即將踩到處置紅線的危機。<br>深度解析：市場干擾因素低，可將上方籌碼結果作為輔助判斷，但仍需搭配價格、風險與資料完整性確認。"
-    sections.append(blind_spots + "</li><br>")
-
-    tracking = "<li><b>四、 平日戰情追蹤矩陣 (近15日) 趨勢解碼：</b><br>"
-    tracking += f"近 10 日核心主力淨留倉為 <span style='color: {'#d32f2f' if net_10 > 0 else '#2e7d32'}; font-weight: bold;'>{net_10:,} 張</span>，今日買方火力為 <span style='font-weight: bold;'>{today_fp} 倍</span>。<br>"
-    if net_10 > 0 and today_fp > 1.2:
-        tracking += "深度解析：近半個月主力資金呈現<span style='color: #d32f2f; font-weight: bold;'>穩定流入(囤貨)</span>，且火力具備攻擊性，盤勢由多方掌控。"
-    elif net_10 < 0 and float(today_fp) < 1.0:
-        tracking += "深度解析：近半個月主力資金持續<span style='color: #2e7d32; font-weight: bold;'>撤退流出(倒貨)</span>，且買盤火力微弱，短線反彈皆為逃命波。"
-    else:
-        tracking += "深度解析：近半個月大戶籌碼進出交錯，未見連續性方向，屬區間震盪整理格局。"
-    sections.append(tracking + "</li><br>")
-
-    tdcc = "<li><b>五、 一週集保籌碼雷達 (大戶存量與流量雙解碼)：</b><br>"
-    tdcc += f"當前活大戶 C_Value 為 <span style='font-weight: bold;'>{c_val_text}</span>，最新集保單週大戶變動為 <span style='color: {'#d32f2f' if radar_chg > 0 else '#2e7d32'}; font-weight: bold;'>{chg_text}</span>。<br>"
-    if radar_chg > 0 and radar_c_val > 60:
-        tdcc += "深度解析：大戶不僅<span style='color: #d32f2f; font-weight: bold;'>存量高(高度鎖碼)</span>，且本週<span style='color: #d32f2f; font-weight: bold;'>流量持續增持</span>，籌碼極度安定，有利波段上攻。"
-    elif radar_chg < 0 and radar_c_val < 40:
-        tdcc += "深度解析：大戶<span style='color: #2e7d32; font-weight: bold;'>存量已偏低(籌碼渙散)</span>，且本週<span style='color: #2e7d32; font-weight: bold;'>仍在拋售</span>，底部深不可測，請避開。"
-    elif radar_chg > 0.5:
-        tdcc += "深度解析：雖然總存量普通，但本週大戶出現<span style='color: #d32f2f; font-weight: bold;'>顯著吸籌(流量轉正)</span>，暗示可能有潛在利多或波段起漲點。"
-    elif radar_chg < -0.5:
-        tdcc += "深度解析：大戶本週出現<span style='color: #2e7d32; font-weight: bold;'>明顯倒貨(流量轉負)</span>，請嚴防高檔派發或利空出盡。"
-    else:
-        tdcc += "深度解析：大戶持股比例單週變動微小，籌碼結構暫無重大改變，維持現有趨勢。"
-    sections.append(tdcc + "</li>")
-
-    return (
-        "<div class='ai-report-box'>\n\n"
-        "#### 🧠 系統終極戰略推演與深度解析\n\n"
-        "<ul>"
-        + "\n".join(sections)
-        + "</ul>\n\n"
-        f"<div class='ai-conclusion'><b>🚀 最終操作定調：{conclusion}</b><br>"
-        f"<span style='font-weight:normal; display:block; margin-top:10px;'>{action}</span></div>\n"
-        "</div>"
-    )
 
 def render_clean_html_table(df, title=""):
     if not is_valid(df):
@@ -3928,7 +3254,14 @@ if st.session_state.get('system_running', False):
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
         current_total_shares = df_s_wide['總張數'].iloc[0] if is_valid(df_s_wide) else 0
-        capital_str = f"{current_total_shares / LOTS_PER_YI_SHARES:.2f} 億股" if current_total_shares > 0 else "計算中..."
+        capital_str = (
+            f"{current_total_shares * SHARES_PER_LOT * TAIWAN_STOCK_PAR_VALUE / TWD_PER_YI:.2f} 億元"
+            if current_total_shares > 0 else "計算中..."
+        )
+        issued_shares_str = (
+            f"{current_total_shares / LOTS_PER_YI_SHARES:.2f} 億股"
+            if current_total_shares > 0 else "計算中..."
+        )
         
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], parsed_dead_chip, dynamic_dict, s_val, chip_eng)
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無資料"
@@ -3971,13 +3304,13 @@ if st.session_state.get('system_running', False):
             df_combined_radar = pd.merge(df_s_dyn, df_v27_clean, on=['日期'], how='inner')
             if is_valid(df_combined_radar):
                 df_combined_radar['終極籌碼診斷'] = df_combined_radar['實戰判定'].astype(str) + " | " + df_combined_radar['專家雷達診斷'].astype(str)
-                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '大戶週變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖干擾警示(%)', '終極籌碼診斷']
+                display_cols = ['日期', '收盤價(元)', '純淨活大戶C_Value(%)', '純淨大戶變動(%)', '總人數變率(%)', '大戶精算門檻', '當沖虛胖(%)', '終極籌碼診斷']
                 df_combined_display = optimize_memory(df_combined_radar[[c for c in display_cols if c in df_combined_radar.columns]].sort_values('日期', ascending=False).head(8))
 
         df_margin_raw = ds_dict.get("TaiwanStockMarginPurchaseShortSale", pd.DataFrame())
         df_lending_raw = ds_dict.get("TaiwanStockSecuritiesLending", pd.DataFrame())
         
-        df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw, df_price))
+        df_margin_lending = optimize_memory(process_margin_and_lending(df_margin_raw, df_lending_raw))
         df_lending_detail = optimize_memory(process_securities_lending_detail(df_lending_raw))
         
         df_loan_col_raw = fetch_finmind_v50("TaiwanStockLoanCollateralBalance", dates[min(len(dates)-1, 30)], user_stock_id)
@@ -4017,9 +3350,10 @@ if st.session_state.get('system_running', False):
             df_cbas = pd.DataFrame()
         
         market_cap_str = "計算中..."
-        if is_valid(df_price) and current_total_shares > 0: market_cap_str = f"{(curr_price * current_total_shares) / LOTS_PER_YI_SHARES:,.2f} 億"
+        if is_valid(df_price) and current_total_shares > 0:
+            market_cap_str = f"{(curr_price * current_total_shares * SHARES_PER_LOT) / TWD_PER_YI:,.2f} 億"
             
-        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張 ｜ 【分點來源】 {branch_source}"
+        company_info_text = f"【產業】 {industry} ｜ 【股本】 {capital_str} ｜ 【發行股數】 {issued_shares_str} ｜ 【市值】 {market_cap_str} ｜ 【董監死籌碼】 {director_holding_str} ｜ 【20日均量】 {int(recent_20_vol):,} 張 ｜ 【分點來源】 {branch_source}"
         
         st.subheader(f"{user_stock_id} {name} 全息戰報 (V76.1 區間動態版)")
         st.markdown(f"<div class='info-box'>{company_info_text}</div>", unsafe_allow_html=True)
@@ -4061,11 +3395,7 @@ if st.session_state.get('system_running', False):
             except: pass
             
             try: 
-                radar_chg_raw = df_combined_display.iloc[0].get(
-                    '大戶週變動(%)',
-                    df_combined_display.iloc[0].get('純淨大戶變動(%)', 0)
-                )
-                radar_chg = float(re.sub(r'[+,%]', '', str(radar_chg_raw)).strip())
+                radar_chg = float(re.sub(r'[+,%]', '', str(df_combined_display.iloc[0].get('純淨大戶變動(%)', 0))).strip())
                 if radar_chg > 0: dir_str = "增加"
                 elif radar_chg < 0: dir_str = "減少"
                 else: dir_str = "無變動"
@@ -4099,7 +3429,7 @@ if st.session_state.get('system_running', False):
                 df_dt_chart = df_dt_chart.rename(columns={"date": "日期"})
                 vol_col = 'DayTradingVolume' if 'DayTradingVolume' in df_dt_chart.columns else 'Volume'
                 if vol_col in df_dt_chart.columns:
-                    df_dt_chart['當沖總張數'] = shares_to_lots(df_dt_chart[vol_col])
+                    df_dt_chart['當沖總張數'] = (safe_to_num(df_dt_chart[vol_col]) / 1000).round().astype(int)
                     df_plot = pd.merge(df_plot, df_dt_chart[['日期', '當沖總張數']], on='日期', how='left')
                 else:
                     df_plot['當沖總張數'] = 0
@@ -4123,9 +3453,6 @@ if st.session_state.get('system_running', False):
                 pat_js = "[]"
                 neck_js = "[]"
                 pat_color_js = "'transparent'"
-                pat_markers_js = "[]"
-                pat_levels_js = "[]"
-                pat_desc_js = "null"
                 if pat_data:
                     pat_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['shape_x'], pat_data['shape_y'])]
                     neck_list = [{"time": str(x), "value": float(y)} for x, y in zip(pat_data['neck_x'], pat_data['neck_y'])]
@@ -4134,15 +3461,6 @@ if st.session_state.get('system_running', False):
                     pat_js = json.dumps(pat_list)
                     neck_js = json.dumps(neck_list)
                     pat_color_js = f"'{pat_data.get('color', '#000000')}'"
-                    pat_markers_js = json.dumps(pat_data.get("markers", []), ensure_ascii=False)
-                    pat_levels_js = json.dumps(pat_data.get("levels", []), ensure_ascii=False)
-                    pat_desc_js = json.dumps({
-                        "name": pat_data.get("name", ""),
-                        "desc": pat_data.get("desc", ""),
-                        "reason": pat_data.get("reason", ""),
-                        "confidence": pat_data.get("confidence", 0),
-                        "signal": pat_data.get("signal", ""),
-                    }, ensure_ascii=False)
 
                 time_series = df_plot['日期'].astype(str).tolist()
                 kline_data = [
@@ -4176,10 +3494,7 @@ if st.session_state.get('system_running', False):
                                          .replace("LR_DATA", lr_data_json)\
                                          .replace("PAT_DATA", pat_js)\
                                          .replace("NECK_DATA", neck_js)\
-                                         .replace("PAT_COLOR", pat_color_js)\
-                                         .replace("PAT_MARKERS", pat_markers_js)\
-                                         .replace("PAT_LEVELS", pat_levels_js)\
-                                         .replace("PAT_DESC", pat_desc_js)
+                                         .replace("PAT_COLOR", pat_color_js)
                 components.html(html_code, height=736)
 
         st.markdown("<div class='category-title'>AI 全息籌碼深度診斷總結</div>", unsafe_allow_html=True)
@@ -4215,21 +3530,8 @@ if st.session_state.get('system_running', False):
             except Exception:
                 LOGGER.exception("可轉債套利判斷失敗")
 
-        pat_desc_text = str(pat_data.get('desc', '')) if pat_data else ''
-        pat_confidence = float(pat_data.get('confidence', 0)) if pat_data else 0
-        pat_signal = pat_data.get('signal', '') if pat_data else ''
-        pat_is_breakout = (
-            bool(pat_data)
-            and pat_signal == 'bullish'
-            and pat_confidence >= 55
-            and ('已突破' in pat_desc_text or 'V型反轉' in pat_desc_text)
-        )
-        pat_is_breakdown = (
-            bool(pat_data)
-            and pat_signal == 'bearish'
-            and pat_confidence >= 55
-            and ('已跌破' in pat_desc_text or '衰退' in pat_desc_text)
-        )
+        pat_is_breakout = pat_data and pat_data['signal'] == 'bullish' and ('突破' in pat_data['desc'] or '深V' in pat_data['desc'])
+        pat_is_breakdown = pat_data and pat_data['signal'] == 'bearish' and ('跌破' in pat_data['desc'] or '衰退' in pat_data['desc'])
         
         is_short_squeeze = (curr_price >= latest_lr_upper and latest_lr_upper > 0 and today_smart_net > 300 and today_fp > 1.5)
 
@@ -4267,26 +3569,74 @@ if st.session_state.get('system_running', False):
             conclusion = "【籌碼中性 / 多空膠著，靜待表態】"
             action = "目前長、中、短線籌碼動向不一，未出現極端的集中或發散訊號。盤勢由一般市場力量主導，建議縮小部位，靜待主力給出更明確的方向表態。"
 
-        report_md = build_ai_diagnosis_report(
-            today_short_trap=today_short_trap,
-            is_double_counting=is_double_counting,
-            is_margin_trap=is_margin_trap,
-            today_smart_net=today_smart_net,
-            today_diff_cnt=today_diff_cnt,
-            vwap_str=vwap_str,
-            bias=bias,
-            curr_price=curr_price,
-            is_cbas_arb=is_cbas_arb,
-            disp_warn=disp_warn,
-            net_10=net_10,
-            today_fp=today_fp,
-            c_val_text=c_val_text,
-            radar_chg=radar_chg,
-            chg_text=chg_text,
-            radar_c_val=radar_c_val,
-            conclusion=conclusion,
-            action=action,
-        )
+        report_md = "<div class='ai-report-box'>\n\n"
+        
+        report_md += "#### 🧠 系統終極戰略推演與深度解析\n\n"
+        report_md += "<ul>"
+
+        report_md += "<li><b>一、 短線戰鬥多空定調 (今日籌碼真偽)：</b><br>"
+        if today_short_trap > 0:
+            report_md += f"<span style='color:#ff9800; font-weight:bold;'>⚠️ 【潛在賣壓警告】：系統偵測到明日潛在短線/隔日沖倒貨賣壓約 {today_short_trap:,} 張，請注意開盤震盪。</span><br>"
+            
+        if is_double_counting:
+            report_md += "<span style='color:#d32f2f;'>發現法人與地方大戶高度重疊。</span><br>深度解析：這代表今天的買盤極大比例是外資帳戶透過特定券商下單。請將外資與主力視為同一筆資金，切忌將兩者的資料相加而產生「買盤超強」的過度樂觀錯覺，需提防假外資隔日沖。"
+        elif is_margin_trap:
+            report_md += "<span style='color:#d32f2f;'>主力雖大買，但融資同步異常暴增。</span><br>深度解析：這通常是高槓桿的「假主力」或當沖客利用融資鎖碼。這類資金極端不穩定，只要明日開盤不如預期，立刻會引發融資斷頭的多殺多連鎖反應，強烈建議避開。"
+        elif today_smart_net > 100 and today_diff_cnt <= -10:
+            report_md += "<span style='color:#2e7d32;'>聰明錢真實流入，且買賣家數差為負(籌碼高度集中)。</span><br>深度解析：代表今日有少數的特定大戶，正在兇猛地吃掉多數散戶的賣單。這種不計代價的掃貨行為，是標準的波段起漲或強勢延續特徵。"
+        elif today_smart_net < -100 and today_diff_cnt >= 10:
+            report_md += "<span style='color:#d32f2f;'>聰明錢真實撤退，且買賣家數差為正(散戶瘋狂湧入)。</span><br>深度解析：這是最經典的「主力出貨給散戶」劇本。大戶趁著利多或拉高時倒貨，而散戶正在滿心歡喜地接刀。技術面無論多漂亮，此時都必須提高警覺或停損。"
+        else:
+            report_md += "短線籌碼呈現多空交戰，無明顯極端異常。<br>深度解析：目前沒有單一勢力能完全掌控盤面，屬於換手或盤整階段。此時進場如同擲硬幣，建議保留現金，靜待籌碼高度集中時再出手。"
+        report_md += "</li><br>\n"
+
+        report_md += "<li><b>二、 核心防守價位與安全邊際確認：</b><br>"
+        report_md += f"系統已為您剔除避險造市與當沖雜訊，精算出的「純淨主力防守價」為 <b>{vwap_str} 元</b>。<br>"
+        if bias > 5:
+            report_md += f"深度解析：目前股價({curr_price:.2f}元)距離主力成本線有 {bias:.1f}% 的豐厚緩衝。這代表主力目前處於輕鬆獲利的狀態，洗盤時有足夠的空間下殺而不會傷到自己，您只需沿著均線續抱即可。"
+        elif 0 <= bias <= 5:
+            report_md += f"深度解析：目前股價({curr_price:.2f}元)完美貼合主力的真實成本區(乖離僅 {bias:.1f}%)。這是左側潛伏最愛的「黃金建倉點」。只要不實質跌破此防線，主力都有極大動機主動護盤。"
+        else:
+            report_md += f"深度解析：<span style='color:#d32f2f;'>目前股價({curr_price:.2f}元)已跌破主力的鐵板防守線(乖離 {bias:.1f}%)。</span>這代表連砸重金的大戶自己都處於帳面虧損。一旦大戶決定停損，將引發海嘯般的賣壓，此時切勿抱持凹單心態。"
+        report_md += "</li><br>\n"
+
+        report_md += "<li><b>三、 潛在市場盲點與套利干擾排除：</b><br>"
+        if is_cbas_arb:
+            report_md += "偵測到可轉債(CBAS)餘額下降，與主力賣超同步發生。<br>深度解析：這高機率是法人在進行「賣老股、換新股(轉債)」的無風險套利行為。這會在外觀上製造出「大戶瘋狂賣超」的假象，但其實並非主力不看好後市而棄守，需冷靜辨別。"
+        elif disp_warn and disp_warn['max_vol_6d'] and disp_warn['max_vol_6d'] <= 0:
+            report_md += "<span style='color:#d32f2f;'>警告：近 5 日週轉率已達法規極限！</span><br>深度解析：明日只要稍微有一點成交量，就會踩到交易所的處置紅線(關緊閉)。通常懂規矩的主力明天會刻意「縮手壓盤」來降溫，因此明日若見量縮下跌，屬人為技術性調整，無須過度恐慌。"
+        else:
+            report_md += "目前未偵測到可轉債套利干擾或即將踩到處置紅線的危機。<br>深度解析：市場干擾因素低，可將上方籌碼結果作為輔助判斷，但仍需搭配價格、風險與資料完整性確認。"
+        report_md += "</li><br>\n"
+        
+        report_md += "<li><b>四、 平日戰情追蹤矩陣 (近15日) 趨勢解碼：</b><br>"
+        report_md += f"近 10 日核心主力淨留倉為 <span style='color: {'#d32f2f' if net_10 > 0 else '#2e7d32'}; font-weight: bold;'>{net_10:,} 張</span>，今日買方火力為 <span style='font-weight: bold;'>{today_fp} 倍</span>。<br>"
+        if net_10 > 0 and today_fp > 1.2:
+            report_md += "深度解析：近半個月主力資金呈現<span style='color: #d32f2f; font-weight: bold;'>穩定流入(囤貨)</span>，且火力具備攻擊性，盤勢由多方掌控。"
+        elif net_10 < 0 and float(today_fp) < 1.0:
+            report_md += "深度解析：近半個月主力資金持續<span style='color: #2e7d32; font-weight: bold;'>撤退流出(倒貨)</span>，且買盤火力微弱，短線反彈皆為逃命波。"
+        else:
+            report_md += "深度解析：近半個月大戶籌碼進出交錯，未見連續性方向，屬區間震盪整理格局。"
+        report_md += "</li><br>\n"
+
+        report_md += "<li><b>五、 一週集保籌碼雷達 (大戶存量與流量雙解碼)：</b><br>"
+        report_md += f"當前純淨活大戶 C_Value 為 <span style='font-weight: bold;'>{c_val_text}</span>，最新單週純淨大戶變動為 <span style='color: {'#d32f2f' if radar_chg > 0 else '#2e7d32'}; font-weight: bold;'>{chg_text}</span>。<br>"
+        if radar_chg > 0 and radar_c_val > 60:
+            report_md += "深度解析：大戶不僅<span style='color: #d32f2f; font-weight: bold;'>存量高(高度鎖碼)</span>，且本週<span style='color: #d32f2f; font-weight: bold;'>流量持續增持</span>，籌碼極度安定，有利波段上攻。"
+        elif radar_chg < 0 and radar_c_val < 40:
+            report_md += "深度解析：大戶<span style='color: #2e7d32; font-weight: bold;'>存量已偏低(籌碼渙散)</span>，且本週<span style='color: #2e7d32; font-weight: bold;'>仍在拋售</span>，底部深不可測，請避開。"
+        elif radar_chg > 0.5:
+            report_md += "深度解析：雖然總存量普通，但本週大戶出現<span style='color: #d32f2f; font-weight: bold;'>顯著吸籌(流量轉正)</span>，暗示可能有潛在利多或波段起漲點。"
+        elif radar_chg < -0.5:
+            report_md += "深度解析：大戶本週出現<span style='color: #2e7d32; font-weight: bold;'>明顯倒貨(流量轉負)</span>，請嚴防高檔派發或利空出盡。"
+        else:
+            report_md += "深度解析：大戶持股比例單週變動微小，籌碼結構暫無重大改變，維持現有趨勢。"
+        report_md += "</li>\n"
+
+        report_md += "</ul>\n\n"
+        
+        report_md += f"<div class='ai-conclusion'><b>🚀 最終操作定調：{conclusion}</b><br><span style='font-weight:normal; display:block; margin-top:10px;'>{action}</span></div>\n"
+        report_md += "</div>"
         
         st.markdown(report_md, unsafe_allow_html=True)
         st.caption(f"備註：所有資料皆已透過 V76.1 動態引擎自動過濾。加權防守價已排除造市高頻刷量誤差。核心分點控盤率為核心券商佔自由流通籌碼之比例，C_Value 最高鎖死於 98%。")
@@ -4296,6 +3646,12 @@ if st.session_state.get('system_running', False):
         # 動態計算自訂區間涵蓋的交易日 (用作排行榜基準)
         range_dates = [d for d in dates if start_date_str <= d <= end_date_str]
         
+        # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推60天) ▼▼▼
+        start_idx = 0
+        for i, d in enumerate(dates):
+            if d <= start_date_str:
+                start_idx = i
+                break
         # ▼▼▼ 核心升級：計算擴展後的時間軸 (從最新一天 ~ 起點往前推20天) ▼▼▼
         start_idx = 0
         for i, d in enumerate(dates):
@@ -4333,7 +3689,7 @@ if st.session_state.get('system_running', False):
             eff_amt_ui = 10_000_000
             eff_vol_ui = 50
 
-        eff_amt_str = f"{int(eff_amt_ui/TWD_PER_WAN):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
+        eff_amt_str = f"{int(eff_amt_ui/10000):,} 萬" if eff_amt_ui < 100000000 else f"{eff_amt_ui/100000000:.2f} 億"
         
         dynamic_noise_threshold = max(1, int(recent_20_vol * (heatmap_noise_pct / 100.0)))
         
