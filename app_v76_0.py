@@ -488,7 +488,8 @@ pattern_mode = st.sidebar.selectbox("形態顯示模式", [
     "連續：對稱三角形", 
     "連續：上升三角形", "連續：下降三角形",
     "連續：上升楔形", "連續：下降楔形",
-    "連續：矩形 (箱型整理)"
+    "連續：矩形 (箱型整理)",
+    "蔡森：假突破/破底翻"
 ])
 
 lr_days = st.sidebar.slider("線性迴歸通道天數 (動態趨勢)", 20, 120, 20, 5)
@@ -2883,8 +2884,6 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
 
         highs = pivot_points(highs_vals, "H")
         lows = pivot_points(lows_vals, "L")
-        if len(highs) < 1 or len(lows) < 1:
-            return {}
 
         def pct_diff(a, b):
             base = max(abs(a), abs(b), 1e-9)
@@ -2905,6 +2904,27 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                 "shape": "arrowUp" if position == "belowBar" else "arrowDown",
                 "text": text,
             }
+
+        def tsai_target(signal, neckline, extreme):
+            amplitude = abs(float(neckline) - float(extreme))
+            if amplitude <= 0:
+                return None, 0.0
+            target = float(neckline) + amplitude if signal == "bullish" else float(neckline) - amplitude
+            return round(target, 2), round(amplitude, 2)
+
+        def tsai_levels(title, signal, neckline, extreme, color):
+            target, amplitude = tsai_target(signal, neckline, extreme)
+            levels = [{"title": f"{title}頸線", "price": round(float(neckline), 2), "color": color}]
+            if target is not None:
+                levels.append({"title": f"{title}滿足價", "price": target, "color": color})
+            return levels, target, amplitude
+
+        def tsai_text(signal, neckline, extreme):
+            target, amplitude = tsai_target(signal, neckline, extreme)
+            if target is None:
+                return ""
+            direction = "漲幅" if signal == "bullish" else "跌幅"
+            return f"蔡森量幅：頸線 {float(neckline):.2f}，起算點 {float(extreme):.2f}，{direction} {amplitude:.2f}，滿足價 {target:.2f}。"
 
         def add_candidate(name, shape, neck, color, signal, desc, score, reason, levels=None, markers=None):
             if not shape or not neck:
@@ -2938,7 +2958,9 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                     is_break = latest_close > neckline[1]
                     score = 58 + (22 if is_break else 0) + min(10, pattern_height * 80) + max(0, 15 - (len(df) - l2[2]) * 0.8) - bottom_diff * 120
                     desc = f"W底 ({status_break('bullish', neckline[1])})"
-                    reason = f"雙底誤差 {bottom_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%，頸線 {neckline[1]:.2f}。"
+                    extreme = min(l1[1], l2[1])
+                    levels, target, amplitude = tsai_levels("W底", "bullish", neckline[1], extreme, "#9c27b0")
+                    reason = f"雙底誤差 {bottom_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neckline[1], extreme)}"
                     add_candidate(
                         "W底",
                         [l1, neckline, l2],
@@ -2948,7 +2970,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         desc,
                         score,
                         reason,
-                        [{"title": "W底頸線", "price": round(neckline[1], 2), "color": "#9c27b0"}],
+                        levels,
                         [marker(l1, "底1", "#9c27b0", "belowBar"), marker(l2, "底2", "#9c27b0", "belowBar")],
                     )
 
@@ -2964,7 +2986,9 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                     is_break = latest_close < neckline[1]
                     score = 58 + (22 if is_break else 0) + min(10, pattern_height * 80) + max(0, 15 - (len(df) - h2[2]) * 0.8) - top_diff * 120
                     desc = f"M頭 ({status_break('bearish', neckline[1])})"
-                    reason = f"雙頭誤差 {top_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%，頸線 {neckline[1]:.2f}。"
+                    extreme = max(h1[1], h2[1])
+                    levels, target, amplitude = tsai_levels("M頭", "bearish", neckline[1], extreme, "#d32f2f")
+                    reason = f"雙頭誤差 {top_diff*100:.1f}%，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neckline[1], extreme)}"
                     add_candidate(
                         "M頭",
                         [h1, neckline, h2],
@@ -2974,7 +2998,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         desc,
                         score,
                         reason,
-                        [{"title": "M頭頸線", "price": round(neckline[1], 2), "color": "#d32f2f"}],
+                        levels,
                         [marker(h1, "頭1", "#d32f2f", "aboveBar"), marker(h2, "頭2", "#d32f2f", "aboveBar")],
                     )
 
@@ -2988,6 +3012,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         continue
                     is_break = latest_close > neckline[1]
                     score = 62 + (20 if is_break else 0) + min(10, pattern_height * 80) + max(0, 12 - (len(df) - l3[2]) * 0.6)
+                    extreme = min(l1[1], l2[1], l3[1])
+                    levels, target, amplitude = tsai_levels("三重底", "bullish", neckline[1], extreme, "#6a1b9a")
                     add_candidate(
                         "三重底",
                         [l1, highs_between[0], l2, highs_between[-1], l3],
@@ -2996,8 +3022,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         "bullish",
                         f"三重底 ({status_break('bullish', neckline[1])})",
                         score,
-                        f"三個低點接近，型態高度 {pattern_height*100:.1f}%，頸線 {neckline[1]:.2f}。",
-                        [{"title": "三重底頸線", "price": round(neckline[1], 2), "color": "#6a1b9a"}],
+                        f"三個低點接近，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neckline[1], extreme)}",
+                        levels,
                         [marker(l1, "底1", "#6a1b9a", "belowBar"), marker(l2, "底2", "#6a1b9a", "belowBar"), marker(l3, "底3", "#6a1b9a", "belowBar")],
                     )
 
@@ -3011,6 +3037,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         continue
                     is_break = latest_close < neckline[1]
                     score = 62 + (20 if is_break else 0) + min(10, pattern_height * 80) + max(0, 12 - (len(df) - h3[2]) * 0.6)
+                    extreme = max(h1[1], h2[1], h3[1])
+                    levels, target, amplitude = tsai_levels("三重頂", "bearish", neckline[1], extreme, "#b71c1c")
                     add_candidate(
                         "三重頂",
                         [h1, lows_between[0], h2, lows_between[-1], h3],
@@ -3019,8 +3047,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         "bearish",
                         f"三重頂 ({status_break('bearish', neckline[1])})",
                         score,
-                        f"三個高點接近，型態高度 {pattern_height*100:.1f}%，頸線 {neckline[1]:.2f}。",
-                        [{"title": "三重頂頸線", "price": round(neckline[1], 2), "color": "#b71c1c"}],
+                        f"三個高點接近，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neckline[1], extreme)}",
+                        levels,
                         [marker(h1, "頂1", "#b71c1c", "aboveBar"), marker(h2, "頂2", "#b71c1c", "aboveBar"), marker(h3, "頂3", "#b71c1c", "aboveBar")],
                     )
 
@@ -3037,6 +3065,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         if pattern_height < min_pattern_height:
                             continue
                         score = 66 + (18 if latest_close > neck_level else 0) + min(10, pattern_height * 70)
+                        levels, target, amplitude = tsai_levels("頭肩底", "bullish", neck_level, l2[1], "#e91e63")
                         add_candidate(
                             "頭肩底",
                             [l1, n1, l2, n2, l3],
@@ -3045,8 +3074,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                             "bullish",
                             f"頭肩底 ({status_break('bullish', neck_level)})",
                             score,
-                            f"頭部低於左右肩，型態高度 {pattern_height*100:.1f}%，頸線約 {neck_level:.2f}。",
-                            [{"title": "頭肩底頸線", "price": round(neck_level, 2), "color": "#e91e63"}],
+                            f"頭部低於左右肩，型態高度 {pattern_height*100:.1f}%。{tsai_text('bullish', neck_level, l2[1])}",
+                            levels,
                             [marker(l1, "左肩", "#e91e63", "belowBar"), marker(l2, "頭", "#e91e63", "belowBar"), marker(l3, "右肩", "#e91e63", "belowBar")],
                         )
 
@@ -3063,6 +3092,7 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                         if pattern_height < min_pattern_height:
                             continue
                         score = 66 + (18 if latest_close < neck_level else 0) + min(10, pattern_height * 70)
+                        levels, target, amplitude = tsai_levels("頭肩頂", "bearish", neck_level, h2[1], "#c62828")
                         add_candidate(
                             "頭肩頂",
                             [h1, n1, h2, n2, h3],
@@ -3071,8 +3101,8 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                             "bearish",
                             f"頭肩頂 ({status_break('bearish', neck_level)})",
                             score,
-                            f"頭部高於左右肩，型態高度 {pattern_height*100:.1f}%，頸線約 {neck_level:.2f}。",
-                            [{"title": "頭肩頂頸線", "price": round(neck_level, 2), "color": "#c62828"}],
+                            f"頭部高於左右肩，型態高度 {pattern_height*100:.1f}%。{tsai_text('bearish', neck_level, h2[1])}",
+                            levels,
                             [marker(h1, "左肩", "#c62828", "aboveBar"), marker(h2, "頭", "#c62828", "aboveBar"), marker(h3, "右肩", "#c62828", "aboveBar")],
                         )
 
@@ -3095,6 +3125,26 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             elif h_diff < -tol and l_diff < -tol and h_diff < l_diff and want("下降楔形"):
                 p_name, p_color, p_desc, p_sig, score = "下降楔形", "#7cb342", "下降楔形：下跌斜率收斂，偏多觀察。", "bullish", 54
             if p_name:
+                upper_level = max(h1[1], h2[1])
+                lower_level = min(l1[1], l2[1])
+                triangle_height = upper_level - lower_level
+                tri_levels = [
+                    {"title": "上緣壓力", "price": round(upper_level, 2), "color": p_color},
+                    {"title": "下緣支撐", "price": round(lower_level, 2), "color": p_color},
+                ]
+                tri_reason = f"高點斜率 {h_diff*100:.1f}%，低點斜率 {l_diff*100:.1f}%。"
+                if p_sig == "bullish" and latest_close > upper_level and triangle_height > 0:
+                    target = round(upper_level + triangle_height, 2)
+                    tri_levels.append({"title": f"{p_name}滿足價", "price": target, "color": p_color})
+                    tri_reason += f" 蔡森量幅：突破上緣 {upper_level:.2f}，整理高度 {triangle_height:.2f}，漲幅滿足價 {target:.2f}。"
+                    score += 16
+                elif p_sig == "bearish" and latest_close < lower_level and triangle_height > 0:
+                    target = round(lower_level - triangle_height, 2)
+                    tri_levels.append({"title": f"{p_name}滿足價", "price": target, "color": p_color})
+                    tri_reason += f" 蔡森量幅：跌破下緣 {lower_level:.2f}，整理高度 {triangle_height:.2f}，跌幅滿足價 {target:.2f}。"
+                    score += 16
+                else:
+                    tri_reason += " 蔡森量幅需等待有效突破後再計算滿足價。"
                 add_candidate(
                     p_name,
                     [h1, h2],
@@ -3103,13 +3153,222 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
                     p_sig,
                     p_desc,
                     score,
-                    f"高點斜率 {h_diff*100:.1f}%，低點斜率 {l_diff*100:.1f}%。",
-                    [
-                        {"title": "上緣壓力", "price": round(h2[1], 2), "color": p_color},
-                        {"title": "下緣支撐", "price": round(l2[1], 2), "color": p_color},
-                    ],
+                    tri_reason,
+                    tri_levels,
                     [marker(h1, "壓1", p_color, "aboveBar"), marker(h2, "壓2", p_color, "aboveBar"), marker(l1, "撐1", p_color, "belowBar"), marker(l2, "撐2", p_color, "belowBar")],
                 )
+
+        if want("假突破") and len(highs) >= 3 and len(lows) >= 3:
+            recent_highs = highs[-6:]
+            recent_lows = lows[-6:]
+            spike = max(recent_highs, key=lambda x: x[1])
+            other_highs = [h for h in recent_highs if h != spike]
+            if len(other_highs) >= 2:
+                upper = float(np.median([h[1] for h in other_highs]))
+                support_lows = [l for l in recent_lows if l[2] > min(h[2] for h in other_highs)]
+                support = float(np.median([l[1] for l in support_lows])) if support_lows else float(np.median([l[1] for l in recent_lows]))
+                if spike[1] > upper * (1 + tol) and latest_close < upper:
+                    confirmed = latest_close < support
+                    amplitude = spike[1] - upper
+                    target = float(round(support - amplitude, 2)) if confirmed else None
+                    levels = [
+                        {"title": "假突破上緣", "price": round(upper, 2), "color": "#8e24aa"},
+                        {"title": "確認支撐", "price": round(support, 2), "color": "#8e24aa"},
+                    ]
+                    if target is not None:
+                        levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
+                    desc = "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回上緣)"
+                    reason = f"先突破上緣 {upper:.2f} 至 {spike[1]:.2f}，但收回上緣下方；跌破支撐 {support:.2f} 後空方訊號更明確。"
+                    if target is not None:
+                        reason += f" 蔡森量幅：假突破幅度 {amplitude:.2f}，跌幅滿足價 {target:.2f}。"
+                    add_candidate(
+                        "蔡森假突破",
+                        [other_highs[0], spike, (last_date, latest_close, len(df)-1, "C")],
+                        [(other_highs[0][0], upper, other_highs[0][2], "N"), (last_date, upper, len(df)-1, "N")],
+                        "#8e24aa",
+                        "bearish",
+                        desc,
+                        62 + (20 if confirmed else 0),
+                        reason,
+                        levels,
+                        [marker(spike, "假破", "#8e24aa", "aboveBar")],
+                    )
+
+            plunge = min(recent_lows, key=lambda x: x[1])
+            other_lows = [l for l in recent_lows if l != plunge]
+            if len(other_lows) >= 2:
+                lower = float(np.median([l[1] for l in other_lows]))
+                resistance_highs = [h for h in recent_highs if h[2] > min(l[2] for l in other_lows)]
+                resistance = float(np.median([h[1] for h in resistance_highs])) if resistance_highs else float(np.median([h[1] for h in recent_highs]))
+                if plunge[1] < lower * (1 - tol) and latest_close > lower:
+                    confirmed = latest_close > resistance
+                    amplitude = lower - plunge[1]
+                    target = float(round(resistance + amplitude, 2)) if confirmed else None
+                    levels = [
+                        {"title": "破底翻底線", "price": round(lower, 2), "color": "#00897b"},
+                        {"title": "確認壓力", "price": round(resistance, 2), "color": "#00897b"},
+                    ]
+                    if target is not None:
+                        levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
+                    desc = "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回底線)"
+                    reason = f"先跌破底線 {lower:.2f} 至 {plunge[1]:.2f}，再站回底線上方；突破壓力 {resistance:.2f} 後買點較明確。"
+                    if target is not None:
+                        reason += f" 蔡森量幅：破底幅度 {amplitude:.2f}，漲幅滿足價 {target:.2f}。"
+                    add_candidate(
+                        "蔡森破底翻",
+                        [other_lows[0], plunge, (last_date, latest_close, len(df)-1, "C")],
+                        [(other_lows[0][0], lower, other_lows[0][2], "N"), (last_date, lower, len(df)-1, "N")],
+                        "#00897b",
+                        "bullish",
+                        desc,
+                        62 + (20 if confirmed else 0),
+                        reason,
+                        levels,
+                        [marker(plunge, "破底", "#00897b", "belowBar")],
+                    )
+
+            recent_start = max(0, len(df) - 80)
+            if len(df) - recent_start >= 12:
+                recent_high_arr = highs_vals[recent_start:max(recent_start + 1, len(df) - 2)]
+                recent_low_arr = lows_vals[recent_start:max(recent_start + 1, len(df) - 2)]
+                if len(recent_high_arr) >= 8 and len(recent_low_arr) >= 8:
+                    spike_i = recent_start + int(np.nanargmax(recent_high_arr))
+                    pre_start = max(recent_start, spike_i - 24)
+                    pre_highs = highs_vals[pre_start:spike_i]
+                    pre_lows = lows_vals[pre_start:spike_i]
+                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
+                        upper = float(np.nanpercentile(pre_highs, 75))
+                        support = float(np.nanpercentile(pre_lows, 25))
+                        if upper > support and highs_vals[spike_i] > upper * (1 + tol) and latest_close < upper:
+                            confirmed = latest_close < support
+                            amplitude = highs_vals[spike_i] - upper
+                            target = float(round(support - amplitude, 2)) if confirmed else None
+                            levels = [
+                                {"title": "假突破平台", "price": round(upper, 2), "color": "#8e24aa"},
+                                {"title": "跌破確認線", "price": round(support, 2), "color": "#8e24aa"},
+                            ]
+                            if target is not None:
+                                levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
+                            reason = f"近期平台上緣約 {upper:.2f}，曾刺高到 {highs_vals[spike_i]:.2f} 後收回平台下方。"
+                            if target is not None:
+                                reason += f" 跌破確認線 {support:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
+                            add_candidate(
+                                "蔡森假突破",
+                                [(dates_vals[pre_start], upper, pre_start, "N"), (dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), (last_date, latest_close, len(df)-1, "C")],
+                                [(dates_vals[pre_start], upper, pre_start, "N"), (last_date, upper, len(df)-1, "N")],
+                                "#8e24aa",
+                                "bearish",
+                                "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回平台)",
+                                60 + (20 if confirmed else 0),
+                                reason,
+                                levels,
+                                [marker((dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), "假破", "#8e24aa", "aboveBar")],
+                            )
+
+                    plunge_i = recent_start + int(np.nanargmin(recent_low_arr))
+                    pre_start = max(recent_start, plunge_i - 24)
+                    pre_highs = highs_vals[pre_start:plunge_i]
+                    pre_lows = lows_vals[pre_start:plunge_i]
+                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
+                        lower = float(np.nanpercentile(pre_lows, 25))
+                        resistance = float(np.nanpercentile(pre_highs, 75))
+                        if resistance > lower and lows_vals[plunge_i] < lower * (1 - tol) and latest_close > lower:
+                            confirmed = latest_close > resistance
+                            amplitude = lower - lows_vals[plunge_i]
+                            target = float(round(resistance + amplitude, 2)) if confirmed else None
+                            levels = [
+                                {"title": "破底平台", "price": round(lower, 2), "color": "#00897b"},
+                                {"title": "突破確認線", "price": round(resistance, 2), "color": "#00897b"},
+                            ]
+                            if target is not None:
+                                levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
+                            reason = f"近期底線約 {lower:.2f}，曾破低到 {lows_vals[plunge_i]:.2f} 後站回底線上方。"
+                            if target is not None:
+                                reason += f" 站上確認線 {resistance:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
+                            add_candidate(
+                                "蔡森破底翻",
+                                [(dates_vals[pre_start], lower, pre_start, "N"), (dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), (last_date, latest_close, len(df)-1, "C")],
+                                [(dates_vals[pre_start], lower, pre_start, "N"), (last_date, lower, len(df)-1, "N")],
+                                "#00897b",
+                                "bullish",
+                                "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回平台)",
+                                60 + (20 if confirmed else 0),
+                                reason,
+                                levels,
+                                [marker((dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), "破底", "#00897b", "belowBar")],
+                            )
+
+        if want("假突破"):
+            recent_start = max(0, len(df) - 80)
+            if len(df) - recent_start >= 12:
+                recent_high_arr = highs_vals[recent_start:max(recent_start + 1, len(df) - 2)]
+                recent_low_arr = lows_vals[recent_start:max(recent_start + 1, len(df) - 2)]
+                if len(recent_high_arr) >= 8 and len(recent_low_arr) >= 8:
+                    spike_i = recent_start + int(np.nanargmax(recent_high_arr))
+                    pre_start = max(recent_start, spike_i - 24)
+                    pre_highs = highs_vals[pre_start:spike_i]
+                    pre_lows = lows_vals[pre_start:spike_i]
+                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
+                        upper = float(np.nanpercentile(pre_highs, 75))
+                        support = float(np.nanpercentile(pre_lows, 25))
+                        if upper > support and highs_vals[spike_i] > upper * (1 + tol) and latest_close < upper:
+                            confirmed = latest_close < support
+                            amplitude = highs_vals[spike_i] - upper
+                            target = float(round(support - amplitude, 2)) if confirmed else None
+                            levels = [
+                                {"title": "假突破平台", "price": round(upper, 2), "color": "#8e24aa"},
+                                {"title": "跌破確認線", "price": round(support, 2), "color": "#8e24aa"},
+                            ]
+                            if target is not None:
+                                levels.append({"title": "假突破滿足價", "price": target, "color": "#8e24aa"})
+                            reason = f"近期平台上緣約 {upper:.2f}，曾刺高到 {highs_vals[spike_i]:.2f} 後收回平台下方。"
+                            if target is not None:
+                                reason += f" 跌破確認線 {support:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
+                            add_candidate(
+                                "蔡森假突破",
+                                [(dates_vals[pre_start], upper, pre_start, "N"), (dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), (last_date, latest_close, len(df)-1, "C")],
+                                [(dates_vals[pre_start], upper, pre_start, "N"), (last_date, upper, len(df)-1, "N")],
+                                "#8e24aa",
+                                "bearish",
+                                "假突破轉弱 (跌破支撐確認)" if confirmed else "假突破警示 (跌回平台)",
+                                60 + (20 if confirmed else 0),
+                                reason,
+                                levels,
+                                [marker((dates_vals[spike_i], highs_vals[spike_i], spike_i, "H"), "假破", "#8e24aa", "aboveBar")],
+                            )
+
+                    plunge_i = recent_start + int(np.nanargmin(recent_low_arr))
+                    pre_start = max(recent_start, plunge_i - 24)
+                    pre_highs = highs_vals[pre_start:plunge_i]
+                    pre_lows = lows_vals[pre_start:plunge_i]
+                    if len(pre_highs) >= 5 and len(pre_lows) >= 5:
+                        lower = float(np.nanpercentile(pre_lows, 25))
+                        resistance = float(np.nanpercentile(pre_highs, 75))
+                        if resistance > lower and lows_vals[plunge_i] < lower * (1 - tol) and latest_close > lower:
+                            confirmed = latest_close > resistance
+                            amplitude = lower - lows_vals[plunge_i]
+                            target = float(round(resistance + amplitude, 2)) if confirmed else None
+                            levels = [
+                                {"title": "破底平台", "price": round(lower, 2), "color": "#00897b"},
+                                {"title": "突破確認線", "price": round(resistance, 2), "color": "#00897b"},
+                            ]
+                            if target is not None:
+                                levels.append({"title": "破底翻滿足價", "price": target, "color": "#00897b"})
+                            reason = f"近期底線約 {lower:.2f}，曾破低到 {lows_vals[plunge_i]:.2f} 後站回底線上方。"
+                            if target is not None:
+                                reason += f" 站上確認線 {resistance:.2f} 後，蔡森量幅滿足價 {target:.2f}。"
+                            add_candidate(
+                                "蔡森破底翻",
+                                [(dates_vals[pre_start], lower, pre_start, "N"), (dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), (last_date, latest_close, len(df)-1, "C")],
+                                [(dates_vals[pre_start], lower, pre_start, "N"), (last_date, lower, len(df)-1, "N")],
+                                "#00897b",
+                                "bullish",
+                                "破底翻轉強 (站回壓力確認)" if confirmed else "破底翻警示 (站回平台)",
+                                60 + (20 if confirmed else 0),
+                                reason,
+                                levels,
+                                [marker((dates_vals[plunge_i], lows_vals[plunge_i], plunge_i, "L"), "破底", "#00897b", "belowBar")],
+                            )
 
         if want("V型反轉") and lows:
             l1 = lows[-1]
@@ -3140,7 +3399,11 @@ def process_geometric_patterns(df_price, kline_days, order, mode, current_price)
             return max(candidates, key=lambda c: (c.get("confidence", 0), c["shape_x"][-1]))
 
         mode_key = mode.split("：")[-1].split("(")[0].strip()
-        forced = [c for c in candidates if mode_key in c["name"] or c["name"] in mode]
+        mode_keys = [k.strip() for k in re.split(r"[/、\s]+", mode_key) if k.strip()]
+        forced = [
+            c for c in candidates
+            if mode_key in c["name"] or c["name"] in mode or any(k in c["name"] for k in mode_keys)
+        ]
         return max(forced, key=lambda c: c.get("confidence", 0)) if forced else {}
     except Exception:
         LOGGER.exception("幾何形態辨識失敗")
