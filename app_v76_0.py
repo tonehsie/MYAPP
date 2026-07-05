@@ -563,6 +563,59 @@ def fetch_finmind_v50(ds, sd, tid=None, ed=None):
         LOGGER.exception("FinMind 資料集讀取失敗：%s", ds)
         return pd.DataFrame()
 
+
+def extract_capital_from_balance_sheet(df_balance_sheet):
+    """回傳財報股本的台幣金額；抓不到時回傳 0。"""
+    if not is_valid(df_balance_sheet, ["date", "type", "value"]):
+        return 0.0, ""
+
+    df = df_balance_sheet.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["value"] = safe_to_num(df["value"], fill_val=0)
+    df["type_text"] = df["type"].astype(str)
+    df["origin_text"] = (
+        df["origin_name"].astype(str)
+        if "origin_name" in df.columns
+        else ""
+    )
+
+    df = df[
+        df["date"].notna()
+        & (df["value"] > 0)
+        & ~df["type_text"].str.endswith("_per", na=False)
+    ].copy()
+    if df.empty:
+        return 0.0, ""
+
+    text = (df["type_text"] + " " + df["origin_text"]).str.lower()
+    stock_capital_mask = (
+        text.str.contains("股本|capitalstock|sharecapital|commonstock|ordinaryshare", regex=True, na=False)
+        & ~text.str.contains("資本公積|capital surplus|additional paid", regex=True, na=False)
+    )
+    candidates = df[stock_capital_mask].copy()
+    if candidates.empty:
+        return 0.0, ""
+
+    candidates["_score"] = 0
+    preferred_text = (candidates["type_text"] + " " + candidates["origin_text"]).str.lower()
+    candidates.loc[
+        preferred_text.str.contains("普通股|common|ordinary|capitalstock", regex=True, na=False),
+        "_score",
+    ] += 2
+    candidates.loc[
+        preferred_text.str.contains("股本合計|股本總額|capitalstock", regex=True, na=False),
+        "_score",
+    ] += 1
+
+    latest_date = candidates["date"].max()
+    latest = candidates[candidates["date"] == latest_date].sort_values(
+        ["_score", "value"],
+        ascending=[False, False],
+    )
+    row = latest.iloc[0]
+    return float(row["value"]), str(row["date"].date())
+
+
 BRANCH_AGG_DATASET = "TaiwanStockTradingDailyReportSecIdAgg"
 BRANCH_RAW_DETAIL_DAYS = 30
 
@@ -810,6 +863,7 @@ def fetch_heavy_data_sync_with_progress(user_stock_id, dates_tuple, max_len):
 
     api_targets = [
         ("TaiwanStockHoldingSharesPer", tdcc_sd, None, user_stock_id),
+        ("TaiwanStockBalanceSheet", "2020-01-01", None, user_stock_id),
         ("TaiwanStockMarginPurchaseShortSale", d_end, None, user_stock_id),
         ("TaiwanStockDayTrading", dt_sd, None, user_stock_id),
         ("TaiwanStockInstitutionalInvestorsBuySell", d_end, None, user_stock_id),
@@ -3223,10 +3277,11 @@ if st.session_state.get('system_running', False):
         debug_data.append(check_df_status("5. 現股當沖 (DayTrading)", ds_dict.get("TaiwanStockDayTrading"), 'date'))
         debug_data.append(check_df_status("6. 借券明細 (SecuritiesLending)", ds_dict.get("TaiwanStockSecuritiesLending"), 'date'))
         debug_data.append(check_df_status("7. 集保戶數 (HoldingSharesPer)", ds_dict.get("TaiwanStockHoldingSharesPer"), 'date'))
-        debug_data.append(check_df_status("8. 月營收表 (MonthRevenue)", ds_dict.get("TaiwanStockMonthRevenue"), 'revenue_month'))
-        debug_data.append(check_df_status("9. 期貨法人 (FuturesInstitutional)", ds_dict.get("TaiwanFuturesInstitutionalInvestors"), 'date'))
-        debug_data.append(check_df_status("10. 鉅額交易 (BlockTrade)", ds_dict.get("TaiwanStockBlockTrade"), 'date'))
-        debug_data.append(check_df_status("11. 可轉債行情 (ConvertibleBond)", ds_dict.get("TaiwanStockConvertibleBondDailyOverview"), 'date'))
+        debug_data.append(check_df_status("8. 資產負債表 (BalanceSheet)", ds_dict.get("TaiwanStockBalanceSheet"), 'date'))
+        debug_data.append(check_df_status("9. 月營收表 (MonthRevenue)", ds_dict.get("TaiwanStockMonthRevenue"), 'revenue_month'))
+        debug_data.append(check_df_status("10. 期貨法人 (FuturesInstitutional)", ds_dict.get("TaiwanFuturesInstitutionalInvestors"), 'date'))
+        debug_data.append(check_df_status("11. 鉅額交易 (BlockTrade)", ds_dict.get("TaiwanStockBlockTrade"), 'date'))
+        debug_data.append(check_df_status("12. 可轉債行情 (ConvertibleBond)", ds_dict.get("TaiwanStockConvertibleBondDailyOverview"), 'date'))
         
         df_debug_report = pd.DataFrame(debug_data)
         
@@ -3253,15 +3308,23 @@ if st.session_state.get('system_running', False):
         df_s_raw = ds_dict.get("TaiwanStockHoldingSharesPer", pd.DataFrame())
         df_s_wide, df_s_unit, df_s_ppl = process_tdcc(df_s_raw)
         
-        current_total_shares = df_s_wide['總張數'].iloc[0] if is_valid(df_s_wide) else 0
-        capital_str = (
-            f"{current_total_shares * SHARES_PER_LOT * TAIWAN_STOCK_PAR_VALUE / TWD_PER_YI:.2f} 億元"
-            if current_total_shares > 0 else "計算中..."
+        tdcc_total_lots = df_s_wide['總張數'].iloc[0] if is_valid(df_s_wide) else 0
+        capital_amount_twd, capital_report_date = extract_capital_from_balance_sheet(
+            ds_dict.get("TaiwanStockBalanceSheet", pd.DataFrame())
         )
-        issued_shares_str = (
-            f"{current_total_shares / LOTS_PER_YI_SHARES:.2f} 億股"
-            if current_total_shares > 0 else "計算中..."
-        )
+        if capital_amount_twd > 0:
+            current_total_shares = capital_amount_twd / TAIWAN_STOCK_PAR_VALUE / SHARES_PER_LOT
+            capital_tag = f"財報 {capital_report_date}" if capital_report_date else "財報"
+            capital_str = f"{capital_amount_twd / TWD_PER_YI:.2f} 億元 ({capital_tag})"
+            issued_shares_str = f"{capital_amount_twd / TAIWAN_STOCK_PAR_VALUE / TWD_PER_YI:.2f} 億股"
+        elif tdcc_total_lots > 0:
+            current_total_shares = tdcc_total_lots
+            capital_str = f"{tdcc_total_lots * SHARES_PER_LOT * TAIWAN_STOCK_PAR_VALUE / TWD_PER_YI:.2f} 億元 (集保估)"
+            issued_shares_str = f"{tdcc_total_lots / LOTS_PER_YI_SHARES:.2f} 億股 (集保估)"
+        else:
+            current_total_shares = 0
+            capital_str = "計算中..."
+            issued_shares_str = "計算中..."
         
         latest_director_holding, holding_src = get_dead_chip_info(dates[0], parsed_dead_chip, dynamic_dict, s_val, chip_eng)
         director_holding_str = f"{latest_director_holding:.2f}% ({holding_src})" if latest_director_holding > 0 else "無資料"
