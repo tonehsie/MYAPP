@@ -29,6 +29,11 @@ def get_secret_value(key, default=""):
 
 
 FINMIND_TOKEN = get_secret_value("FINMIND_TOKEN")
+SMART_LEVELS = np.array([100, 200, 400, 600, 800, 1000])
+SHARES_PER_LOT = 1000
+TWD_PER_YI = 100_000_000
+TAIWAN_STOCK_PAR_VALUE = 10
+CAPITAL_YI_TO_LOTS = TWD_PER_YI / TAIWAN_STOCK_PAR_VALUE / SHARES_PER_LOT
 
 CSS = """
 <style>
@@ -99,6 +104,41 @@ def fetch_stock_info():
         mask = df["stock_id"].astype(str).str.fullmatch(r"\d{4}")
         return df[mask].drop_duplicates("stock_id")
     return pd.DataFrame()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_public_capital_info():
+    endpoints = [
+        "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+        "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
+    ]
+    frames = []
+
+    for url in endpoints:
+        try:
+            response = requests.get(url, timeout=20)
+            response.raise_for_status()
+            df = pd.DataFrame(response.json())
+        except Exception:
+            continue
+
+        if df.empty or "公司代號" not in df.columns or "實收資本額" not in df.columns:
+            continue
+
+        cap = df[["公司代號", "實收資本額"]].copy()
+        cap.columns = ["stock_id", "official_capital"]
+        cap["stock_id"] = cap["stock_id"].astype(str).str.strip()
+        cap["official_capital"] = pd.to_numeric(
+            cap["official_capital"].astype(str).str.replace(",", "", regex=False),
+            errors="coerce",
+        )
+        cap["Official_Capital_Yi"] = cap["official_capital"] / 100_000_000
+        frames.append(cap[["stock_id", "Official_Capital_Yi"]])
+
+    if not frames:
+        return pd.DataFrame(columns=["stock_id", "Official_Capital_Yi"])
+
+    return pd.concat(frames, ignore_index=True).dropna().drop_duplicates("stock_id")
 
 
 def fetch_single_tdcc(stock_id, date_str):
@@ -179,29 +219,36 @@ def parse_level_to_floor_lots(value):
     return 0
 
 
-def calc_dynamic_smart_pct(df_sub, val_col):
-    total_shares = df_sub.groupby("stock_id")[val_col].sum() / 1000
-    total_shares = total_shares[total_shares > 0]
-    if total_shares.empty:
-        return pd.DataFrame(columns=["Total_Shares", "Smart_Pct", "Dynamic_CT"])
+def calculate_v76_dynamic_ct(total_lots, dead_chip_ratio=0.0):
+    total_lots = pd.to_numeric(total_lots, errors="coerce").fillna(0)
+    total_lots = total_lots[total_lots > 0]
+    if total_lots.empty:
+        return pd.Series(dtype=int)
 
-    levels = np.array([100, 200, 400, 600, 800, 1000])
-    raw_threshold = np.clip(total_shares * 0.01, 100, 1000)
-    diffs = np.abs(raw_threshold.to_numpy()[:, None] - levels)
-    ct_series = pd.Series(levels[diffs.argmin(axis=1)], index=total_shares.index)
+    safe_dead_ratio = max(0.0, min(99.9, float(dead_chip_ratio)))
+    free_float_ratio = np.clip((100.0 - safe_dead_ratio) / 100.0, 0.05, 1.0)
+    float_1pct_lots = total_lots * free_float_ratio * 0.01
+    raw_threshold = np.clip(float_1pct_lots, 100, 1000)
+    diffs = np.abs(raw_threshold.to_numpy()[:, None] - SMART_LEVELS)
+    return pd.Series(SMART_LEVELS[diffs.argmin(axis=1)], index=total_lots.index)
 
-    df_sub = df_sub[df_sub["stock_id"].isin(total_shares.index)].copy()
-    df_sub["ct"] = df_sub["stock_id"].map(ct_series)
 
+def calc_smart_pct_with_ct(df_sub, val_col, ct_series):
+    total_lots = df_sub.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
+    total_lots = total_lots[total_lots > 0]
+    if total_lots.empty or ct_series.empty:
+        return pd.Series(dtype=float), total_lots
+
+    valid_ct = ct_series.reindex(total_lots.index).dropna()
+    if valid_ct.empty:
+        return pd.Series(dtype=float), total_lots
+
+    df_sub = df_sub[df_sub["stock_id"].isin(valid_ct.index)].copy()
+    df_sub["ct"] = df_sub["stock_id"].map(valid_ct)
     smart_mask = df_sub["floor_lots"] >= df_sub["ct"]
-    smart_shares = df_sub[smart_mask].groupby("stock_id")[val_col].sum() / 1000
-    smart_pct = (smart_shares / total_shares * 100).fillna(0)
-
-    return pd.DataFrame({
-        "Total_Shares": total_shares,
-        "Smart_Pct": smart_pct,
-        "Dynamic_CT": ct_series,
-    })
+    smart_lots = df_sub[smart_mask].groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
+    smart_pct = (smart_lots / total_lots * 100).fillna(0)
+    return smart_pct.reindex(valid_ct.index).fillna(0), total_lots
 
 
 # ==========================================
@@ -213,6 +260,7 @@ if not FINMIND_TOKEN:
     st.sidebar.warning("尚未設定 FINMIND_TOKEN，公開額度可能很快用完。")
 
 df_info = fetch_stock_info()
+df_public_capital = fetch_public_capital_info()
 industry_list = (
     ["全市場暴力掃描 (需較長時間)"] + sorted(df_info["industry_category"].unique().tolist())
     if not df_info.empty
@@ -224,7 +272,8 @@ capital_limit = st.sidebar.number_input("股本上限 (億)", min_value=1, max_v
 
 st.sidebar.divider()
 st.sidebar.markdown("### 系統自動計算：大戶精算門檻")
-st.sidebar.caption("系統將自動套用 V75.9 邏輯，依據每檔股票總發行量的 1% (界於100~1000張) 自動捕捉最適合的大戶級距。您不需手動設定。")
+st.sidebar.caption("系統套用 app_v76_0.py 口徑：以自由流通張數 1% 推算，並對齊 100/200/400/600/800/1000 張級距。")
+dead_chip_ratio = st.sidebar.slider("死籌碼調整 (%)", 0.0, 80.0, 0.0, 1.0)
 
 diff_threshold = st.sidebar.slider("單週大戶增加門檻 (%)", 0.1, 10.0, 0.3, 0.1)
 
@@ -332,15 +381,40 @@ if run_btn:
         df_all[val_col] = pd.to_numeric(df_all[val_col], errors="coerce").fillna(0)
         df_all["floor_lots"] = df_all["HoldingSharesLevel"].apply(parse_level_to_floor_lots)
 
-        df_l = calc_dynamic_smart_pct(df_all[df_all["period"] == "latest"].copy(), val_col)
-        df_p = calc_dynamic_smart_pct(df_all[df_all["period"] == "prev"].copy(), val_col)
+        df_latest_raw = df_all[df_all["period"] == "latest"].copy()
+        df_prev_raw = df_all[df_all["period"] == "prev"].copy()
+        latest_total_lots = df_latest_raw.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
+        latest_total_lots = latest_total_lots[latest_total_lots > 0]
+
+        capital_map = df_public_capital.set_index("stock_id")["Official_Capital_Yi"].to_dict()
+        official_capital_yi = latest_total_lots.index.to_series().map(lambda sid: capital_map.get(str(sid), np.nan))
+        official_capital_lots = official_capital_yi * CAPITAL_YI_TO_LOTS
+        threshold_base_lots = official_capital_lots.fillna(latest_total_lots)
+        latest_ct = calculate_v76_dynamic_ct(threshold_base_lots, dead_chip_ratio)
+
+        latest_smart_pct, latest_tdcc_total_lots = calc_smart_pct_with_ct(df_latest_raw, val_col, latest_ct)
+        prev_smart_pct, prev_tdcc_total_lots = calc_smart_pct_with_ct(df_prev_raw, val_col, latest_ct)
+
+        df_l = pd.DataFrame({
+            "Total_Shares": latest_tdcc_total_lots,
+            "Smart_Pct": latest_smart_pct,
+            "Dynamic_CT": latest_ct,
+            "Threshold_Base_Lots": threshold_base_lots,
+        }).dropna(subset=["Smart_Pct", "Dynamic_CT"])
+        df_p = pd.DataFrame({
+            "Total_Shares": prev_tdcc_total_lots,
+            "Smart_Pct": prev_smart_pct,
+        }).dropna(subset=["Smart_Pct"])
 
         if df_l.empty or df_p.empty:
             st.warning("可用資料不足，無法完成本次比較。")
             st.stop()
 
         df_scan = df_l.join(df_p, lsuffix="_latest", rsuffix="_prev").dropna()
-        df_scan = df_scan[df_scan["Total_Shares_latest"] <= (capital_limit * 10000)]
+        df_scan["Official_Capital_Yi"] = df_scan.index.map(lambda sid: capital_map.get(str(sid), np.nan))
+        df_scan["Tdcc_Estimated_Capital_Yi"] = df_scan["Total_Shares_latest"] / 10000
+        df_scan["Capital_Filter_Yi"] = df_scan["Official_Capital_Yi"].fillna(df_scan["Tdcc_Estimated_Capital_Yi"])
+        df_scan = df_scan[df_scan["Capital_Filter_Yi"] <= capital_limit]
         df_scan["Diff_Pct"] = df_scan["Smart_Pct_latest"] - df_scan["Smart_Pct_prev"]
         df_scan = df_scan[df_scan["Diff_Pct"] >= diff_threshold].sort_values("Diff_Pct", ascending=False)
 
@@ -353,8 +427,13 @@ if run_btn:
                 out_data.append({
                     "代號": sid,
                     "名稱": stock_names.get(str(sid), ""),
-                    "預估股本(億)": f"{row['Total_Shares_latest'] / 10000:.2f}",
-                    "系統精算大戶門檻": f"{int(row['Dynamic_CT_latest'])} 張",
+                    "公開資訊股本(億)": (
+                        f"{row['Official_Capital_Yi']:.2f}"
+                        if pd.notna(row["Official_Capital_Yi"])
+                        else "未取得"
+                    ),
+                    "集保推估股本(億)": f"{row['Tdcc_Estimated_Capital_Yi']:.2f}",
+                    "V76精算大戶門檻": f"{int(row['Dynamic_CT_latest'])} 張",
                     "上週大戶(%)": f"{row['Smart_Pct_prev']:.2f}%",
                     "最新大戶(%)": f"{row['Smart_Pct_latest']:.2f}%",
                     "大戶增減(%)": f"+{row['Diff_Pct']:.2f}%" if row["Diff_Pct"] > 0 else f"{row['Diff_Pct']:.2f}%",
