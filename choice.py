@@ -424,6 +424,7 @@ if run_btn:
             stock_names = df_info.set_index("stock_id")["stock_name"].to_dict()
             out_data = []
             for sid, row in df_scan.iterrows():
+                dynamic_ct = row.get("Dynamic_CT", row.get("Dynamic_CT_latest", 0))
                 out_data.append({
                     "代號": sid,
                     "名稱": stock_names.get(str(sid), ""),
@@ -433,7 +434,7 @@ if run_btn:
                         else "未取得"
                     ),
                     "集保推估股本(億)": f"{row['Tdcc_Estimated_Capital_Yi']:.2f}",
-                    "V76精算大戶門檻": f"{int(row['Dynamic_CT_latest'])} 張",
+                    "V76精算大戶門檻": f"{int(dynamic_ct)} 張",
                     "上週大戶(%)": f"{row['Smart_Pct_prev']:.2f}%",
                     "最新大戶(%)": f"{row['Smart_Pct_latest']:.2f}%",
                     "大戶增減(%)": f"+{row['Diff_Pct']:.2f}%" if row["Diff_Pct"] > 0 else f"{row['Diff_Pct']:.2f}%",
