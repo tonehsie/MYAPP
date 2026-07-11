@@ -29,11 +29,7 @@ def get_secret_value(key, default=""):
 
 
 FINMIND_TOKEN = get_secret_value("FINMIND_TOKEN")
-SMART_LEVELS = np.array([100, 200, 400, 600, 800, 1000])
 SHARES_PER_LOT = 1000
-TWD_PER_YI = 100_000_000
-TAIWAN_STOCK_PAR_VALUE = 10
-CAPITAL_YI_TO_LOTS = TWD_PER_YI / TAIWAN_STOCK_PAR_VALUE / SHARES_PER_LOT
 
 CSS = """
 <style>
@@ -219,36 +215,26 @@ def parse_level_to_floor_lots(value):
     return 0
 
 
-def calculate_v76_dynamic_ct(total_lots, dead_chip_ratio=0.0):
-    total_lots = pd.to_numeric(total_lots, errors="coerce").fillna(0)
-    total_lots = total_lots[total_lots > 0]
-    if total_lots.empty:
-        return pd.Series(dtype=int)
-
-    safe_dead_ratio = max(0.0, min(99.9, float(dead_chip_ratio)))
-    free_float_ratio = np.clip((100.0 - safe_dead_ratio) / 100.0, 0.05, 1.0)
-    float_1pct_lots = total_lots * free_float_ratio * 0.01
-    raw_threshold = np.clip(float_1pct_lots, 100, 1000)
-    diffs = np.abs(raw_threshold.to_numpy()[:, None] - SMART_LEVELS)
-    return pd.Series(SMART_LEVELS[diffs.argmin(axis=1)], index=total_lots.index)
-
-
-def calc_smart_pct_with_ct(df_sub, val_col, ct_series):
+def calc_push_profile(df_sub, val_col):
     total_lots = df_sub.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
     total_lots = total_lots[total_lots > 0]
-    if total_lots.empty or ct_series.empty:
-        return pd.Series(dtype=float), total_lots
+    if total_lots.empty:
+        return pd.DataFrame(columns=["Total_Shares", "Mid_Pct", "Anchor_Pct", "Push_Score"])
 
-    valid_ct = ct_series.reindex(total_lots.index).dropna()
-    if valid_ct.empty:
-        return pd.Series(dtype=float), total_lots
+    mid = df_sub[(df_sub["floor_lots"] >= 400) & (df_sub["floor_lots"] < 800)]
+    anchor = df_sub[df_sub["floor_lots"] >= 800]
 
-    df_sub = df_sub[df_sub["stock_id"].isin(valid_ct.index)].copy()
-    df_sub["ct"] = df_sub["stock_id"].map(valid_ct)
-    smart_mask = df_sub["floor_lots"] >= df_sub["ct"]
-    smart_lots = df_sub[smart_mask].groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
-    smart_pct = (smart_lots / total_lots * 100).fillna(0)
-    return smart_pct.reindex(valid_ct.index).fillna(0), total_lots
+    mid_pct = (mid.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT / total_lots * 100).fillna(0)
+    anchor_pct = (anchor.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT / total_lots * 100).fillna(0)
+    mid_pct = mid_pct.reindex(total_lots.index).fillna(0)
+    anchor_pct = anchor_pct.reindex(total_lots.index).fillna(0)
+
+    return pd.DataFrame({
+        "Total_Shares": total_lots,
+        "Mid_Pct": mid_pct,
+        "Anchor_Pct": anchor_pct,
+        "Push_Score": mid_pct + anchor_pct * 0.5,
+    })
 
 
 # ==========================================
@@ -271,17 +257,16 @@ scan_mode = st.sidebar.selectbox("掃描範圍", industry_list, index=0)
 capital_limit = st.sidebar.number_input("股本上限 (億)", min_value=1, max_value=200, value=50, step=5)
 
 st.sidebar.divider()
-st.sidebar.markdown("### 系統自動計算：大戶精算門檻")
-st.sidebar.caption("系統套用 app_v76_0.py 口徑：以自由流通張數 1% 推算，並對齊 100/200/400/600/800/1000 張級距。")
-dead_chip_ratio = st.sidebar.slider("死籌碼調整 (%)", 0.0, 80.0, 0.0, 1.0)
+st.sidebar.markdown("### 中實戶推升雷達")
+st.sidebar.caption("核心鎖定 400-800 張；800 張以上只作半權重鎖碼確認，避免漏掉真正把股價推上去的中實戶。")
 
-diff_threshold = st.sidebar.slider("單週大戶增加門檻 (%)", 0.1, 10.0, 0.3, 0.1)
+diff_threshold = st.sidebar.slider("單週推升分數增加門檻", 0.1, 10.0, 0.3, 0.1)
 
 st.sidebar.divider()
 run_btn = st.sidebar.button("啟動多執行緒雷達掃描", use_container_width=True)
 
-st.title("全息量化系統 (V76.9 動態精算門檻雷達)")
-st.caption("已全面掛載級距辨識與動態股本計算引擎。系統會為每一檔中小型股自動分配最佳的「大戶門檻」。")
+st.title("全息量化系統 (中實戶推升雷達)")
+st.caption("核心追蹤 400-800 張持股級距的變化，並用 800 張以上鎖碼作輔助確認。")
 
 if run_btn:
     if df_info.empty:
@@ -368,7 +353,7 @@ if run_btn:
     else:
         st.success(f"資料庫建置完成！成功對齊 {stocks_with_data} 檔個股數據。")
 
-    with st.spinner("引擎運算中：套用個股動態門檻精算籌碼流向..."):
+    with st.spinner("引擎運算中：追蹤 400-800 張中實戶推升帶..."):
         if "stock_id" not in df_all.columns or "HoldingSharesLevel" not in df_all.columns:
             st.error("FinMind 回傳欄位不完整，無法計算持股級距。")
             st.stop()
@@ -383,48 +368,30 @@ if run_btn:
 
         df_latest_raw = df_all[df_all["period"] == "latest"].copy()
         df_prev_raw = df_all[df_all["period"] == "prev"].copy()
-        latest_total_lots = df_latest_raw.groupby("stock_id")[val_col].sum() / SHARES_PER_LOT
-        latest_total_lots = latest_total_lots[latest_total_lots > 0]
-
-        capital_map = df_public_capital.set_index("stock_id")["Official_Capital_Yi"].to_dict()
-        official_capital_yi = latest_total_lots.index.to_series().map(lambda sid: capital_map.get(str(sid), np.nan))
-        official_capital_lots = official_capital_yi * CAPITAL_YI_TO_LOTS
-        threshold_base_lots = official_capital_lots.fillna(latest_total_lots)
-        latest_ct = calculate_v76_dynamic_ct(threshold_base_lots, dead_chip_ratio)
-
-        latest_smart_pct, latest_tdcc_total_lots = calc_smart_pct_with_ct(df_latest_raw, val_col, latest_ct)
-        prev_smart_pct, prev_tdcc_total_lots = calc_smart_pct_with_ct(df_prev_raw, val_col, latest_ct)
-
-        df_l = pd.DataFrame({
-            "Total_Shares": latest_tdcc_total_lots,
-            "Smart_Pct": latest_smart_pct,
-            "Dynamic_CT": latest_ct,
-            "Threshold_Base_Lots": threshold_base_lots,
-        }).dropna(subset=["Smart_Pct", "Dynamic_CT"])
-        df_p = pd.DataFrame({
-            "Total_Shares": prev_tdcc_total_lots,
-            "Smart_Pct": prev_smart_pct,
-        }).dropna(subset=["Smart_Pct"])
+        df_l = calc_push_profile(df_latest_raw, val_col)
+        df_p = calc_push_profile(df_prev_raw, val_col)
 
         if df_l.empty or df_p.empty:
             st.warning("可用資料不足，無法完成本次比較。")
             st.stop()
 
         df_scan = df_l.join(df_p, lsuffix="_latest", rsuffix="_prev").dropna()
+        capital_map = df_public_capital.set_index("stock_id")["Official_Capital_Yi"].to_dict()
         df_scan["Official_Capital_Yi"] = df_scan.index.map(lambda sid: capital_map.get(str(sid), np.nan))
         df_scan["Tdcc_Estimated_Capital_Yi"] = df_scan["Total_Shares_latest"] / 10000
         df_scan["Capital_Filter_Yi"] = df_scan["Official_Capital_Yi"].fillna(df_scan["Tdcc_Estimated_Capital_Yi"])
         df_scan = df_scan[df_scan["Capital_Filter_Yi"] <= capital_limit]
-        df_scan["Diff_Pct"] = df_scan["Smart_Pct_latest"] - df_scan["Smart_Pct_prev"]
+        df_scan["Mid_Diff"] = df_scan["Mid_Pct_latest"] - df_scan["Mid_Pct_prev"]
+        df_scan["Anchor_Diff"] = df_scan["Anchor_Pct_latest"] - df_scan["Anchor_Pct_prev"]
+        df_scan["Diff_Pct"] = df_scan["Push_Score_latest"] - df_scan["Push_Score_prev"]
         df_scan = df_scan[df_scan["Diff_Pct"] >= diff_threshold].sort_values("Diff_Pct", ascending=False)
 
         if df_scan.empty:
-            st.warning(f"掃描結束！在過濾股本後，本次區間的確沒有個股大戶增加超過 {diff_threshold}%。")
+            st.warning(f"掃描結束！在過濾股本後，本次區間沒有個股推升分數增加超過 {diff_threshold}。")
         else:
             stock_names = df_info.set_index("stock_id")["stock_name"].to_dict()
             out_data = []
             for sid, row in df_scan.iterrows():
-                dynamic_ct = row.get("Dynamic_CT", row.get("Dynamic_CT_latest", 0))
                 out_data.append({
                     "代號": sid,
                     "名稱": stock_names.get(str(sid), ""),
@@ -434,10 +401,11 @@ if run_btn:
                         else "未取得"
                     ),
                     "集保推估股本(億)": f"{row['Tdcc_Estimated_Capital_Yi']:.2f}",
-                    "V76精算大戶門檻": f"{int(dynamic_ct)} 張",
-                    "上週大戶(%)": f"{row['Smart_Pct_prev']:.2f}%",
-                    "最新大戶(%)": f"{row['Smart_Pct_latest']:.2f}%",
-                    "大戶增減(%)": f"+{row['Diff_Pct']:.2f}%" if row["Diff_Pct"] > 0 else f"{row['Diff_Pct']:.2f}%",
+                    "400-800張增減(%)": f"+{row['Mid_Diff']:.2f}%" if row["Mid_Diff"] > 0 else f"{row['Mid_Diff']:.2f}%",
+                    "800張以上增減(%)": f"+{row['Anchor_Diff']:.2f}%" if row["Anchor_Diff"] > 0 else f"{row['Anchor_Diff']:.2f}%",
+                    "上週推升分數": f"{row['Push_Score_prev']:.2f}",
+                    "最新推升分數": f"{row['Push_Score_latest']:.2f}",
+                    "推升分數增減": f"+{row['Diff_Pct']:.2f}" if row["Diff_Pct"] > 0 else f"{row['Diff_Pct']:.2f}",
                 })
             st.balloons()
             render_clean_html_table(pd.DataFrame(out_data))
